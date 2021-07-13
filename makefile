@@ -1,11 +1,11 @@
-CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall
+CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall -Og
 CPPFLAGS += -Wno-unused-variable
 LDFLAGS += -fuse-ld=gold
 
 CPPFLAGS += -DNDEBUG=1 -O3 -march=native
 #CPPFLAGS += -fsanitize=address
 
-TEST_BIN := bin/test_naive_engine
+TEST_BIN := bin/test_naive_engine bin/test_naive_engine_core bin/test_naive_engine_core_diff
 
 all : $(TEST_BIN)
 

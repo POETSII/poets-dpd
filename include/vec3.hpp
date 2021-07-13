@@ -43,6 +43,13 @@ struct vec3g_t
         std::copy(x.begin(), x.end(), dst);
     }
 
+    void clear()
+    {
+        x[0]=0;
+        x[1]=0;
+        x[2]=0;
+    }
+
     template<class F>
     vec3g_t apply(T o, F f) const
     { return {f(x[0],o), f(x[1],o), f(x[2],o)}; }

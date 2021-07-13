@@ -254,7 +254,6 @@ private:
         return res;
     }
 
-    // Return uniform number with mean 0 and stddev==1
     double RandSym(uint32_t s1, uint32_t s2) const
     {
         uint32_t ru=(uint32_t)RandU64(s1,s2);
@@ -281,6 +280,9 @@ private:
             return;
         }
 
+        vec3r_t dx = vec3r_t(hb->x) - vec3r_t(ob->x) - other_delta; 
+        double dr=dx.l2_norm();
+
         if(UseMathsCore){
             vec3r_t f;
             bool apply=dpd_maths_core::calc_force(
@@ -289,38 +291,26 @@ private:
                 [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].dissipative; },
                 m_rng_base,
                 dpd_maths_core::default_hash,
+                dx, dr,
                 *hb,
                 *ob,
-                other_delta,
                 f
                 );
             if(apply){
-                m_forces.at(hb->bead_id) += f;
+               m_forces.at(hb->bead_id) += f;
             }
             return;
         }
 
-        vec3r_t dx = vec3r_t(hb->x) - vec3r_t(ob->x) - other_delta; 
-
-        double dr=dx.l2_norm();
         double inv_dr=1.0/dr;
 
         auto rdx=calc_distance_from_to(hb->x, ob->x);
         double rdxr=rdx.l2_norm();
         //assert(rdxr <= 2*sqrt(2));
 
-        //std::cerr<<"  hx="<<hb->x<<", ox="<<ob->x<<", dx="<<dx<<", dr="<<dr<<", dx/dr="<<dx*inv_dr<<", other_delta="<<other_delta<<"\n";
-
-        if(hb->bead_id==0){
-            //std::cerr<<"  "<<hb->bead_id<<" -> "<<ob->bead_id<<", dr="<<dr<<"\n";
-        }
-
         if(dr>=1 || dr < 0.000000001){
             return;
         }
-
-        
-
         
         const auto &interactions=m_state->interactions[hb->bead_type*m_numBeadTypes+ob->bead_type];
 
@@ -344,15 +334,8 @@ private:
 
         double scaled_force = (conForce + dissForce + randForce) * inv_dr;
 
-        // Here we over-write the forces
         m_forces.at(hb->bead_id) += dx * scaled_force;
         //std::cerr<<"  r="<<dr<<", force="<<scaled_force*dr<<", f="<<m_forces.at(hb->bead_id)<<"\n";
-
-        /*if(hb->bead_id==0){
-            std::cerr<<hb->bead_id<<"->"<<ob->bead_id<<",  conForce="<<conForce<<", dissForce="<<dissForce<<", randForce="<<randForce<<"\n";
-            std::cerr<<"   dx="<<dx<<"\n";
-            std::cerr<<"    f="<<m_forces.at(hb->bead_id)<<"\n";
-        }*/
     }
 
     void update_polymer_bond_forces(const Polymer &p)
@@ -376,12 +359,22 @@ private:
         vec3r_t dx=calc_distance_from_to(head.x, tail.x);
         double r=dx.l2_norm();
 
-        // The force scale is just kappa*(r-r0).
-        double force=b.kappa*(r-b.r0);
+        vec3r_t f;
 
-        // Division by r is just to get (dx/r)
-        vec3r_t f=dx * (force/r);
-        //std::cerr<<" bond: r="<<r<<", force="<<force<<", fbond="<<f<<"\n";
+        if(UseMathsCore){
+            dpd_maths_core::calc_hookean_force(
+                b.kappa, b.r0, 
+                dx, r, 1.0/r,
+                f
+            );
+        }else{
+            // The force scale is just kappa*(r-r0).
+            double force=b.kappa*(r-b.r0);
+
+            // Division by r is just to get (dx/r)
+            f=dx * (force/r);
+            //std::cerr<<" bond: r="<<r<<", force="<<force<<", fbond="<<f<<"\n";
+        }
         
         m_forces[head_bead_index] += f;
         m_forces[tail_bead_index] -= f;
@@ -409,57 +402,69 @@ private:
         double FirstLength   = first.l2_norm();
         double SecondLength  = second.l2_norm();
 
-        const double magProduct = FirstLength*SecondLength;
+        vec3r_t headForce, middleForce, tailForce;
 
-        if(magProduct > 0.0001)
-        {
-            const double b1MagSq		= FirstLength*FirstLength;
-            const double b2MagSq		= SecondLength*SecondLength;
-            const double b1Dotb2		= first[0]*second[0] + first[1]*second[1] + first[2]*second[2];
-            const double b1b2Overb1Sq	= b1Dotb2/b1MagSq;
-            const double b1b2Overb2Sq	= b1Dotb2/b2MagSq;
-            const double cosPhiSq		= b1b2Overb1Sq*b1b2Overb2Sq;
-            const double Modulus=bp.kappa;
+        if(UseMathsCore){
+            dpd_maths_core::calc_angle_force(
+                bp.kappa, cos(bp.theta0), sin(bp.theta0), 
+                first, FirstLength,
+                second, SecondLength,
+                headForce, middleForce, tailForce
+            );
+        }else{
+            const double magProduct = FirstLength*SecondLength;
 
-            double forceMag = 0.0;
-
-            // Check that the bond angle is not exactly 90 deg but allow the cosine to be < 0
-            if(fabs(b1Dotb2) > 0.000001)
+            if(magProduct > 0.0001)
             {
-                double Prefactor = sqrt(1.0/cosPhiSq - 1.0);
-                Prefactor = std::max(Prefactor, 0.000001);
+                const double b1MagSq		= FirstLength*FirstLength;
+                const double b2MagSq		= SecondLength*SecondLength;
+                const double b1Dotb2		= first[0]*second[0] + first[1]*second[1] + first[2]*second[2];
+                const double b1b2Overb1Sq	= b1Dotb2/b1MagSq;
+                const double b1b2Overb2Sq	= b1Dotb2/b2MagSq;
+                const double cosPhiSq		= b1b2Overb1Sq*b1b2Overb2Sq;
+                const double Modulus=bp.kappa;
 
-                // Add the restoring force depending on whether there is a preferred angle
-                // for the bond pair or not
+                double forceMag = 0.0;
 
-                double CosPhi0=cos(bp.theta0);
-
-                if(bp.theta0 > 0.0)
+                // Check that the bond angle is not exactly 90 deg but allow the cosine to be < 0
+                if(fabs(b1Dotb2) > 0.000001)
                 {
-                    const double SinPhi1=sin(bp.theta0);
-                    forceMag = Modulus*(CosPhi0 - bp.theta0/Prefactor)/magProduct;
+                    double Prefactor = sqrt(1.0/cosPhiSq - 1.0);
+                    Prefactor = std::max(Prefactor, 0.000001);
+
+                    // Add the restoring force depending on whether there is a preferred angle
+                    // for the bond pair or not
+
+                    double CosPhi0=cos(bp.theta0);
+
+                    if(bp.theta0 > 0.0)
+                    {
+                        const double SinPhi1=sin(bp.theta0);
+                        forceMag = Modulus*(CosPhi0 - bp.theta0/Prefactor)/magProduct;
+                    }
+                    else
+                    {
+                        forceMag = Modulus/magProduct;
+                    }
                 }
                 else
                 {
-                    forceMag = Modulus/magProduct;
+                    forceMag	= Modulus/magProduct;
                 }
+
+                headForce =((first*b1b2Overb1Sq)-second) * forceMag;
+                assert(isfinite(headForce));
+
+                tailForce = (first- (second*b1b2Overb2Sq)) * forceMag;
+                assert(isfinite(tailForce));
+
+                middleForce = -(headForce + tailForce);
             }
-            else
-            {
-                forceMag	= Modulus/magProduct;
-            }
-
-            vec3r_t firstForce =((first*b1b2Overb1Sq)-second) * forceMag;
-            m_forces[head_bead_index] += firstForce;
-            assert(isfinite(firstForce));
-
-            vec3r_t secondForce = (first- (second*b1b2Overb2Sq)) * forceMag;
-            m_forces[tail_bead_index] += secondForce;
-            assert(isfinite(secondForce));
-
-            vec3r_t negMiddleForce = firstForce + secondForce;
-            m_forces[middle_bead_index] -= negMiddleForce;
         }
+
+        m_forces[head_bead_index] += headForce;
+        m_forces[tail_bead_index] += tailForce;
+        m_forces[middle_bead_index] += middleForce;
     }
 
     // Pre: b.x==x(t), b.v==v(t), b.f==f(t)
@@ -496,6 +501,15 @@ private:
 
     void update_bead_mom(Bead *b)
     {
+        if(UseMathsCore){
+            dpd_maths_core::update_mom(
+                m_state->dt,
+                m_forces[b->bead_id],
+                *b
+            );
+            return;
+        }
+
         double dt=m_state->dt;
 
        // v(t+dt) = v(t) + dt*(f(t)+f(t+dt))/2

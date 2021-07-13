@@ -13,8 +13,6 @@ class TestOrderedMesh
 {
     std::string m_name;
     vec3i_t m_dims;
-
-    VTKSnapshotter m_snapshotter;
 public:
     static std::string calc_name(const vec3i_t &dims)
     {
