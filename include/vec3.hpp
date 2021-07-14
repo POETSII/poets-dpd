@@ -119,6 +119,7 @@ std::ostream &operator<<(std::ostream &dst, const vec3g_t<T> &x)
 }
 
 using vec3r_t = vec3g_t<double>;
+using vec3f_t = vec3g_t<float>;
 using vec3i_t = vec3g_t<int>;
 
 vec3r_t normalise(const vec3r_t &x)

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include "vec3.hpp"
+#include "hash.hpp"
 
 namespace dpd_maths_core
 {
@@ -40,13 +41,6 @@ struct bead_concept_t
 
 namespace detail
 {
-    inline uint64_t splitmix64(uint64_t z)
-    {
-        z = (z ^ (z >> 30)) * uint64_t(0xBF58476D1CE4E5B9ull);
-        z = (z ^ (z >> 27)) * uint64_t(0x94D049BB133111EBull);
-        return z ^ (z >> 31);
-    }
-
     inline uint64_t RandU64(uint64_t base, uint32_t s1, uint32_t s2) 
     {
         uint64_t z = base + ( ( uint64_t(std::max(s1,s2))<<32) | std::min(s1,s2) );
@@ -117,14 +111,12 @@ void update_mom(
     f.clear();
 }
 
-
-//! Returns true if there is an interaction, with force_home the force on bead home.
 template<
     class TScalar, class TVector,
     class TConservativeMap, class TDissipativeMap, class TRandHash,
     class TBead1, class TBead2, class TForce
 >
-bool calc_force(
+void calc_force(
     TScalar lambda_dt,
     TScalar inv_sqrt_dt,
     const TConservativeMap &conservative,
@@ -142,10 +134,7 @@ bool calc_force(
 ) {
     assert(&home != &other);
     assert(home.get_bead_id() != other.get_bead_id());
-
-    if(dr>=1 || dr < 0.000000001){
-        return false;
-    }
+    assert(dr < 1);
 
     TScalar inv_dr = recip(dr);
 
@@ -174,8 +163,6 @@ bool calc_force(
     TScalar scaled_force = (conForce + dissForce + randForce) * inv_dr;
 
     force_home = dx * scaled_force;
-
-    return true;
 }
 
 template<class TScalar, class TVector, class TForce>

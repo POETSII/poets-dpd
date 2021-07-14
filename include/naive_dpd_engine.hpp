@@ -285,19 +285,19 @@ private:
 
         if(UseMathsCore){
             vec3r_t f;
-            bool apply=dpd_maths_core::calc_force(
-                (m_state->lambda * m_state->dt), (1.0/sqrt(m_state->dt)),
-                [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
-                [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].dissipative; },
-                m_rng_base,
-                dpd_maths_core::default_hash,
-                dx, dr,
-                *hb,
-                *ob,
-                f
+            if(dr < 1 && dr>=0.000000001){
+                dpd_maths_core::calc_force(
+                    (m_state->lambda * m_state->dt), (1.0/sqrt(m_state->dt)),
+                    [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
+                    [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].dissipative; },
+                    m_rng_base,
+                    dpd_maths_core::default_hash,
+                    dx, dr,
+                    *hb,
+                    *ob,
+                    f
                 );
-            if(apply){
-               m_forces.at(hb->bead_id) += f;
+                m_forces.at(hb->bead_id) += f;
             }
             return;
         }
