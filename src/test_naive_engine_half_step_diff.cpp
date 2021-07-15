@@ -7,8 +7,10 @@
 #include "tests/test_isolated_moving_bead.hpp"
 #include "tests/test_multiple_moving_beads.hpp"
 #include "naive_dpd_engine.hpp"
+#include "naive_dpd_engine_half_step.hpp"
 
-#include "tests/test_runner.hpp"
+
+#include "tests/test_differential.hpp"
 
 #include <random>
 
@@ -28,7 +30,8 @@ int main(int argc, const char *argv[])
     TestIsolatedMovingBead::register_tests();
     TestMultipleMovingBeads::register_tests();
 
-    NaiveDPDEngine<true> engine;
+    NaiveDPDEngine<false> engine1;
+    NaiveDPDEngineHalfStep engine2;
 
     fprintf(stdout, "TAP version 13\n");
 
@@ -43,7 +46,7 @@ int main(int argc, const char *argv[])
 
         auto test=std::get<2>(ttt)();
 
-        auto r=test_runner(*test, engine);
+        auto r=test_differential(*test, engine1, engine2);
         if(r.first){
             fprintf(stdout, "ok %d - %s\n", test_num, test->name().c_str());
         }else{

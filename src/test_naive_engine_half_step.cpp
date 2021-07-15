@@ -35,6 +35,7 @@ int main(int argc, const char *argv[])
     auto tests=TestBase::get_test_factories_ordered_by_complexity();
 
     int test_num=1;
+    int failed=0;
     for(const auto & ttt : tests){
         if(!prefix.empty() && prefix != std::get<0>(ttt).substr(0,prefix.size())){
             continue;
@@ -47,7 +48,9 @@ int main(int argc, const char *argv[])
             fprintf(stdout, "ok %d - %s\n", test_num, test->name().c_str());
         }else{
             fprintf(stdout, "not ok %d - %s :%s\n", test_num, test->name().c_str(), r.second.c_str());
+            ++failed;
         }
         test_num++;
     }
+    return failed>0;
 }

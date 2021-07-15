@@ -439,8 +439,8 @@ private:
 
                     if(bp.theta0 > 0.0)
                     {
-                        const double SinPhi1=sin(bp.theta0);
-                        forceMag = Modulus*(CosPhi0 - bp.theta0/Prefactor)/magProduct;
+                        const double SinPhi0=sin(bp.theta0);
+                        forceMag = Modulus*(CosPhi0 - SinPhi0/Prefactor)/magProduct;
                     }
                     else
                     {
@@ -452,6 +452,8 @@ private:
                     forceMag	= Modulus/magProduct;
                 }
 
+                //std::cerr<<"Ref: forceMag="<<forceMag<<"\n";
+
                 headForce =((first*b1b2Overb1Sq)-second) * forceMag;
                 assert(isfinite(headForce));
 
@@ -461,6 +463,8 @@ private:
                 middleForce = -(headForce + tailForce);
             }
         }
+
+        //std::cerr<<"Ref: dx01="<<first<<", dx12="<<second<<", headForce="<<headForce<<"\n";
 
         m_forces[head_bead_index] += headForce;
         m_forces[tail_bead_index] += tailForce;

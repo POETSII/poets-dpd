@@ -96,7 +96,7 @@ void calc_force(
 
     TScalar hookeanForce=kappa*(r0-dr);
 
-    TScalar scaled_force = (conForce + dissForce + randForce - hookeanForce) * inv_dr;
+    TScalar scaled_force = (conForce + dissForce + randForce + hookeanForce) * inv_dr;
 
     force_home = dx * scaled_force;
 }
@@ -132,6 +132,8 @@ void calc_angle_force(
             // Add the restoring force if there is a preferred angle
             forceMag = forceMag*(cos_theta0 - sin_theta0*InvPrefactor);
         }
+
+        //std::cerr<<"Dur: forceMag="<<forceMag<<"\n";
 
         headForce =((dx01*b1b2Overb1Sq)-dx12) * forceMag;
         assert(isfinite(headForce));
