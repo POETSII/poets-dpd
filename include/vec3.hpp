@@ -137,6 +137,11 @@ bool isfinite(const vec3r_t &x)
     return std::isfinite(x[0]) && std::isfinite(x[1]) && std::isfinite(x[2]);
 }
 
+bool isfinite(const vec3f_t &x)
+{
+    return std::isfinite(x[0]) && std::isfinite(x[1]) && std::isfinite(x[2]);
+}
+
 double angle(const vec3r_t &a, const vec3r_t &b)
 {
     double dot=a.dot(b);
@@ -150,6 +155,11 @@ double angle(const vec3r_t &a, const vec3r_t &b)
 }
 
 vec3i_t floor(const vec3r_t &x)
+{
+    return {(int)std::floor(x[0]),(int)std::floor(x[1]),(int)std::floor(x[2])}; 
+}
+
+vec3i_t floor(const vec3f_t &x)
 {
     return {(int)std::floor(x[0]),(int)std::floor(x[1]),(int)std::floor(x[2])}; 
 }

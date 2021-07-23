@@ -63,7 +63,7 @@ private:
 
     double m_inv_root_dt;
 
-    uint64_t m_rng_base;
+    uint32_t m_t_hash;
 
     void check_constraints_and_setup()
     {
@@ -154,8 +154,7 @@ private:
 
     void step()
     {
-        m_rng_base = (uint64_t)ldexp(m_state->t, 32);
-        m_rng_base = splitmix64(m_rng_base);
+        m_t_hash=time_to_hash(m_state->t, m_state->seed);
 
         double dt=m_state->dt;
 
@@ -258,8 +257,7 @@ private:
                         (1.0/sqrt(m_state->dt)),
                         [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
                         [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].dissipative; },
-                        m_rng_base,
-                        dpd_maths_core_half_step::default_hash,
+                        m_t_hash,
                         dx, dr,
                         kappa, r0,
                         *hb,

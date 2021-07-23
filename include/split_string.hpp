@@ -62,13 +62,14 @@ struct split_string
         return r;
     }
 
-    double unsigned_at(unsigned index) const
+    uint64_t unsigned_at(unsigned index) const
     {
+        static_assert(sizeof(unsigned long long)==sizeof(uint64_t));
         auto e=parts.at(index);
         char *ep;
         const char *begin=&data[0]+e.first;
         const char *end=&data[0]+e.first+e.second;
-        double r=strtoul(begin, &ep, 10);
+        uint64_t r=strtoull(begin, &ep, 10);
         if(ep!=end){
             throw std::runtime_error("Not all chars consumed while parsing '"+string_at(index)+"'");
         }

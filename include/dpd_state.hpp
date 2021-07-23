@@ -4,11 +4,14 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <cassert>
 
 #include "vec3.hpp"
 
 // Here we generally assume that 32-bit is enough for indices and ids
 // If Julian wants more than 4B beads, then... we need more money.
+
+constexpr unsigned MONOMER_OFFSET = 128;
 
 struct Bead
 {
@@ -21,7 +24,8 @@ struct Bead
 
     // A unique polymer id within the world. Polymer ids must be contiguous, starting at zero.
     uint32_t polymer_id = -1;
-    uint16_t polymer_offset = -1;
+    // A unique offset < MONOMER_OFFSET within the polyer, or MONOMER_OFFSET if it is a monomer (single bead polymer)
+    uint8_t polymer_offset = -1;
 
     // Technically these can be recovered from the polymer_id and polymer_offset,
     // but it is convenient and cache-friendly to have them here.
@@ -32,11 +36,19 @@ struct Bead
     vec3r_t v;
     vec3r_t f;
 
-    uint8_t get_bead_type() const
+    uint32_t get_bead_type() const
     { return bead_type; }
 
-    uint32_t get_bead_id() const
-    { return bead_id; }
+    // This is a completely standardised hash-code, so that we get repeatable results across implementations.
+    /*  0000 1ppp pppp pppp  pppp pppp pppp pppp  : monomer, up to 2^27 instances
+        0000 0ooo oooo pppp  pppp pppp pppp pppp  : polymer, up to 2^20 instances, and 127 beads per polymer
+    */
+    uint32_t get_hash_code() const
+    {
+        assert( polymer_offset == MONOMER_OFFSET ? (polymer_offset==0 && polymer_id<(1u<<27))
+                                      : (polymer_offset<128 && polymer_id<(1u<<20)));
+        return (uint32_t(polymer_offset)<<24) | polymer_id;
+    }
 };
 
 struct BeadType
@@ -91,6 +103,7 @@ struct WorldState
     double lambda = 0.5;
     double t = 1.0;
     double dt = 0.05;
+    uint64_t seed = 1;
     std::vector<InteractionStrength> interactions; // Array of bead_types.size()*bead_types.size(). Strictly symmetric
     std::vector<BeadType> bead_types;
     std::vector<PolymerType> polymer_types;

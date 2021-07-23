@@ -67,7 +67,7 @@ private:
 
     double m_inv_root_dt;
 
-    uint64_t m_rng_base;
+    uint32_t m_t_hash;
 
 
     void check_constraints_and_setup()
@@ -159,8 +159,7 @@ private:
 
     void step()
     {
-        m_rng_base = (uint64_t)ldexp(m_state->t, 32);
-        m_rng_base = splitmix64(m_rng_base);
+        m_t_hash = time_to_hash(m_state->t, m_state->seed);
 
         // Clear all cell information
         m_cells.resize(calc_num_cells());
@@ -226,18 +225,6 @@ private:
         }
     }
 
-    static uint64_t splitmix64(uint64_t z)
-    {
-        z = (z ^ (z >> 30)) * uint64_t(0xBF58476D1CE4E5B9ull);
-        z = (z ^ (z >> 27)) * uint64_t(0x94D049BB133111EBull);
-        return z ^ (z >> 31);
-    }
-
-    uint64_t RandU64(uint32_t s1, uint32_t s2) const
-    {
-        uint64_t z = m_rng_base + ( ( uint64_t(std::max(s1,s2))<<32) | std::min(s1,s2) );
-        return splitmix64(z);
-    }
 
     static int32_t uint32_to_int32(uint32_t x)
     {
@@ -256,7 +243,7 @@ private:
 
     double RandSym(uint32_t s1, uint32_t s2) const
     {
-        uint32_t ru=(uint32_t)RandU64(s1,s2);
+        uint32_t ru=hash_rng_sym(m_t_hash, s1,s2);
         int32_t rs=uint32_to_int32(ru);  // in [-2^31,2^31)
         //const double scale=ldexp(2.0,-32) / sqrt(1/3.0); // gives stddev of 1 (same as groot-warren paper)
         const double scale=ldexp(2.0, -32); // Gives range of [-0.5,0.5]  (same as Osprey-DPD)
@@ -290,8 +277,7 @@ private:
                     (m_state->lambda * m_state->dt), (1.0/sqrt(m_state->dt)),
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].dissipative; },
-                    m_rng_base,
-                    dpd_maths_core::default_hash,
+                    m_t_hash,
                     dx, dr,
                     *hb,
                     *ob,
@@ -303,6 +289,9 @@ private:
         }
 
         double inv_dr=1.0/dr;
+
+        //std::cerr<<"ref : a="<<hb->get_bead_id()<<", b="<<ob->get_bead_id()<<", dx="<<dx<<"\n";
+
 
         auto rdx=calc_distance_from_to(hb->x, ob->x);
         double rdxr=rdx.l2_norm();
@@ -329,12 +318,14 @@ private:
 		double gammap = interactions.dissipative*wr2;
 
         double dissForce = -gammap*rdotv;
-        double u = RandSym(hb->bead_id, ob->bead_id);
+        double u = RandSym(hb->get_hash_code(), ob->get_hash_code());
 		double randForce = sqrt(gammap) * (1.0/sqrt(m_state->dt)) * u;
 
         double scaled_force = (conForce + dissForce + randForce) * inv_dr;
 
-        m_forces.at(hb->bead_id) += dx * scaled_force;
+        vec3r_t f=dx * scaled_force;
+        //std::cerr<<"ref :   dr="<<dr<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<"\n";
+        m_forces.at(hb->bead_id) += f;
         //std::cerr<<"  r="<<dr<<", force="<<scaled_force*dr<<", f="<<m_forces.at(hb->bead_id)<<"\n";
     }
 

@@ -181,7 +181,7 @@ public:
             b.bead_type=pt.bead_types[i];
             b.polymer_type=poly_type_index;
             b.polymer_id=polymer_id;
-            b.polymer_offset=i;
+            b.polymer_offset=beads.size()==1 ? 128 : i;
             b.x=x;
             b.v=beads[i].v;
             b.f=beads[i].f;

@@ -3,7 +3,7 @@ CPPFLAGS += -Wno-unused-variable
 LDFLAGS += -fuse-ld=gold
 
 CPPFLAGS += -DNDEBUG=1 -O3 -march=native
-#CPPFLAGS += -fsanitize=address
+#CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
 TEST_BIN := bin/test_naive_engine \
 	bin/test_naive_engine_core bin/test_naive_engine_core_diff \

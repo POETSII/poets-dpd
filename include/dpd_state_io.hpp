@@ -160,6 +160,7 @@ std::ostream &write_world_state(std::ostream &dst, const WorldState &state)
     dst<<"Lambda "<<state.lambda<<"\n";
     dst<<"Origin "<<state.origin[0]<<" "<<state.origin[1]<<" "<<state.origin[2]<<"\n";
     dst<<"Box "<<state.box[0]<<" "<<state.box[1]<<" "<<state.box[2]<<"\n";
+    dst<<"Seed "<<state.seed<<"\n";
     unsigned numBeadTypes=state.bead_types.size();
     for(unsigned i=0; i<numBeadTypes; i++){
         dst<<"ConservativeStrength "<<i;
@@ -229,6 +230,9 @@ WorldState read_world_state(std::istream &src, int &line_no)
         for(unsigned i=0; i<3; i++){
             res.box[i]=p.double_at(i+1);
         }
+
+        p=read_prefixed_line_and_split_on_space(src, "Seed", 2, line_no);
+        res.seed=p.unsigned_at(1);
 
         unsigned numBeadTypes=res.bead_types.size();
         res.interactions.resize(numBeadTypes*numBeadTypes);

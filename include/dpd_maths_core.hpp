@@ -41,12 +41,6 @@ struct bead_concept_t
 
 namespace detail
 {
-    inline uint64_t RandU64(uint64_t base, uint32_t s1, uint32_t s2) 
-    {
-        uint64_t z = base + ( ( uint64_t(std::max(s1,s2))<<32) | std::min(s1,s2) );
-        return splitmix64(z);
-    }
-
     inline int32_t uint32_to_int32(uint32_t x)
     {
         // Sigh, Avoid undefined behaviour. Compiler should optimise it out.
@@ -63,9 +57,9 @@ namespace detail
     }
 };
 
-inline double default_hash(uint64_t base, uint32_t s1, uint32_t s2)
+inline double default_hash(uint32_t base, uint32_t s1, uint32_t s2)
 {
-    uint32_t ru=(uint32_t)detail::RandU64(base, s1,s2);
+    uint32_t ru=hash_rng_sym(base, s1, s2);
     int32_t rs=detail::uint32_to_int32(ru);  // in [-2^31,2^31)
     //const double scale=ldexp(2.0,-32) / sqrt(1/3.0); // gives stddev of 1 (same as groot-warren paper)
     const double scale=ldexp(2.0, -32); // Gives range of [-0.5,0.5]  (same as Osprey-DPD)
@@ -113,7 +107,7 @@ void update_mom(
 
 template<
     class TScalar, class TVector,
-    class TConservativeMap, class TDissipativeMap, class TRandHash,
+    class TConservativeMap, class TDissipativeMap,
     class TBead1, class TBead2, class TForce
 >
 void calc_force(
@@ -122,8 +116,7 @@ void calc_force(
     const TConservativeMap &conservative,
     const TDissipativeMap &dissipative,
 
-    uint64_t hash_base,
-    const TRandHash &hash_unif,  // maps (uint64_t,uint32_t,uint32_t) -> TScalar. Uniform in [-0.5,0.5]
+    uint32_t t_hash,
 
     TVector dx, TScalar dr,
 
@@ -133,7 +126,7 @@ void calc_force(
     TForce & force_home
 ) {
     assert(&home != &other);
-    assert(home.get_bead_id() != other.get_bead_id());
+    assert(home.get_hash_code() != other.get_hash_code());
     assert(dr < 1);
 
     TScalar inv_dr = recip(dr);
@@ -157,7 +150,7 @@ void calc_force(
     TScalar gammap = dissStrength*wr2;
 
     TScalar dissForce = -gammap*rdotv;
-    TScalar u = hash_unif(hash_base, home.get_bead_id(), other.get_bead_id());
+    TScalar u = default_hash(t_hash, home.get_hash_code(), other.get_hash_code());
     TScalar randForce = sqrt(gammap) * inv_sqrt_dt * u;
 
     TScalar scaled_force = (conForce + dissForce + randForce) * inv_dr;
@@ -175,7 +168,8 @@ void calc_hookean_force(
     TForce &force_head
 ){
     // The force scale is just kappa*(r-r0).
-    TScalar force=kappa*(r-r0);
+    TScalar dr=(r-r0);
+    TScalar force=kappa*dr;
 
     // Division by r is just to get (dx/r)
     force_head=dx * (force * inv_r);

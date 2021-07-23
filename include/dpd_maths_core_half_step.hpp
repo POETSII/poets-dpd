@@ -49,7 +49,7 @@ void update_mom(
 
 template<
     class TScalar, class TVector,
-    class TConservativeMap, class TDissipativeMap, class TRandHash,
+    class TConservativeMap, class TDissipativeMap,
     class TBead1, class TBead2, class TForce
 >
 void calc_force(
@@ -57,8 +57,7 @@ void calc_force(
     const TConservativeMap &conservative,
     const TDissipativeMap &dissipative,
 
-    uint64_t hash_base,
-    const TRandHash &hash_unif,  // maps (uint64_t,uint32_t,uint32_t) -> TScalar. Uniform in [-0.5,0.5]
+    uint32_t t_hash,
 
     TVector dx, TScalar dr,
     TScalar kappa, TScalar r0,
@@ -69,8 +68,8 @@ void calc_force(
     TForce & force_home
 ) {
     assert(&home != &other);
-    assert(home.get_bead_id() != other.get_bead_id());
-    assert(dr < 1);
+    assert(home.get_hash_code() != other.get_hash_code());
+    assert(0 < dr && dr < 1);
 
     TScalar inv_dr = recip(dr);
 
@@ -80,7 +79,7 @@ void calc_force(
     auto conStrength=conservative(home_bead_type, other_bead_type);
     auto dissStrength=dissipative(home_bead_type, other_bead_type); // This might be a constant
 
-    vec3r_t dv = home.v - other.v;
+    auto dv = home.v - other.v;
 
     TScalar wr = (1.0 - dr);
     TScalar wr2 = wr*wr;
@@ -91,14 +90,18 @@ void calc_force(
     TScalar gammap = dissStrength*wr2;
 
     TScalar dissForce = -gammap*rdotv;
-    TScalar u = hash_unif(hash_base, home.get_bead_id(), other.get_bead_id());
+    TScalar u = dpd_maths_core::default_hash(t_hash, home.get_hash_code(), other.get_hash_code());
     TScalar randForce = sqrt(gammap) * inv_sqrt_dt * u;
 
-    TScalar hookeanForce=kappa*(r0-dr);
+    TScalar dr0=r0-dr;
+    TScalar hookeanForce=kappa*dr0;
 
     TScalar scaled_force = (conForce + dissForce + randForce + hookeanForce) * inv_dr;
 
     force_home = dx * scaled_force;
+
+    //std::cerr<<"ref :   dr="<<dr<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<"\n";
+        
 }
 
 template<class TScalar, class TVector, class TForce>

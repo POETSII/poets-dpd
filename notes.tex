@@ -1,0 +1,160 @@
+\documentclass{article}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithmicx}
+\usepackage{algpseudocode}
+
+
+\newcommand{\leftarrowplus}{\xleftarrow{+}}
+\newcommand{\dt}{\Delta t}
+
+\newcommand{\Time}{\mathbb{R}}
+\newcommand{\Bead}{\mathbb{N}}
+\newcommand{\Pos}{\mathbb{R}^3}
+\newcommand{\Vel}{\mathbb{R}^3}
+\newcommand{\Force}{\mathbb{R}^3}
+
+\newcommand{\VEC}[1]{\vec{\mathbf #1}}
+\newcommand{\IND}[3]{\vec{\mathbf #1}\left[#2,#3\right]}
+
+
+\begin{document}
+
+
+Fundamental parameters:
+\begin{itemize}
+\item $l$ : Length of box in each dimension
+\item $n$ : Total number of beads
+\end{itemize}
+
+Derived parameters:
+\begin{itemize}
+\item $d = l^3 / n$ : Average beads per unit volume (density)
+\end{itemize}
+
+World description:
+\begin{itemize}
+\item $i=1..n$ : Bead index
+\item $species(i) -> a$ : Gives the species (bead type) of bond i 
+\item $interaction(a,b) -> (c,d)$ : Gives the conservative (c) and dissipative force (d) between species a and b.
+\item $bond(i,j) -> (kappa,r0)$ : Gives the bond strength (kappa) and preferred distance (r0) between i and j
+\item $angle(i,j,k) -> (kappa,phi0)$ : Gives the angle strength (kappa) and preferred angle (theta0) between i,j,k`
+\end{itemize}
+
+The description uses a sparse map to describe bonds and angle pairs. If there
+is no bond or connection, then kappa is 0. We define the helpers:
+\begin{itemize}
+\item $is_bonded(i,j) == bond(i,j)_.{kappa} > 0$
+\item $is_angled(i,j,k) == angle(i,j,k)_{kappa} > 0$
+\end{itemize}
+
+Requirements are:
+\begin{itemize}
+\item $bond(i,j) == bond(j,i)$ : Bonds must be symmetric
+\item $angle(i,j,k) == angle(k,j,i)$ : Angles are symmetric around centre
+\item $is_angled(i,j,k) \rightarrow is_bonded(i,j) \hat  is_bonded(j,k)$ : angles must appear over bond pairs:
+\item $is_bonded(i,i) = false$ : Bonds cannot be reflexive (self-bonded)
+\end{itemize}
+
+Some useful static properties are:
+\begin{itemize}
+\item $bonds(i) = { (i,j) : 1 \leq i \leq n \hat is_bonded(i,j) \hat i < j }$ : Set of bonds for bead i.
+\item $\overline{bonds} =  \frac{1}{n} \sum_{i=1}^n |bonds(i)|$ : Average bonds per bead. 
+\item $bonds^+ =  \max_{i=1}^n |bonds(i)|$ : Maximum bonds per bead. 
+\item $angles(i) = { (i,k) : 1 \leq i < k \leq n \hat is_angle(i,j,j) }$ : Set of angle partners for bead j.
+\item $\overline{angles} = {1}{n} \sum{j=1}^n |angles(j)|$ : Average angles per bead.
+\item $angles^+ = \max_{j=1}^n |angles(j)|$ : Maximum angles per bead.
+\end{itemize}
+
+
+We model the simulation state using three mappings which map bead indices
+and times to values. These can be viewed as arrays, or as sparsely defined
+functions.
+\begin{itemize}
+\item $\IND{x}{i}{t}$ : Position of bead i at time t.
+\item $\IND{v}{i}{t}$
+\item $\IND{f}{i}{t}$
+\end{itemize}
+All state mappings must be written to before they are read, and
+$x$ and $v$ must be written to exactly once.
+We treat $f$ as an accumulator, so $\IND{f}{i}{t}$ starts as
+0, and we can accumulate to it up until it is read in a 
+non-accumulation context. We use the shorthand:
+$ \IND{f}{i}{t} \leftarrowplus \VEC{v} <=> \IND{f}{i}{t} \leftarrow \IND{f}{i}{t} + \VEC{v}$.
+
+Some useful dynamic properties are:
+\begin{itemize}
+\item $\operatorname{nhood}(i,t) = { j : 1<=j<=n \hat i \neq j \hat ||x(i)-x(j)||_2 < 1}$
+\end{itemize}
+
+The overall simulation algorithm is then:
+\begin{algorithmic}
+\While{$t < T$}
+
+    \For{i in 1..n}
+          \State{$\IND{x}{i}{t+\dt} \leftarrow \IND{x}{i}{t} + \IND{v}{i}{t} \dt  +  \IND{f}{i}{t} \dt^2/2$}
+        \State{$\IND{v}{i}{t+\dt/2} \leftarrow \IND{v}{i}{t} +  \IND{f}{i}{t} \dt/2$}
+    \EndFor
+
+    \For{i in 1..n}
+        \For{j in nhood(i,t)}
+            \State{ $\IND{f}{i}{t+\dt} \leftarrowplus \operatorname{pair\_force}\left(t,\ i, \IND{x}{i}{t+\dt}, \IND{v}{i}{t+\dt/2},\ j, \IND{x}{j}{t+\dt}, \IND{v}{j}{t+\dt/2} \right)$}
+        \EndFor
+        \For{$(a,c) in angles(i)$}
+            \State{$(f(a,t+\dt),f(i,t+\dt),f(c,t+\dt)) \leftarrowplus \operatorname{angle\_force}(a, x(a,t), i, x(i,t), c, x(c,t) )$}
+        \EndFor
+    \EndFor
+
+    \For{$i in 1..n$}
+        \State{$\IND{v}{i}{t+\dt} \leftarrow \IND{v}{i}{t+\dt/2} +  \IND{f}{i}{t+\dt} \dt/2$}
+    \EndFor
+
+    \State{$t \leftarrow t + \dt$}
+\EndWhile
+\end{algorithmic}
+
+\begin{algorithmic}
+\Function{pair\_force}{$t:\Time, i:\Bead, x_i:\Pos, v_i:\Vel, i:\Bead, x_i:\Pos, v_i:\Vel$}
+	\State{${\bf r} \leftarrow x_i - x_j$}
+	\State{$r \leftarrow || {\bf r} ||_2 $}
+	\If{$r \geq 1 \vee  r \leq \epsilon$}
+		\State{\textbf{return} 0}
+	\EndIf
+  \State{$(c,d) \leftarrow interaction(species(i),species(j))$}
+	\State{...}
+	 \State{\textbf{return} ${\bf r} / r ( f_c + f_d + f_r + f_b ) $}
+\EndFunction
+\end{algorithmic}
+
+
+\section{Handling angles}
+
+Bonds can be handled in a natural way in an event-driven DPD simulation,
+as all the information needed to calculate a bond's contribution to the
+pair-wise force is available while calculating the DPD pair-wise forces.
+The bond's contribution to the force is relatively cheap to calculate,
+effectively adding just one $\kappa (r-r_0)^2$ term to the forces,
+requiring just three scalar operations. As a consequence it is often cheap enough
+to just do the bond force calculation for all pair-wise interactions, and
+keep $\kappa$ at zero for non-bonded pairs. This does requires that
+we have a cheap method for evaluating $bond(i,j)$ at run-time, or
+at least a method that is cheap for the vast majority of cases
+where $is_bonded(i,j)$ is false.
+
+The angle bonds present much more of a challenge in an event-driven
+DPD simulation, because:
+\begin{enumerate}
+\item The head and tail of the angle will always receive the position of the middle
+  bead, but will often not receive the position of the far partner.
+
+\item the information about partner beads in neighbouring cells will not
+  arrive at the centre bead's cell at the same time, or in a predictable order.
+\end{enumerate}
+
+
+
+In an event-driven approach we receive beads from neighbouring cells
+in a non-deterministic order, but in order to 
+
+\end{document}

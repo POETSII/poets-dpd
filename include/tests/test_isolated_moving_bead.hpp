@@ -86,7 +86,7 @@ public:
             0
         });
         res.beads.push_back({
-            0, 0, 0,
+            0, 0, MONOMER_OFFSET,
             0, 0,
             { 0, 0, 0 },
             {m_v.x[0], m_v.x[1], m_v.x[2]},
@@ -109,7 +109,7 @@ public:
         vec3r_t red_x=full_x.reduce_to_box(s.box);
         //std::cerr<<"Pos = "<<s.beads.at(0).x<<"\n";
         double err= (red_x - pos ).l2_norm();
-        if(err > 1e-10){
+        if(err > sqrt(m_steps_done) * 1e-5){
             std::stringstream acc;
             acc<<"Bead is in the wrong position at t="<<s.t<<". Expected "<<red_x<<", got "<<pos;
             throw TestFailedException(acc.str());

@@ -86,6 +86,11 @@ void validate(const WorldState &s)
             unsigned bid=p.bead_ids[i];
             const auto &b = s.beads.at(bid);
             REQUIRE( b.bead_type == pt.bead_types[i] );
+            if(p.bead_ids.size()==1){
+                REQUIRE(b.polymer_offset==128);
+            }else{
+                REQUIRE(b.polymer_offset==i);
+            }
             REQUIRE( !beads_seen.at(bid));
             beads_seen[bid]=true;
         }

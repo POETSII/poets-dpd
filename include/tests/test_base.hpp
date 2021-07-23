@@ -124,7 +124,7 @@ protected:
 
     void require_close(double ref, double got, const char *msg)
     {
-        if( std::abs(ref-got) > 1e-9 ){
+        if( std::abs(ref-got) > 1e-6 ){
             std::stringstream acc;
             acc<<msg<<", ref="<<ref<<", got="<<got;
             require(false, acc.str());
@@ -133,7 +133,7 @@ protected:
 
     void require_close(const vec3r_t &ref, const vec3r_t &got, const char *msg)
     {
-        if( (ref-got).l2_norm() > 1e-9 ){
+        if( (ref-got).l2_norm() > 1e-6 ){
             std::stringstream acc;
             acc<<msg<<", ref="<<ref<<", got="<<got;
             require(false, acc.str());
