@@ -140,6 +140,15 @@ protected:
         }
     }
 
+    void require_close(const vec3r_t &ref, const vec3r_t &got, double tol, const char *msg)
+    {
+        if( (ref-got).l2_norm() > tol ){
+            std::stringstream acc;
+            acc<<msg<<", ref="<<ref<<", got="<<got<<", tol="<<tol;
+            require(false, acc.str());
+        }
+    }
+
     static vec3r_t random_x(const vec3r_t &box, std::mt19937_64 &r)
     {
         vec3r_t res;

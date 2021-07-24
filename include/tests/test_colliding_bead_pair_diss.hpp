@@ -119,7 +119,8 @@ public:
         }else if(s.t>s.dt){
             // Get distance from origin to bead
             vec3r_t tmp=distance(s, m_x0, s.beads[0].x);
-            require_close( normalise(m_dx), normalise(tmp), "Bead 0 should always be on the same line.");
+            // Low tolerance, as they drift quite quickly in single precision
+            require_close( normalise(m_dx), normalise(tmp), 1e-3*sqrt(s.t/s.dt), "Bead 0 should always be on the same line.");
 
             if( std::abs(s.t-s.dt) < 1e-9){
                 require_close( normalise(m_dx), normalise(s.beads[0].v), "Bead 0 should move along +dx at time-step 1." );
@@ -137,6 +138,8 @@ public:
                 //std::cerr<<"t="<<s.t<<", x0="<<s.beads[0].x<<", x1="<<s.beads[1].x<<", dist="<<dist<<", v="<<s.beads[0].v<<", f="<<s.beads[0].f<<"\n";
             }
             require_close( s.beads[0].v, -s.beads[1].v, "Beads should be moving in opposite directions at same speed.");
+        
+            require( s.beads[0].v.l2_norm()>1e-6, "Beads should not stop moving.");
         }
 
         m_prev_v[0]=s.beads[0].v;
@@ -147,7 +150,7 @@ public:
         m_prev_x[0]=s.beads[0].x;
         m_prev_x[1]=s.beads[1].x;
 
-        if(m_reversals < 6){
+        if(m_reversals < 4){
             m_steps_done += m_step_dist;
             return 1;
         }else{

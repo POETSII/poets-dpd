@@ -29,6 +29,11 @@ void validate(const WorldState &s)
     REQUIRE(0 <= s.lambda && s.lambda <= 1);
     REQUIRE(0<s.dt && s.dt < 1);
     REQUIRE(s.t >= 0);
+
+    for(unsigned i=0; i<3; i++){
+        REQUIRE( s.box[i] == round(s.box[i] ) );
+        REQUIRE( s.box[i] >= 4 );
+    }
     
     std::unordered_set<std::string> bead_type_names;
     for(const BeadType &bt : s.bead_types){
@@ -86,11 +91,8 @@ void validate(const WorldState &s)
             unsigned bid=p.bead_ids[i];
             const auto &b = s.beads.at(bid);
             REQUIRE( b.bead_type == pt.bead_types[i] );
-            if(p.bead_ids.size()==1){
-                REQUIRE(b.polymer_offset==128);
-            }else{
-                REQUIRE(b.polymer_offset==i);
-            }
+            REQUIRE( (p.bead_ids.size()==1) == b.is_monomer);
+            REQUIRE(b.polymer_offset==i);
             REQUIRE( !beads_seen.at(bid));
             beads_seen[bid]=true;
         }

@@ -12,8 +12,15 @@ std::pair<bool,std::string> test_runner(
     WorldState state;
 
     try{
+        std::string name=test.name();
+
         state = test.create_world();
         validate(state);
+
+        std::string no_support=engine.CanSupport(&state);
+        if(!no_support.empty()){
+            return {true, "SKIP : "+no_support};
+        }
 
         engine.Attach(&state);
 

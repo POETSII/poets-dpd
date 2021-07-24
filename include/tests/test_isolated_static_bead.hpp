@@ -36,8 +36,8 @@ class TestIsolatedStaticBead
             0
         });
         res.beads.push_back({
-            0, 0, MONOMER_OFFSET,
-            0, 0,
+            0, 0, 0,
+            0, 0, true,
             { 0, 0, 0 },
             { 0, 0, 0 },
             { 0, 0, 0 }

@@ -159,7 +159,7 @@ private:
 
     void step()
     {
-        m_t_hash = time_to_hash(m_state->t, m_state->seed);
+        m_t_hash = next_t_hash(m_state->seed);
 
         // Clear all cell information
         m_cells.resize(calc_num_cells());
@@ -323,10 +323,14 @@ private:
 
         double scaled_force = (conForce + dissForce + randForce) * inv_dr;
 
+        //std::cerr<<"  "<<hb->get_hash_code()<<" -> "<<ob->get_hash_code()<<" : "<<conForce<<", "<<dissForce<<", "<<randForce<<"\n";
+
         vec3r_t f=dx * scaled_force;
         //std::cerr<<"ref :   dr="<<dr<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<"\n";
         m_forces.at(hb->bead_id) += f;
         //std::cerr<<"  r="<<dr<<", force="<<scaled_force*dr<<", f="<<m_forces.at(hb->bead_id)<<"\n";
+    
+        //std::cerr<<"Ref: t_hash="<<m_t_hash<<", h="<<hb->polymer_id<<", dx="<<rdx<<", dr="<<rdxr<<", f="<<f<<"\n";
     }
 
     void update_polymer_bond_forces(const Polymer &p)
@@ -335,6 +339,12 @@ private:
         for(const auto &bond : pt.bonds){
             update_hookean_bond(p, pt, bond);
         }
+
+        for(const auto bi : p.bead_ids){
+            const Bead *b = &m_state->beads[bi];
+            //std::cerr<<"  bpo="<<b->get_hash_code()<<", fdpd="<<m_forces.at(b->bead_id)<<"\n";
+        }
+
         for(const auto &bond_pair : pt.bond_pairs){
             update_angle_bond(p, pt, bond_pair);
         }
@@ -443,7 +453,7 @@ private:
                     forceMag	= Modulus/magProduct;
                 }
 
-                //std::cerr<<"Ref: forceMag="<<forceMag<<"\n";
+                //std::cerr<<"  Modulus="<<Modulus<<", phi0="<<bp.theta0<<", cosPhiSq="<<cosPhiSq<<", forceMag="<<forceMag<<", maxProduct="<<magProduct<<"\n";
 
                 headForce =((first*b1b2Overb1Sq)-second) * forceMag;
                 assert(isfinite(headForce));
@@ -455,11 +465,16 @@ private:
             }
         }
 
-        //std::cerr<<"Ref: dx01="<<first<<", dx12="<<second<<", headForce="<<headForce<<"\n";
+        //std::cerr<<"  dx01="<<first<<", dx12="<<second<<", r01="<<FirstLength<<", r12="<<SecondLength<<"\n";
+        //std::cerr<<"Ref: fh="<<headForce<<", fm="<<middleForce<<", ft="<<tailForce<<"\n";
+
+        //std::cerr<<"  bpo="<<head_bead.get_hash_code()<<", fdpd="<<m_forces[head_bead_index]<<", fangle="<<headForce<<", f="<<m_forces[head_bead_index]+headForce<<"\n";
 
         m_forces[head_bead_index] += headForce;
         m_forces[tail_bead_index] += tailForce;
         m_forces[middle_bead_index] += middleForce;
+
+        
     }
 
     // Pre: b.x==x(t), b.v==v(t), b.f==f(t)

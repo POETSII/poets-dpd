@@ -154,7 +154,7 @@ private:
 
     void step()
     {
-        m_t_hash=time_to_hash(m_state->t, m_state->seed);
+        m_t_hash=next_t_hash(m_state->seed);
 
         double dt=m_state->dt;
 

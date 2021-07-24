@@ -31,15 +31,13 @@
     - All angle bonds are straight
     - There are at most two bead kappas
 */
-template<bool TCanonicalBeadId=false>
 class BasicDPDEngine
     : public DPDEngine
 {
+    friend class BasicDPDEngineV2;
+
     static constexpr int MAX_BONDS_PER_BEAD=3;
     static constexpr int MAX_ANGLE_BONDS_PER_BEAD=2;
-
-    static constexpr float BOND_KAPPA = 128;
-    static constexpr float BOND_R0 = 0.5;
 
     struct bead_id_t
     {
@@ -59,17 +57,14 @@ class BasicDPDEngine
         void set_bead_id(bool _is_monomer, uint32_t polymer_id, uint32_t polymer_offset, uint32_t bead_type)
         {
             if(_is_monomer){
-                assert(polymer_offset==0 || polymer_offset==MONOMER_OFFSET);
-                if(polymer_offset==0){
-                    polymer_offset=MONOMER_OFFSET; /// Convenience
-                }
+                assert(polymer_offset==0);
                 bead_id = 0x8000'0000 | (polymer_id<<4) | bead_type;
             }else{
                 bead_id = (polymer_offset<<24) | (polymer_id<<4) | bead_type;
             }
             assert(is_monomer() == _is_monomer);
             assert(polymer_id == get_polymer_id());
-            assert(polymer_offset == get_polymer_offset());
+            assert(is_monomer() ? polymer_offset==0 : polymer_offset == get_polymer_offset());
             assert(bead_type==get_bead_type());
         }
 
@@ -83,12 +78,12 @@ class BasicDPDEngine
         { return (bead_id>>4) & (is_monomer() ? 0x07FF'FFFFul : 0x000F'FFFFul); }
 
         uint32_t get_polymer_offset() const
-        { return is_monomer() ? MONOMER_OFFSET : (bead_id>>24)&0x7F; }
+        { return is_monomer() ? 0 : (bead_id>>24)&0x7F; }
 
         uint32_t make_hash_from_offset(unsigned offset)
         {
-            assert(offset!=MONOMER_OFFSET && get_polymer_offset()!=MONOMER_OFFSET);
-            return ((bead_id>>4)&0x000F'FFFFul) | (offset<<24);
+            assert(!is_monomer());
+            return ((bead_id>>4)&0x000F'FFFFul) | (offset<<20);
         }
 
         uint32_t get_hash_code() const
@@ -157,7 +152,7 @@ class BasicDPDEngine
     ){
         is_bonded=false;
         kappa=0.0f;
-        r0=BOND_R0;
+        r0=m_bond_r0;
         if(home.id.is_monomer()) return;
         if(other_id.is_monomer()) return;
         if(home.id.get_polymer_id() != other_id.get_polymer_id()) return;
@@ -165,13 +160,46 @@ class BasicDPDEngine
         for(unsigned i=0; i<MAX_BONDS_PER_BEAD; i++){
             if(other_polymer_offset==home.bond_partners[i]){
                 is_bonded=true;
-                kappa=BOND_KAPPA;
+                kappa=m_bond_kappa;
                 return;
             }
         }
     }
 
 public:
+    std::string CanSupport(const WorldState *state) const override
+    {
+        float bond_kappa=nanf("");
+        float bond_r0;
+
+        for(const auto &pt : state->polymer_types){
+            for(const auto &b : pt.bonds){
+                if(isnanf(bond_kappa)){
+                    bond_kappa=b.kappa;
+                    bond_r0=b.r0;
+                }else{
+                    if(float(b.kappa) != bond_kappa){
+                        return "All bonds must have same kappa.";
+                    }
+                    if(float(b.r0) != bond_r0){
+                        return "All bonds must have same kappa.";
+                    }
+                }
+            }
+
+            for(const auto &bp : pt.bond_pairs){
+                if(bp.theta0!=0){
+                    return "All bond pairs must be straight.";
+                }
+                if(round(bp.kappa)!=bp.kappa){
+                    return "All bond pairs must have integer kappa.";
+                }
+            }
+        }
+
+        return std::string();
+    }
+
     virtual void Attach(WorldState *state)
     {
         m_state=state;
@@ -213,13 +241,19 @@ private:
         vec3i_t location;
         std::vector<bead_resident_t> beads;
         std::vector<cached_bond_t> cached_bonds;
+
+        std::vector<bead_resident_t> outgoing;
     };
 
     std::vector<cell_t> m_cells;
 
+    float m_dt;
     float m_inv_root_dt;
     uint32_t m_t_hash;
     std::vector<InteractionStrength> m_interactions;
+
+    float m_bond_kappa;
+    float m_bond_r0;
 
     unsigned cell_location_to_cell_index(const vec3i_t &x)
     {
@@ -242,14 +276,21 @@ private:
             m_box[i]=m_state->box[i];
         }
 
+        m_bond_kappa=nanf("");
+
         // Validate all bonds against assumptions
         for(const auto &pt : m_state->polymer_types){
             std::vector<int> nbonds(pt.bead_types.size(), 0);
             for(const auto &bond : pt.bonds){
                 // This could both be changed, with a bit more state and work at run-time.
-                require( bond.kappa == BOND_KAPPA, "This method assumes all bonds have the same kappa." );
-                require( bond.r0 == BOND_R0, "This method assumes all bonds have the same r0.");
-                
+                if(isnanf(m_bond_kappa)){
+                    m_bond_kappa=bond.kappa;
+                    m_bond_r0=bond.r0;
+                }else{
+                    require( float(bond.kappa) == m_bond_kappa, "This method assumes all bonds have the same kappa." );
+                    require( float(bond.r0) == m_bond_r0, "This method assumes all bonds have the same r0.");
+                }
+
                 nbonds[bond.bead_offset_head]++;
                 require(nbonds[bond.bead_offset_head]<=MAX_BONDS_PER_BEAD, "Too many bonds per bead.");
                 
@@ -271,6 +312,7 @@ private:
 
         m_numBeadTypes=m_state->bead_types.size();
         m_interactions=m_state->interactions;
+        m_dt=m_state->dt;
         m_inv_root_dt=1.0/sqrt(m_state->dt);
 
         m_cells.resize( m_box[0] * m_box[1] * m_box[2] );
@@ -281,6 +323,8 @@ private:
                     cell_t &cell = m_cells.at(cell_location_to_cell_index(pos));
                     cell.location=pos;
                     cell.beads.clear();
+                    cell.neighbours.clear();
+                    cell.outgoing.clear();
 
                     vec3i_t dir;
                     vec3i_t adj;
@@ -342,8 +386,8 @@ private:
                 for(const auto &bond_pair : pt.bond_pairs){
                     unsigned middle=pt.bonds[bond_pair.bond_offset_head].bead_offset_tail;
                     if(b.polymer_offset == middle){
-                        bb.angle_bonds[nangles].partner_head=bond_pair.bond_offset_head;
-                        bb.angle_bonds[nangles].partner_tail=bond_pair.bond_offset_tail;
+                        bb.angle_bonds[nangles].partner_head=pt.bonds[bond_pair.bond_offset_head].bead_offset_head;
+                        bb.angle_bonds[nangles].partner_tail=pt.bonds[bond_pair.bond_offset_tail].bead_offset_tail;
                         bb.angle_bonds[nangles].kappa=(unsigned)bond_pair.kappa;
                         bb.angle_bonds[nangles]._pad_=0;
                         require(bond_pair.theta0==0, "Assume straight bonds."); // Should have been checked earlier
@@ -413,7 +457,7 @@ private:
     {
         double dt=m_state->dt;
 
-        m_t_hash = time_to_hash(m_state->dt, m_state->seed);
+        m_t_hash = next_t_hash(m_state->seed);
 
         // Move the beads, and then assign to cells based on x(t+dt)
         std::vector<bead_resident_t> moved; // Temporarily hold those that moved
@@ -424,7 +468,7 @@ private:
             while(i<c.beads.size()){
                 auto &b = c.beads[i];
                 // Actual position update, clears force
-                dpd_maths_core::update_pos(dt, m_box, b);
+                dpd_maths_core_half_step::update_pos(dt, m_box, b);
 
                 // Check it is still in the right cell
                 vec3i_t true_loc=floor(b.x);
@@ -466,12 +510,18 @@ private:
 
                     vec3f_t neighbour_x = neighbour_bead.x;
                     vec3i_t neighbour_cell_pos = floor(neighbour_x);
+                    bool wrapped=false;
                     for(int d=0; d<3; d++){
                         if(cell.location[d]==0 && neighbour_cell_pos[d]==m_box[d]-1){
-                            neighbour_x -= m_box[d];
+                            neighbour_x[d] -= m_box[d];
+                            wrapped=true;
                         }else if(cell.location[d]==m_box[d]-1 && neighbour_cell_pos[d]==0){
-                            neighbour_x += m_box[d];
+                            neighbour_x[d] += m_box[d];
+                            wrapped=true;
                         }
+                    }
+                    if(wrapped){
+                        //std::cerr<<"Wrapped: "<<neighbour_bead.x<<" -> "<<neighbour_x<<"\n";
                     }
 
                     for(unsigned i=0; i<cell.beads.size(); i++){
@@ -481,9 +531,14 @@ private:
                     }
 
                     if(cache_neighbour){
-                        cell.cached_bonds.push_back({neighbour_bead.id.get_hash_code(), neighbour_x});
+                        uint32_t hash_code=neighbour_bead.id.get_hash_code();
+                        cell.cached_bonds.push_back({hash_code, neighbour_x});
+                        //std::cerr<<"Caching, t="<<m_state->t<<", cell="<<cell.location<<", "<<neighbour_bead.id.get_polymer_id()<<", poff="<<neighbour_bead.id.get_polymer_offset()<<", hash="<<hash_code<<"\n";
                     }
                 }
+            }
+            for(const auto &b : cell.beads){
+                //std::cerr<<"  bpo="<<b.get_hash_code()<<", fdpd="<<b.f<<"\n";
             }
         }
 
@@ -543,6 +598,7 @@ private:
             a, b,
             f
         );
+        //std::cerr<<"Dut: t_hash="<<m_t_hash<<", h="<<a.id.get_polymer_id()<<", dx="<<dx<<", dr="<<dr<<", f="<<f<<"\n";
 
         a.f += f;
         return true;
@@ -571,20 +627,24 @@ private:
             const auto *tail=find_cached_pos(tail_hash);
             
             // The cache copies should already have wrapping applied
-            auto first=head->x- bead.x;
-            auto second=bead.x-tail->x;
+            auto first=bead.x - head->x;
+            auto second=tail->x - bead.x;
 
             float FirstLength   = first.l2_norm();
             float SecondLength  = second.l2_norm();
+            assert(FirstLength < 1);
+            assert(SecondLength < 1);
 
             vec3f_t headForce, middleForce, tailForce;
 
             dpd_maths_core_half_step::calc_angle_force(
-                (float)bead.angle_bonds[i].kappa, nanf(""), nanf(""),
+                (float)bead.angle_bonds[i].kappa, 0.0f, 0.0f,
                 first, FirstLength,
                 second, SecondLength,
                 headForce, middleForce, tailForce
             );
+
+            //std::cerr<<"Dut: fh="<<headForce<<", fm="<<middleForce<<", ft="<<tailForce<<"\n";
 
             bead.f += middleForce;
 
@@ -599,6 +659,7 @@ private:
             auto bpo = b.id.get_hash_code();
             for(const auto &f : forces){
                 if(bpo == f.target_hash){
+                    //std::cerr<<"  bpo="<<bpo<<", fdpd="<<b.f<<", fangle="<<f.f<<", f="<<b.f+f.f<<"\n";
                     b.f += f.f;
                 }
             }

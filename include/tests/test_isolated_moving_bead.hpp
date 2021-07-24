@@ -67,7 +67,7 @@ public:
         WorldState res;
         for(unsigned i=0; i<3; i++){
             res.origin[i]=0;
-            res.box[i]=2;
+            res.box[i]=4;
         }
         res.t=0;
         res.dt=1.0/64;
@@ -86,8 +86,8 @@ public:
             0
         });
         res.beads.push_back({
-            0, 0, MONOMER_OFFSET,
-            0, 0,
+            0, 0, 0,
+            0, 0, true,
             { 0, 0, 0 },
             {m_v.x[0], m_v.x[1], m_v.x[2]},
             { 0, 0, 0 }

@@ -116,8 +116,11 @@ public:
             if(tmp[0]<0 && m_dx[0]>0){ tmp=-tmp; }
             if(tmp[1]<0 && m_dx[1]>0){ tmp=-tmp; }
             if(tmp[2]<0 && m_dx[2]>0){ tmp=-tmp; }
-            require_close( normalise(m_dx), normalise(tmp), "Bead 0 should always be on the same line.");
-
+            // Low tolerance, as they drift quite quickly in single precision
+            if(s.t>0){
+                require_close( normalise(m_dx), normalise(tmp), 1e-3*sqrt(s.t/s.dt), "Bead 0 should always be on the same line.");
+            }
+            
             if( std::abs(s.t-s.dt) < 1e-9){
                 require_close( normalise(m_dx), normalise(s.beads[0].v), "Bead 0 should move along +dx at time-step 1." );
                 require_close( normalise(-m_dx), normalise(s.beads[1].v), "Bead 1 should move along -dx at time-step 1." );

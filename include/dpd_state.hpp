@@ -11,8 +11,6 @@
 // Here we generally assume that 32-bit is enough for indices and ids
 // If Julian wants more than 4B beads, then... we need more money.
 
-constexpr unsigned MONOMER_OFFSET = 128;
-
 struct Bead
 {
     // I know this results in sub-optimal packing.
@@ -24,13 +22,13 @@ struct Bead
 
     // A unique polymer id within the world. Polymer ids must be contiguous, starting at zero.
     uint32_t polymer_id = -1;
-    // A unique offset < MONOMER_OFFSET within the polyer, or MONOMER_OFFSET if it is a monomer (single bead polymer)
     uint8_t polymer_offset = -1;
 
     // Technically these can be recovered from the polymer_id and polymer_offset,
     // but it is convenient and cache-friendly to have them here.
     uint8_t bead_type = -1;
     uint8_t polymer_type = -1;
+    bool is_monomer;
 
     vec3r_t x;
     vec3r_t v;
@@ -45,9 +43,11 @@ struct Bead
     */
     uint32_t get_hash_code() const
     {
-        assert( polymer_offset == MONOMER_OFFSET ? (polymer_offset==0 && polymer_id<(1u<<27))
+        assert( is_monomer ? (polymer_offset==0 && polymer_id<(1u<<27))
                                       : (polymer_offset<128 && polymer_id<(1u<<20)));
-        return (uint32_t(polymer_offset)<<24) | polymer_id;
+        uint32_t base=(uint32_t(polymer_offset)<<20) | polymer_id;
+        base |= uint32_t(is_monomer)<<27;
+        return base;
     }
 };
 

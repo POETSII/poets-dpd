@@ -140,12 +140,12 @@ public:
         
         
         //std::cout<<s.t<<", "<<angle(dx01,dx12)<<", "<<m_theta0<<"\n";
-        /*
-        std::cerr<<"t="<<s.t<<", dist1="<<dist01<<", dist12="<<dist12<<", equib="<<m_r_equilibrium<<", mean="<<m_sum_dist/m_count<<"\n";
-        std::cerr<<"  b0: x="<<s.beads[0].x<<", v="<<s.beads[0].v<<", f="<<s.beads[0].f<<"\n";
-        std::cerr<<"  b1: x="<<s.beads[1].x<<", v="<<s.beads[1].v<<", f="<<s.beads[1].f<<"\n";
-        std::cerr<<"  b1: x="<<s.beads[2].x<<", v="<<s.beads[2].v<<", f="<<s.beads[2].f<<"\n";
-        */
+    
+        //std::cerr<<"t="<<s.t<<", dist1="<<dist01<<", dist12="<<dist12<<", equib="<<m_r_equilibrium<<", mean="<<m_sum_dist/m_count<<"\n";
+        //std::cerr<<"  b0: x="<<s.beads[0].x<<", v="<<s.beads[0].v<<", f="<<s.beads[0].f<<"\n";
+        //std::cerr<<"  b1: x="<<s.beads[1].x<<", v="<<s.beads[1].v<<", f="<<s.beads[1].f<<"\n";
+        //std::cerr<<"  b2: x="<<s.beads[2].x<<", v="<<s.beads[2].v<<", f="<<s.beads[2].f<<"\n";
+        
 
         if(s.t > 10){
             m_sum_dist += dist12 + dist01;

@@ -10,12 +10,10 @@ inline uint64_t splitmix64(uint64_t z)
     return z ^ (z >> 31);
 }
 
-uint32_t time_to_hash(double t, uint64_t seed)
+uint32_t next_t_hash(uint64_t &seed)
 {
-    assert(t>=0);
-    uint64_t tmp = (uint64_t)ldexp(t, 32);
-    tmp += seed;
-    return splitmix64(tmp) >> 32;
+    seed=6364136223846793005ull*seed + 1;
+    return seed>>32;
 }
 
 /*  This is a function which generates roughly random values

@@ -125,8 +125,10 @@ public:
         if(tmp[0]<0 && m_dx[0]>0){ tmp=-tmp; }
         if(tmp[1]<0 && m_dx[1]>0){ tmp=-tmp; }
         if(tmp[2]<0 && m_dx[2]>0){ tmp=-tmp; }
-        require_close( normalise(m_dx), normalise(tmp), "Bead 0 should always be on the same line.");
 
+        if(s.t > 0){
+            require_close( normalise(m_dx), normalise(tmp), 1e-4*sqrt(s.t/s.dt), "Bead 0 should always be on the same line.");
+        }
         
         /*
         std::cerr<<"t="<<s.t<<", dist="<<dist<<", equib="<<m_r_equilibrium<<", mean="<<m_sum_dist/m_count_dist<<"\n";

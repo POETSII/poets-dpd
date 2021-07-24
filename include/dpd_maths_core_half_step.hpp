@@ -98,6 +98,8 @@ void calc_force(
 
     TScalar scaled_force = (conForce + dissForce + randForce + hookeanForce) * inv_dr;
 
+    //std::cerr<<"  "<<home.get_hash_code()<<" -> "<<other.get_hash_code()<<" : "<<conForce<<", "<<dissForce<<", "<<randForce<<", "<<hookeanForce<<"\n";
+
     force_home = dx * scaled_force;
 
     //std::cerr<<"ref :   dr="<<dr<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<"\n";
@@ -117,6 +119,8 @@ void calc_angle_force(
 ){
     TScalar magProduct = r01*r12;
 
+    //std::cerr<<"  dx01="<<dx01<<", dx12="<<dx12<<", r0="<<r01<<", r1="<<r12<<"\n";
+
     if(magProduct > 0.0001)
     {
         TScalar b1MagSq		= r01*r01;
@@ -126,15 +130,20 @@ void calc_angle_force(
         TScalar b1b2Overb2Sq	= b1Dotb2/b2MagSq;
         TScalar cosPhiSq		= b1b2Overb1Sq*b1b2Overb2Sq;
 
+        
+
         TScalar forceMag = kappa/magProduct;
 
         // Check that the bond angle is not exactly 90 deg but allow the cosine to be < 0
         if(fabs(b1Dotb2) > 0.000001 && sin_theta0>0){
+            assert(false);
             TScalar InvPrefactor = recip_sqrt(recip(cosPhiSq) - 1.0);
 
             // Add the restoring force if there is a preferred angle
             forceMag = forceMag*(cos_theta0 - sin_theta0*InvPrefactor);
         }
+
+        //std::cerr<<"  kappa="<<kappa<<", cosPhiSq="<<cosPhiSq<<", forceMag="<<forceMag<<", maxProduct="<<magProduct<<"\n";
 
         //std::cerr<<"Dur: forceMag="<<forceMag<<"\n";
 
@@ -145,6 +154,10 @@ void calc_angle_force(
         assert(isfinite(tailForce));
 
         middleForce = -( headForce + tailForce );
+    }else{
+        headForce.clear();
+        tailForce.clear();
+        middleForce.clear();
     }
 }
 

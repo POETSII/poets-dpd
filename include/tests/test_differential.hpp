@@ -18,6 +18,11 @@ std::pair<bool,std::string> test_differential(
 
         state2 = state1;
 
+        std::string no_support=engine2.CanSupport(&state2);
+        if(!no_support.empty()){
+            return {true, "SKIP : "+no_support};
+        }
+
         engine1.Attach(&state1);
         engine2.Attach(&state2);
 
