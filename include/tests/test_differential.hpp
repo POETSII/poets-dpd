@@ -50,7 +50,7 @@ std::pair<bool,std::string> test_differential(
             engine2.Run(todo);
             
 
-            double maxDiff=0.00001;
+            double maxDiff= 0.0001;
 
             double xdiff=0;
             double vdiff=0;
@@ -60,7 +60,7 @@ std::pair<bool,std::string> test_differential(
                 vdiff=std::max(xdiff, (state1.beads[i].v-state2.beads[i].v).l2_norm() );
                 fdiff=std::max(fdiff, (state1.beads[i].f-state2.beads[i].f).l2_norm() );
             }
-            if(fdiff>maxDiff){
+            if(fdiff>10*maxDiff){ // Forces can be large, so allow more slack
                 std::cerr<<"At time "<<state1.t<<" the f values have diverged.\n";
 
                 write_world_state(std::cerr, state1);

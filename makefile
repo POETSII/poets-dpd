@@ -1,15 +1,17 @@
 CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall -O0
-CPPFLAGS += -Wno-unused-variable
+CPPFLAGS += -Wno-unused-variable -fmax-errors=2
 LDFLAGS += -fuse-ld=gold
 
-CPPFLAGS += -DNDEBUG=1 -O3 -march=native
+#CPPFLAGS += -O3 -march=native
+#CPPFLAGS += -DNDEBUG=1
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
 TEST_BIN := bin/test_naive_engine \
 	bin/test_naive_engine_core bin/test_naive_engine_core_diff \
 	bin/test_naive_engine_half_step bin/test_naive_engine_half_step_diff \
-	bin/test_basic_engine \
-	bin/test_basic_engine_v2
+	bin/test_basic_engine bin/test_basic_engine_diff  \
+	bin/test_basic_engine_v2  bin/test_basic_engine_v2_diff \
+	bin/test_basic_engine_v3  bin/test_basic_engine_v3_diff \
 
 
 all : $(TEST_BIN)

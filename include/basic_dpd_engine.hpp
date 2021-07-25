@@ -35,6 +35,7 @@ class BasicDPDEngine
     : public DPDEngine
 {
     friend class BasicDPDEngineV2;
+    friend class BasicDPDEngineV3;
 
     static constexpr int MAX_BONDS_PER_BEAD=3;
     static constexpr int MAX_ANGLE_BONDS_PER_BEAD=2;
@@ -170,7 +171,7 @@ public:
     std::string CanSupport(const WorldState *state) const override
     {
         float bond_kappa=nanf("");
-        float bond_r0;
+        float bond_r0=nanf("");
 
         for(const auto &pt : state->polymer_types){
             for(const auto &b : pt.bonds){
@@ -178,10 +179,10 @@ public:
                     bond_kappa=b.kappa;
                     bond_r0=b.r0;
                 }else{
-                    if(float(b.kappa) != bond_kappa){
+                    if(! (float(b.kappa) == bond_kappa) ){
                         return "All bonds must have same kappa.";
                     }
-                    if(float(b.r0) != bond_r0){
+                    if( !(float(b.r0) == bond_r0) ){
                         return "All bonds must have same kappa.";
                     }
                 }
@@ -216,6 +217,11 @@ public:
 
         for(unsigned i=0; i<nSteps; i++){
             step();
+            for(const auto &cell : m_cells){
+                for(const auto &b : cell.beads){
+                    assert( floor(b.x) == cell.location );
+                }
+            }
         }
 
         export_beads();
@@ -453,7 +459,7 @@ private:
     vec3i_t world_pos_to_cell_pos(const vec3r_t &pos) const
     { return floor(pos); }
 
-    void step()
+    virtual void step()
     {
         double dt=m_state->dt;
 
@@ -604,7 +610,10 @@ private:
         return true;
     }
 
-    void update_bead_angle(std::vector<cached_bond_t> &cache, bead_resident_t &bead, std::vector<force_input_t> &outgoing)
+    // TCache is a vector-like container of cached bonds
+    // TOutgoing is a container that supports push_back of a force_input_t
+    template<class TCache,class TOutgoing>
+    void update_bead_angle(TCache &cache, bead_resident_t &bead, TOutgoing &outgoing)
     {
         auto find_cached_pos=[&](uint32_t target_hash) -> const cached_bond_t *
         {

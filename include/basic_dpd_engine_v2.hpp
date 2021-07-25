@@ -46,7 +46,6 @@ private:
 
     void on_send_migrate(cell_t &cell, std::vector<bead_resident_t> &outgoing)
     {
-        assert(!cell.outgoing.empty());
         outgoing.clear();
         std::swap(outgoing, cell.outgoing);
     }
@@ -82,9 +81,9 @@ private:
             vec3i_t neighbour_cell_pos = floor(neighbour_x);
             for(int d=0; d<3; d++){
                 if(cell.location[d]==0 && neighbour_cell_pos[d]==m_box[d]-1){
-                    neighbour_x -= m_box[d];
+                    neighbour_x[d] -= m_box[d];
                 }else if(cell.location[d]==m_box[d]-1 && neighbour_cell_pos[d]==0){
-                    neighbour_x += m_box[d];
+                    neighbour_x[d] += m_box[d];
                 }
             }
 
@@ -130,7 +129,7 @@ private:
 
     
 
-    void step()
+    void step() override
     {
         double dt=m_state->dt;
         m_t_hash = next_t_hash(m_state->seed);
@@ -160,11 +159,8 @@ private:
         for(cell_t &cell : m_cells){
             std::vector<bead_view_t> transfer;
             on_send_share(cell, transfer);
-
             for(unsigned neighbour_index : cell.neighbours){
-                cell_t &neighbour = m_cells[neighbour_index];
-
-                on_recv_share(cell, transfer);
+                on_recv_share(m_cells[neighbour_index], transfer);
             }
         }
 
@@ -174,11 +170,8 @@ private:
         for(cell_t &cell : m_cells){
             std::vector<force_input_t> transfer;
             on_send_force(cell, transfer);
-
             for(unsigned neighbour_index : cell.neighbours){
-                cell_t &neighbour = m_cells[neighbour_index];
-
-                on_recv_force(cell, transfer);
+                on_recv_force(m_cells[neighbour_index], transfer);
             }
         }
 
