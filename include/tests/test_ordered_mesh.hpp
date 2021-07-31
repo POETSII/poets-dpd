@@ -57,6 +57,13 @@ public:
 
         int beads_per_dim=6;
 
+        double density=1;
+        for(unsigned i=0; i<3; i++){
+            density *= beads_per_dim;
+            density /= m_dims[i];
+        }
+        assert(density <= 4);
+
         vec3i_t pos;
         for(pos[0]=0; pos[0]<beads_per_dim; pos[0]++){
             for(pos[1]=0; pos[1]<beads_per_dim; pos[1]++){

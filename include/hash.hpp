@@ -2,18 +2,22 @@
 #define hash_hpp
 
 #include <cstdint>
+#include <algorithm>
+#include <cassert>
 
 inline uint64_t splitmix64(uint64_t z)
 {
+
     z = (z ^ (z >> 30)) * uint64_t(0xBF58476D1CE4E5B9ull);
     z = (z ^ (z >> 27)) * uint64_t(0x94D049BB133111EBull);
     return z ^ (z >> 31);
 }
 
-uint32_t next_t_hash(uint64_t &seed)
+
+uint64_t next_t_hash(uint64_t &seed)
 {
-    seed=6364136223846793005ull*seed + 1;
-    return seed>>32;
+    seed += 0x9E3779B97F4A7C15ull;
+    return splitmix64(seed) | 0x0000000100000001ull;
 }
 
 /*  This is a function which generates roughly random values
@@ -21,14 +25,24 @@ uint32_t next_t_hash(uint64_t &seed)
     The return value should approximate 32 random bits, but the MSBs should be
     the priority.
 */
-inline uint32_t hash_rng_sym(uint32_t t_hash, uint32_t a, uint32_t b)
+inline uint32_t hash_rng_sym_old(uint32_t t_hash, uint32_t a, uint32_t b)
 {
     // TODO : This is terrible. Find the original version.
-    uint32_t tmp=(t_hash^a)+(t_hash^b);
-    tmp *= tmp>>16;
-    tmp *= 0x1CE4E5B9ul;
-    tmp ^= tmp>>16;
-    tmp *= 0x1CE4E5B9ul;
+    uint32_t la=std::min(a,b);
+    uint32_t lb=std::max(a,b);
+    uint64_t lla=splitmix64(la|(uint64_t(lb)<<32));
+    uint64_t llb=splitmix64(lla^(t_hash^(uint64_t(t_hash)<<32)));
+    return llb;
+}
+
+inline uint32_t hash_rng_sym(uint64_t t_hash, uint32_t a, uint32_t b)
+{
+    assert(t_hash & 0x1);
+    assert(t_hash & 0x100000000ull);
+
+    auto la = (t_hash&0xFFFFFFFFul) * (a+b);
+    auto lb = (t_hash>>32) * (a^b);
+    uint32_t tmp = la^lb;
     return tmp;
 }
 

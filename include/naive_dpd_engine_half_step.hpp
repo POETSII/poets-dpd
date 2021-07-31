@@ -63,7 +63,7 @@ private:
 
     double m_inv_root_dt;
 
-    uint32_t m_t_hash;
+    uint64_t m_t_hash;
 
     void check_constraints_and_setup()
     {
@@ -242,7 +242,7 @@ private:
 
                 vec3r_t dx = vec3r_t(hb->x) - vec3r_t(ob->x) - other_delta; 
                 double dr2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
-                if(dr2 >= 1){
+                if(dr2 >= 1 || dr2<0.00001){
                     continue;
                 }
 
@@ -252,20 +252,19 @@ private:
                 is_bonded(*hb, *ob, kappa, r0);
 
                 vec3r_t f;
-                if(dr < 1 && dr>=0.000000001){
-                    dpd_maths_core_half_step::calc_force(
-                        (1.0/sqrt(m_state->dt)),
-                        [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
-                        [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].dissipative; },
-                        m_t_hash,
-                        dx, dr,
-                        kappa, r0,
-                        *hb,
-                        *ob,
-                        f
-                    );
-                    hb->f += f;
-                }
+                
+                dpd_maths_core_half_step::calc_force(
+                    (1.0/sqrt(m_state->dt)),
+                    [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
+                    [&](unsigned a, unsigned b){ return sqrt(m_state->interactions[a*m_numBeadTypes+b].dissipative); },
+                    m_t_hash,
+                    dx, dr,
+                    kappa, r0,
+                    *hb,
+                    *ob,
+                    f
+                );
+                hb->f += f;
             }
         }
     }

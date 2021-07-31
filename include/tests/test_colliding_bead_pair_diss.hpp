@@ -120,6 +120,7 @@ public:
             // Get distance from origin to bead
             vec3r_t tmp=distance(s, m_x0, s.beads[0].x);
             // Low tolerance, as they drift quite quickly in single precision
+            //std::cerr<<"  line="<<tmp<<", norm="<<normalise(tmp)<<", ref="<<normalise(m_dx)<<", diff="<< (normalise(m_dx)-normalise(tmp)).l2_norm() <<"\n";
             require_close( normalise(m_dx), normalise(tmp), 1e-3*sqrt(s.t/s.dt), "Bead 0 should always be on the same line.");
 
             if( std::abs(s.t-s.dt) < 1e-9){
@@ -150,7 +151,16 @@ public:
         m_prev_x[0]=s.beads[0].x;
         m_prev_x[1]=s.beads[1].x;
 
-        if(m_reversals < 4){
+        /* Note: this test is really sensitive to rounding errors in the bead position.
+            Once they move slightly off-axis, they tend to push each other further off,
+            so in single-precision it will be good for the early stages, then rapidly
+            move off the original dx axis.
+
+            Note that if an implementation stores absolute x coordinates as floating-point then 
+            asymmetries will build up due to quantisation, so eventually all implementations
+            will see this behaviour.
+        */
+        if(m_reversals < 3){
             m_steps_done += m_step_dist;
             return 1;
         }else{

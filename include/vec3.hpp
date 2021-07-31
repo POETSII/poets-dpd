@@ -191,4 +191,72 @@ namespace std
     };
 }
 
+
+template<class T>
+void vec3_add(T x[3], const T y[3])
+{ for(int i=0; i<3; i++){ x[i] += y[i]; } }
+
+template<class T>
+void vec3_add(T dst[3], const T x[3], const T y[3])
+{ for(int i=0; i<3; i++){ dst[i] = x[i] + y[i]; } }
+
+template<class T>
+void vec3_sub(T dst[3], const T x[3])
+{ for(int i=0; i<3; i++){ dst[i] -= x[i]; } }
+
+template<class T>
+void vec3_sub(T dst[3], const T x[3], const T y[3])
+{ for(int i=0; i<3; i++){ dst[i] = x[i] - y[i]; } }
+
+template<class T>
+void vec3_mul(T dst[3], T s)
+{ for(int i=0; i<3; i++){ dst[i] *= s; } }
+
+template<class T>
+void vec3_mul(T dst[3], const T x[3], T s)
+{ for(int i=0; i<3; i++){ dst[i] = x[i] * s; } }
+
+template<class T>
+void vec3_neg(T dst[3])
+{ for(int i=0; i<3; i++){ dst[i] = -dst[i]; } }
+
+template<class T>
+void vec3_add_mul(T dst[3], const T x[3], T s)
+{ for(int i=0; i<3; i++){ dst[i] += x[i] * s; } }
+
+template<class T>
+T vec3_dot(const T x[3], const T y[3])
+{ return x[0]*y[0] + x[1]*y[1] + x[2]*y[2]; }
+
+template<class T>
+T vec3_dot_self(const T x[3])
+{ return x[0]*x[0] + x[1]*x[1] + x[2]*x[2]; }
+
+template<class T>
+T vec3_l2_norm(const T x[3])
+{
+    return sqrt(vec3_dot_self(x));
+}
+
+template<class T>
+void vec3_floor(int dst[3], const T x[3])
+{ for(int i=0; i<3; i++){ dst[i] = floor(x[i]); } }
+
+template<class D, class T>
+void vec3_copy(D dst[3], const T src[3])
+{
+    std::copy(src, src+3, dst);
+}
+
+template<class T>
+bool vec3_equal(const T x[3], const T y[3])
+{
+    return x[0]==y[0] && x[1]==y[1] && x[2]==y[2];
+}
+
+template<class T>
+void vec3_clear(T x[3])
+{ for(int i=0; i<3; i++){ x[i]=0; } }
+
+
 #endif

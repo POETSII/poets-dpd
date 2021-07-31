@@ -57,7 +57,7 @@ namespace detail
     }
 };
 
-inline double default_hash(uint32_t base, uint32_t s1, uint32_t s2)
+inline double default_hash(uint64_t base, uint32_t s1, uint32_t s2)
 {
     uint32_t ru=hash_rng_sym(base, s1, s2);
     int32_t rs=detail::uint32_to_int32(ru);  // in [-2^31,2^31)
@@ -116,7 +116,7 @@ void calc_force(
     const TConservativeMap &conservative,
     const TDissipativeMap &dissipative,
 
-    uint32_t t_hash,
+    uint64_t t_hash,
 
     TVector dx, TScalar dr,
 

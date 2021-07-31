@@ -34,11 +34,15 @@
 class BasicDPDEngine
     : public DPDEngine
 {
-    friend class BasicDPDEngineV2;
-    friend class BasicDPDEngineV3;
-
+public:
     static constexpr int MAX_BONDS_PER_BEAD=3;
     static constexpr int MAX_ANGLE_BONDS_PER_BEAD=2;
+private:
+
+    friend class BasicDPDEngineV2;
+    friend class BasicDPDEngineV3;
+    friend class BasicDPDEngineV4;
+    friend class BasicDPDEngineV3Raw;
 
     struct bead_id_t
     {
@@ -255,7 +259,9 @@ private:
 
     float m_dt;
     float m_inv_root_dt;
-    uint32_t m_t_hash;
+    uint64_t m_t_hash;
+
+    // We store sqrt(dissipative), to avoid sqrt in inner core maths.
     std::vector<InteractionStrength> m_interactions;
 
     float m_bond_kappa;
@@ -318,6 +324,9 @@ private:
 
         m_numBeadTypes=m_state->bead_types.size();
         m_interactions=m_state->interactions;
+        for(auto &ii : m_interactions){
+            ii.dissipative=sqrt(ii.dissipative);
+        }
         m_dt=m_state->dt;
         m_inv_root_dt=1.0/sqrt(m_state->dt);
 
@@ -597,6 +606,7 @@ private:
         dpd_maths_core_half_step::calc_force(
             m_inv_root_dt,
             [&](unsigned a, unsigned b){ return m_interactions[m_numBeadTypes*a+b].conservative; },
+            // Note that this is teh sqrt of the dissipative
             [&](unsigned a, unsigned b){ return m_interactions[m_numBeadTypes*a+b].dissipative; },
             m_t_hash,
             dx, dr,
@@ -607,7 +617,7 @@ private:
         //std::cerr<<"Dut: t_hash="<<m_t_hash<<", h="<<a.id.get_polymer_id()<<", dx="<<dx<<", dr="<<dr<<", f="<<f<<"\n";
 
         a.f += f;
-        return true;
+        return is_bonded;
     }
 
     // TCache is a vector-like container of cached bonds

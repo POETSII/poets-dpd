@@ -1,11 +1,11 @@
-#ifndef dpd_maths_core_half_step_hpp
-#define dpd_maths_core_half_step_hpp
+#ifndef dpd_maths_core_half_step_raw_hpp
+#define dpd_maths_core_half_step_raw_hpp
 
 #include "dpd_maths_core.hpp"
 
 #include "hash.hpp"
 
-namespace dpd_maths_core_half_step
+namespace dpd_maths_core_half_step_raw
 {
 
     using dpd_maths_core::half;
@@ -25,14 +25,23 @@ namespace dpd_maths_core_half_step
         // x(t+dt) = x(t) + v(t)*dt + f(t)*dt*dt
         // v(t+dt/2) = v(t) + dt*f(t)/2
 
-        auto x = b.x + b.v*dt + b.f*half(dt*dt);
+
+        // auto x = b.x + b.v*dt + b.f*half(dt*dt);
+        // auto x = b.x + dt * ( b.v + b.f*half(dt) );
+        float x[3];
+        vec3_mul(x, b.f, half(dt));
+        vec3_add(x, b.v);
+        vec3_mul(x, dt);
+        vec3_add(x, b.x);
+
+        
         for(int i=0; i<3; i++){
             x[i] += (x[i]<0 ? dims[i] : 0);
             x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
         }
-        b.x = x;
-        b.v = b.v + b.f * half(dt);
-        b.f.clear();
+        vec3_copy(b.x, x);
+        vec3_add_mul(b.v, b.f, half(dt));
+        vec3_clear(b.f);
     }
 
 template<class TScalar, class TBead>
@@ -44,54 +53,47 @@ void update_mom(
     // v(t+dt) = v(t) + dt*f(t)/2 + dt*f(t+dt)/2
     // v(t+dt) = v(t) + dt*(f(t)+f(t+dt))/2
 
-    b.v += b.f * half(dt);
+    vec3_add_mul(b.v, b.f, half(dt));
 }
 
 template<
-    class TScalar, class TVector,
-    class TConservativeMap, class TDissipativeMap,
-    class TBead1, class TBead2, class TForce
+    class TScalar, class TVector, class TForce
 >
 void calc_force(
     TScalar inv_sqrt_dt,
-    const TConservativeMap &conservative,
-    const TDissipativeMap &sqrt_dissipative,
-
     uint64_t t_hash,
 
     TVector dx, TScalar dr,
     TScalar kappa, TScalar r0,
 
-    const TBead1 &home,
-    const TBead2 &other,
+    TScalar conStrength,
+    TScalar sqrtDissStrength,
+    uint32_t home_hash,
+    uint32_t other_hash,
+    const TVector &home_v,
+    const TVector &other_v,
 
     TForce & force_home
 ) {
-    assert(&home != &other);
-    assert(home.get_hash_code() != other.get_hash_code());
+    assert(home_hash != other_hash);
     assert(0 < dr && dr < 1);
 
     TScalar inv_dr = recip(dr);
-
-    auto home_bead_type=home.get_bead_type();
-    auto other_bead_type=other.get_bead_type();
         
-    auto conStrength=conservative(home_bead_type, other_bead_type);
-    auto sqrtDissStrength=sqrt_dissipative(home_bead_type, other_bead_type); // This might be a constant
-
-    auto dv = home.v - other.v;
+    TVector dv;
+    vec3_sub(dv, home_v, other_v);
 
     TScalar wr = (1.0 - dr);
         
     TScalar conForce = conStrength*wr;
 
-    dx = dx * inv_dr;
+    vec3_mul(dx, inv_dr);
         
     TScalar rdotv = dx[0]*dv[0] + dx[1]*dv[1] + dx[2]*dv[2];
     TScalar sqrt_gammap = sqrtDissStrength*wr;
 
     TScalar dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
-    TScalar u = dpd_maths_core::default_hash(t_hash, home.get_hash_code(), other.get_hash_code());
+    TScalar u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
     TScalar randForce = sqrt_gammap * inv_sqrt_dt * u;
 
     TScalar dr0=r0-dr;
@@ -99,12 +101,7 @@ void calc_force(
 
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
-    //std::cerr<<"  "<<home.get_hash_code()<<" -> "<<other.get_hash_code()<<" : "<<conForce<<", "<<dissForce<<", "<<randForce<<", "<<hookeanForce<<"\n";
-
-    force_home = dx * scaled_force;
-
-    //std::cerr<<"ref :   dr="<<dr<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<"\n";
-        
+    vec3_mul(force_home, dx , scaled_force);
 }
 
 template<class TScalar, class TVector, class TForce>
@@ -147,17 +144,25 @@ void calc_angle_force(
 
         //std::cerr<<"Dur: forceMag="<<forceMag<<"\n";
 
-        headForce =((dx01*b1b2Overb1Sq)-dx12) * forceMag;
+        //headForce =((dx01*b1b2Overb1Sq)-dx12) * forceMag;
+        vec3_mul(headForce, dx01, b1b2Overb1Sq );
+        vec3_sub(headForce, dx12);
+        vec3_mul(headForce, forceMag);
         assert(isfinite(headForce));
 
-        tailForce = (dx01- (dx12*b1b2Overb2Sq)) * forceMag;
+        //tailForce = (dx01- (dx12*b1b2Overb2Sq)) * forceMag;
+        vec3_mul(tailForce, dx12, b1b2Overb2Sq );
+        vec3_sub(tailForce, dx01, tailForce);
+        vec3_mul(tailForce, forceMag);
         assert(isfinite(tailForce));
 
-        middleForce = -( headForce + tailForce );
+        //middleForce = -( headForce + tailForce );
+        vec3_add(middleForce, headForce, tailForce);
+        vec3_neg(middleForce);
     }else{
-        headForce.clear();
-        tailForce.clear();
-        middleForce.clear();
+        vec3_clear(headForce);
+        vec3_clear(tailForce);
+        vec3_clear(middleForce);
     }
 }
 

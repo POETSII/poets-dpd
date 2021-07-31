@@ -67,7 +67,7 @@ private:
 
     double m_inv_root_dt;
 
-    uint32_t m_t_hash;
+    uint64_t m_t_hash;
 
 
     void check_constraints_and_setup()

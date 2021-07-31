@@ -103,7 +103,7 @@ public:
         WorldStateBuilder b( box);
         WorldState &s=b.data();
         s.t=0;
-        s.dt=0.01;
+        s.dt=0.005;
 
         b.add_bead_type("A");
         b.add_bead_type("B");
