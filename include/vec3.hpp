@@ -6,7 +6,9 @@
 #include <array>
 #include <cmath>
 #include <cassert>
+#ifndef TINSEL
 #include <sstream>
+#endif
 
 template<class T>
 struct vec3g_t
@@ -112,11 +114,13 @@ struct vec3g_t
     }
 };
 
+#ifndef TINSEL
 template<class T>
 std::ostream &operator<<(std::ostream &dst, const vec3g_t<T> &x)
 {
     return dst<<"("<<x[0]<<","<<x[1]<<","<<x[2]<<")";
 }
+#endif
 
 using vec3r_t = vec3g_t<double>;
 using vec3f_t = vec3g_t<float>;
@@ -185,7 +189,6 @@ namespace std
         size_t operator()(const vec3i_t &x) const
         {
             size_t res=5137385362063533605ull*(unsigned)x[0] + 17904276594807051537ull*(unsigned)x[1] + 17656613762115436855ull*(unsigned)x[2];
-            res ^= (res>>32);
             return res;
         }
     };
@@ -239,8 +242,13 @@ T vec3_l2_norm(const T x[3])
 }
 
 template<class T>
-void vec3_floor(int dst[3], const T x[3])
+void vec3_floor(int32_t dst[3], const T x[3])
 { for(int i=0; i<3; i++){ dst[i] = floor(x[i]); } }
+
+// Does a floor with the pre-condition that x is non-negative
+template<class T>
+void vec3_floor_nn(int32_t dst[3], const T x[3])
+{ for(int i=0; i<3; i++){ assert(x[i]>=0); dst[i] = int32_t(x[i]); } }
 
 template<class D, class T>
 void vec3_copy(D dst[3], const T src[3])

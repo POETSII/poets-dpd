@@ -6,7 +6,7 @@
 #include "tests/test_colliding_bead_pair.hpp"
 #include "tests/test_isolated_moving_bead.hpp"
 #include "tests/test_multiple_moving_beads.hpp"
-#include "naive_dpd_engine_half_step.hpp"
+#include "basic_dpd_engine_v4_raw.hpp"
 
 #include "tests/test_runner.hpp"
 
@@ -28,7 +28,7 @@ int main(int argc, const char *argv[])
     TestIsolatedMovingBead::register_tests();
     TestMultipleMovingBeads::register_tests();
 
-    NaiveDPDEngineHalfStep engine;
+    BasicDPDEngineV4Raw engine;
 
     fprintf(stdout, "TAP version 13\n");
 

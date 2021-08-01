@@ -47,7 +47,7 @@ int main(int argc, const char *argv[])
 
         auto r=test_differential(*test, engine1, engine2);
         if(r.first){
-            fprintf(stdout, "ok %d - %s\n", test_num, test->name().c_str());
+            fprintf(stdout, "ok %d - %s :  %s\n", test_num, test->name().c_str(), r.second.c_str());
         }else{
             fprintf(stdout, "not ok %d - %s :%s\n", test_num, test->name().c_str(), r.second.c_str());
             ++failed;

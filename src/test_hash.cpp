@@ -90,7 +90,7 @@ struct enum_wrap
         : n(_n)
         , a(0)
         , b(0)
-        , t(0)
+        , t(123456789)
     {
         t_hash=next_t_hash(t);
     }
@@ -128,7 +128,7 @@ struct enum_wrap_rev
         : n(_n)
         , a(0)
         , b(0)
-        , t(0)
+        , t(123456789)
     {
         t_hash=next_t_hash(t);
     }

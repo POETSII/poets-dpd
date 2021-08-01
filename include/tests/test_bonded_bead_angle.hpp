@@ -116,6 +116,8 @@ public:
         double Cd=1;
         double Cc=1;
         b.set_interaction_strength("A", "B", Cc, Cd);
+        b.set_interaction_strength("A", "A", Cc, Cd);
+        b.set_interaction_strength("B", "B", Cc, Cd);
 
         m_r_equilibrium = (m_kappa*m_r0+Cc)/(m_kappa+Cc);
         require(m_r_equilibrium*2 > 1, "R equilibrium too small (cross-triple conservative interactions.");

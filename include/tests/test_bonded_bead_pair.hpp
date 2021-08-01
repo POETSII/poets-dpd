@@ -87,6 +87,8 @@ public:
         double Cd=1;
         double Cc=1;
         b.set_interaction_strength("A", "B", Cc, Cd);
+        b.set_interaction_strength("A", "A", Cc, Cd);
+        b.set_interaction_strength("B", "B", Cc, Cd);
 
         /* We have two forces:
             dx = xi - xj;
@@ -148,7 +150,7 @@ public:
             m_steps_done += 1;
             return 1;
         }else{
-            std::cerr<<"# t="<<s.t<<", dist="<<dist<<", equib="<<m_r_equilibrium<<", mean="<<m_sum_dist/m_count_dist<<"\n";
+            //std::cerr<<"# t="<<s.t<<", dist="<<dist<<", equib="<<m_r_equilibrium<<", mean="<<m_sum_dist/m_count_dist<<"\n";
             double mean_dist=m_sum_dist / m_count_dist;
             require( std::abs(mean_dist - m_r_equilibrium) < 0.05, "Mean distance is wrong.");
             return 0;

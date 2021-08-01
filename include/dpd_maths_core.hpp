@@ -24,7 +24,7 @@ namespace dpd_maths_core
     { return 1.0/sqrt(x); }
 
     float recip_sqrt(float x)
-    { return 1.0f/sqrt(x); }
+    { return 1.0f/sqrtf(x); }
 
 
 
@@ -100,7 +100,7 @@ void update_mom(
 ) {
     // v(t+dt) = v(t) + dt*(f(t)+f(t+dt))/2
 
-    b.v += (b.f + f) * (dt * 0.5);
+    b.v += (b.f + f) * half(dt);
     b.f = f;
     f.clear();
 }
@@ -141,7 +141,7 @@ void calc_force(
     vec3r_t ob_v = other.v + other.f * lambda_dt;
     vec3r_t dv = hb_v - ob_v;
 
-    TScalar wr = (1.0 - dr);
+    TScalar wr = (1 - dr);
     TScalar wr2 = wr*wr;
         
     TScalar conForce = conStrength*wr;
@@ -188,7 +188,7 @@ void calc_angle_force(
 ){
     TScalar magProduct = r01*r12;
 
-    if(magProduct > 0.0001)
+    if(magProduct > TScalar(0.0001))
     {
         TScalar b1MagSq		= r01*r01;
         TScalar b2MagSq		= r12*r12;
@@ -200,8 +200,8 @@ void calc_angle_force(
         TScalar forceMag = kappa/magProduct;
 
         // Check that the bond angle is not exactly 90 deg but allow the cosine to be < 0
-        if(fabs(b1Dotb2) > 0.000001 && sin_theta0>0){
-            TScalar InvPrefactor = recip_sqrt(recip(cosPhiSq) - 1.0);
+        if(fabs(b1Dotb2) > TScalar(0.000001) && sin_theta0>0){
+            TScalar InvPrefactor = recip_sqrt(recip(cosPhiSq) - 1);
 
             // Add the restoring force if there is a preferred angle
             forceMag = forceMag*(cos_theta0 - sin_theta0*InvPrefactor);

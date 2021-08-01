@@ -1,18 +1,23 @@
-#ifndef basic_dpd_engine_v3_raw_hpp
-#define basic_dpd_engine_v3_raw_hpp
+#ifndef basic_dpd_engine_v4_raw_hpp
+#define basic_dpd_engine_v4_raw_hpp
 
 #include "basic_dpd_engine.hpp"
 
-#include "basic_dpd_engine_v3_raw_handlers.hpp"
+#include "basic_dpd_engine_v4_raw_handlers.hpp"
 
 #include <iterator>
 #include <unordered_map>
 #include <cstring>
 
 /*
-    Lowering the 
+   Reducing the number of barriers:
+
+   - No extra barrier for end of update mom (momentum) update. Pos and mom are merged, and
+     we pre-distort and post-correct for the extra (start) and missing (end) mom updates.
+
+   - Sharing and force exchanges occur in the same phase.
 */
-class BasicDPDEngineV3Raw
+class BasicDPDEngineV4Raw
     : public BasicDPDEngine
 {
 public:
@@ -25,7 +30,7 @@ public:
 
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
 
-    using Handlers = BasicDPDEngineV3RawHandlers<BasicDPDEngineV3Raw>;
+    using Handlers = BasicDPDEnginev4RawHandlers<BasicDPDEngineV4Raw>;
 
 
     using raw_bead_view_t = Handlers::raw_bead_view_t;
@@ -33,9 +38,6 @@ public:
     using raw_bead_resident_t = Handlers::raw_bead_resident_t;
     using raw_cached_bond_t = Handlers::raw_cached_bond_t;
     using raw_force_input_t = Handlers::raw_force_input_t;
-    using bead_bag = Handlers::bead_bag;
-    using cached_bond_bag = Handlers::cached_bond_bag;
-    using force_input_bag = Handlers::force_input_bag;
     using device_state_t = Handlers::device_state_t;
 
     
@@ -43,9 +45,9 @@ public:
     {
         if(s->bead_types.size()>1){
             double diss=s->interactions.at(1).dissipative;
-            for(int i=0; i<s->bead_types.size(); i++){
-                for(int j=0; j<s->bead_types.size(); j++){
-                    if(s->interactions[i*s->bead_types.size()+j].dissipative!=diss){
+            for(unsigned i=0; i<s->bead_types.size(); i++){
+                for(unsigned j=0; j<s->bead_types.size(); j++){
+                    if( s->interactions[i*s->bead_types.size()+j].dissipative!=diss){
                         return "Dissipative strength must be uniform";
                     }
                 }
@@ -57,6 +59,7 @@ public:
 
     virtual void Run(unsigned nSteps) override
     {
+
         import_beads();
 
         // Create shadow device states
@@ -82,11 +85,14 @@ public:
             dst.t_seed = m_state->seed;
             src.location.extract(dst.location);
             dst.phase=Handlers::PreMigrate;
+            dst.steps_todo=nSteps;
 
             auto resident=make_bag_wrapper(dst.resident);
             for(const auto &b : src.beads){
                 raw_bead_resident_t tmp;
                 Handlers::copy_bead_resident(&tmp, &b);
+                // Pre-correct one-step backwards in time, as handlers will do one too many
+                dpd_maths_core_half_step_raw::update_mom((float)-m_state->dt, tmp);
                 resident.push_back(tmp);
             }
 
@@ -103,12 +109,15 @@ public:
         //////////////////////////////////////////////
         // Export shadow back out
         for(unsigned i=0; i<m_cells.size(); i++){
-            const device_state_t &src=states[i];
+            device_state_t &src=states[i];
             cell_t &dst=m_cells[i];
 
             auto resident=make_bag_wrapper(src.resident);
             dst.beads.clear();
-            for(const auto &src : resident){
+            for(auto &src : resident){
+                // Correct for the last mom update that wasn't done
+                dpd_maths_core_half_step_raw::update_mom<float,raw_bead_resident_t>((float)m_state->dt, src);
+
                 bead_resident_t tmp;
                 Handlers::copy_bead_resident(&tmp, &src);
                 dst.beads.push_back(tmp);
@@ -150,44 +159,34 @@ public:
             Handlers::on_barrier(c);
         }
 
-        // Calculate all the non-angle forces
-        for(auto &cell : states){
-            raw_bead_view_t transfer;
-            uint32_t rts;
-            while( (rts = Handlers::calc_rts(cell)) ){
-                assert(rts==Handlers::RTS_FLAG_share);
-                Handlers::on_send_share(cell, transfer);
+        // Calculate all the shared forces, and also do angle forces when able
+        bool idle=false;
+        while(!idle){
+            idle=true;
+            for(auto &cell : states){
+                uint32_t rts;
+                if( (rts = Handlers::calc_rts(cell)) ){
+                    if(rts&Handlers::RTS_FLAG_force){
+                        raw_force_input_t transfer;
+                        assert(cell.force_outgoing.n>0);
+                        Handlers::on_send_force(cell, transfer);
 
-                for(auto ni : neighbour_map[&cell]){
-                    Handlers::on_recv_share(*ni, transfer);
+                        for(auto ni : neighbour_map[&cell]){
+                            Handlers::on_recv_force(*ni, transfer);
+                        }
+                        idle=false;
+                    }else if(rts&Handlers::RTS_FLAG_share){
+                        raw_bead_view_t transfer;
+                        Handlers::on_send_share(cell, transfer);
+                        for(auto ni : neighbour_map[&cell]){
+                            Handlers::on_recv_share(*ni, transfer);
+                        }
+                        idle=false;
+                    }else{
+                        assert(false);
+                    }
                 }
             }
-        }
-
-        ///////////////////////////////////////////////////////////////
-        // Shared the beads, now need to do angle forces
-        for(auto &cell : states){
-            Handlers::on_barrier(cell);
-        }
-
-        for(auto &cell : states){
-            raw_force_input_t transfer;
-            uint32_t rts;
-            while( (rts = Handlers::calc_rts(cell)) ){
-                assert(rts==Handlers::RTS_FLAG_force);
-                assert(cell.force_outgoing.n>0);
-                Handlers::on_send_force(cell, transfer);
-
-                for(auto ni : neighbour_map[&cell]){
-                    Handlers::on_recv_force(*ni, transfer);
-                }
-            }
-        }
-
-        //////////////////////////////////////////
-        // Finally do the velocity updates
-        for(auto &cell : states){
-            Handlers::on_barrier(cell);
         }
     }
 

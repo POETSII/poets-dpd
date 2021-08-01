@@ -6,6 +6,7 @@
 #include "dpd_maths_core_half_step.hpp"
 
 #include "vec3.hpp"
+#include "make_nhood.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -36,13 +37,14 @@ class BasicDPDEngine
 {
 public:
     static constexpr int MAX_BONDS_PER_BEAD=3;
-    static constexpr int MAX_ANGLE_BONDS_PER_BEAD=2;
+    static constexpr int MAX_ANGLE_BONDS_PER_BEAD=1;
 private:
 
     friend class BasicDPDEngineV2;
     friend class BasicDPDEngineV3;
     friend class BasicDPDEngineV4;
     friend class BasicDPDEngineV3Raw;
+    friend class BasicDPDEngineV4Raw;
 
     struct bead_id_t
     {
@@ -133,14 +135,14 @@ private:
 
         angle_bond_info_t angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
     };
-    static_assert(sizeof(bead_exchange_t)==52);
+    static_assert(sizeof(bead_exchange_t)==48);
 
     struct bead_resident_t
         : bead_exchange_t
     {
         // Nothing here at the moment
     };
-    static_assert(sizeof(bead_resident_t)==52);
+    static_assert(sizeof(bead_resident_t)==48);
 
     struct force_input_t
     {
@@ -151,11 +153,11 @@ private:
     void get_bond_info(
         const bead_resident_t &home,
         const bead_id_t &other_id,
-        bool &is_bonded,
+        int &angle_partner_count,
         float &kappa,
         float &r0
     ){
-        is_bonded=false;
+        angle_partner_count=false;
         kappa=0.0f;
         r0=m_bond_r0;
         if(home.id.is_monomer()) return;
@@ -163,10 +165,26 @@ private:
         if(home.id.get_polymer_id() != other_id.get_polymer_id()) return;
         auto other_polymer_offset=other_id.get_polymer_offset();
         for(unsigned i=0; i<MAX_BONDS_PER_BEAD; i++){
+            if(0xFF == home.bond_partners[i]){
+                break;
+            }
             if(other_polymer_offset==home.bond_partners[i]){
-                is_bonded=true;
                 kappa=m_bond_kappa;
+                break;
+            }
+        }
+        if(kappa==0.0f){
+            return;
+        }
+        for(unsigned i=0; i<MAX_ANGLE_BONDS_PER_BEAD; i++){
+            if(home.angle_bonds[i].partner_head==0xFF){
                 return;
+            }
+            if(home.angle_bonds[i].partner_head==other_polymer_offset){
+                angle_partner_count++;
+            }
+            if(home.angle_bonds[i].partner_tail==other_polymer_offset){
+                angle_partner_count++;
             }
         }
     }
@@ -341,21 +359,15 @@ private:
                     cell.neighbours.clear();
                     cell.outgoing.clear();
 
-                    vec3i_t dir;
-                    vec3i_t adj;
-                    for(dir[0]=-1; dir[0] <= 1; dir[0]++){
-                        for(dir[1]=-1; dir[1] <= 1; dir[1]++){
-                            for(dir[2]=-1; dir[2] <= 1; dir[2]++){
-                                for(unsigned d=0; d<3; d++){
-                                    adj[d] = ( (cell.location[d]+dir[d]==m_box[d]) ? -m_box[d] : 0 ) + ( (cell.location[d]+dir[d]==-1) ? +m_box[d] : 0 );
-                                }
-                                
-                                assert(cell.neighbours.size()<27);
-                                unsigned neighbour_index=cell_location_to_cell_index(cell.location+dir+adj);
-                                cell.neighbours.push_back(neighbour_index);
-                            }
+                    for_each_point_in_box({-1,-1,-1}, {2,2,2}, [&](const vec3i_t &dir){
+                        vec3i_t adj;
+                        for(unsigned d=0; d<3; d++){
+                            adj[d] = ( (cell.location[d]+dir[d]==m_box[d]) ? -m_box[d] : 0 ) + ( (cell.location[d]+dir[d]==-1) ? +m_box[d] : 0 );
                         }
-                    }
+                        assert(cell.neighbours.size()<27);
+                        unsigned neighbour_index=cell_location_to_cell_index(cell.location+dir+adj);
+                        cell.neighbours.push_back(neighbour_index);
+                    });
                 }
             }
         }
@@ -409,7 +421,7 @@ private:
                         nangles++;
                     }
                 }
-                require(nbonds <= MAX_ANGLE_BONDS_PER_BEAD, "Too many angles per bead."); // Should already have been chcked.
+                require(nangles <= MAX_ANGLE_BONDS_PER_BEAD, "Too many angles per bead."); // Should already have been chcked.
             }
 
             cell.beads.push_back(bb);
@@ -593,11 +605,11 @@ private:
         //std::cerr<<"dut : a="<<a.get_bead_id()<<", b="<<b.get_bead_id()<<", dx="<<dx<<"\n";
 
         float kappa, r0;
-        bool is_bonded;
+        int angle_bond_count;
         get_bond_info(
             a,
             b.id,
-            is_bonded,
+            angle_bond_count,
             kappa,
             r0
         );
@@ -617,7 +629,7 @@ private:
         //std::cerr<<"Dut: t_hash="<<m_t_hash<<", h="<<a.id.get_polymer_id()<<", dx="<<dx<<", dr="<<dr<<", f="<<f<<"\n";
 
         a.f += f;
-        return is_bonded;
+        return angle_bond_count > 0;
     }
 
     // TCache is a vector-like container of cached bonds

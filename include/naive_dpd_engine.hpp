@@ -325,6 +325,10 @@ private:
 
         //std::cerr<<"  "<<hb->get_hash_code()<<" -> "<<ob->get_hash_code()<<" : "<<conForce<<", "<<dissForce<<", "<<randForce<<"\n";
 
+
+        //std::cerr<<"  REF: home="<<hb->get_hash_code()<<", other="<<ob->get_hash_code()<<", t_hash="<<m_t_hash<<", dx="<<dx<<", r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook=?\n";
+        //std::cerr<<"     sqrt_gammap="<<sqrt(gammap)<<", rdotv="<<rdotv<<", sqrt(dissStrength)="<<sqrt(interactions.dissipative)<<"\n";
+
         vec3r_t f=dx * scaled_force;
         //std::cerr<<"ref :   dr="<<dr<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<"\n";
         m_forces.at(hb->bead_id) += f;

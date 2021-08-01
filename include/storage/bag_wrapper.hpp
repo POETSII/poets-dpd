@@ -2,6 +2,7 @@
 #define bag_wrapper_hpp
 
 #include <iterator>
+#include <cassert>
 
 
 template<class T, unsigned MAX_N>
@@ -79,6 +80,18 @@ struct bag_wrapper
         if(storage.n<MAX_N){
             // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
             storage.elements[storage.n]=x;
+            storage.n=storage.n+1;
+        }else{
+            assert(false);
+            storage.lost++;
+        }
+    }
+
+    //! Allocate a new entry, but leave it unitinialised
+    void alloc_back()
+    {
+        if(storage.n<MAX_N){
+            // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
             storage.n=storage.n+1;
         }else{
             assert(false);

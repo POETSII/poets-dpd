@@ -13,11 +13,49 @@ inline uint64_t splitmix64(uint64_t z)
     return z ^ (z >> 31);
 }
 
+inline uint64_t riscv_mix64_m2(uint64_t x)
+{
+    // From custom hash prospector. Not as good as splitmix64 in quality, but much faster/smaller on riscv
+    const uint32_t C=0xd392d2a7; // 2
+    x = x ^ (x>>32);     // 1
+    x = x * C;           // 4
+    x = x ^ (x>>32);     // 1
+    x = x * C;           // 4
+    x = x ^ (x>>32);     // 1
+    return x;
+}
+
+inline uint64_t riscv_mix64_m3(uint64_t x)
+{
+    // From custom hash prospector. As good as splitmix64, but faster/smaller on riscv
+    const uint32_t C=0xed85aebf; // 2
+    x = x ^ (x>>32);     // 1
+    x = x * C;           // 4
+    x = x ^ (x>>32);     // 1
+    x = x * C;           // 4
+    x = x ^ (x>>32);     // 1
+    x = x * C;           // 4
+    x = x ^ (x>>32);     // 1
+    return x;
+}
+
+/*
+a=a*C;
+b=b*C;
+a ^= (b>>16);
+b ^= (a>>16);
+a=a*C;
+b=b*C;
+a ^= (b>>16);
+b ^= (a>>16);
+*/
+
+
 
 uint64_t next_t_hash(uint64_t &seed)
 {
     seed += 0x9E3779B97F4A7C15ull;
-    return splitmix64(seed) | 0x0000000100000001ull;
+    return riscv_mix64_m2(seed) | 0x0000000100000001ull;
 }
 
 /*  This is a function which generates roughly random values
@@ -25,23 +63,22 @@ uint64_t next_t_hash(uint64_t &seed)
     The return value should approximate 32 random bits, but the MSBs should be
     the priority.
 */
-inline uint32_t hash_rng_sym_old(uint32_t t_hash, uint32_t a, uint32_t b)
+inline uint32_t hash_rng_sym(uint64_t t_hash, uint32_t a, uint32_t b)
 {
     // TODO : This is terrible. Find the original version.
-    uint32_t la=std::min(a,b);
-    uint32_t lb=std::max(a,b);
-    uint64_t lla=splitmix64(la|(uint64_t(lb)<<32));
-    uint64_t llb=splitmix64(lla^(t_hash^(uint64_t(t_hash)<<32)));
-    return llb;
+    if(a>b){
+        std::swap(a,b);
+    }
+    return riscv_mix64_m3( (a|(uint64_t(b)<<32)) ^ t_hash);
 }
 
-inline uint32_t hash_rng_sym(uint64_t t_hash, uint32_t a, uint32_t b)
+inline uint32_t hash_rng_sym_new(uint64_t t_hash, uint32_t a, uint32_t b)
 {
     assert(t_hash & 0x1);
     assert(t_hash & 0x100000000ull);
 
-    auto la = (t_hash&0xFFFFFFFFul) * (a+b);
-    auto lb = (t_hash>>32) * (a^b);
+    auto la = uint32_t(t_hash&0xFFFFFFFFul) * (a+b);
+    auto lb = uint32_t(t_hash>>32) * (a^b);
     uint32_t tmp = la^lb;
     return tmp;
 }

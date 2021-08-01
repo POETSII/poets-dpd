@@ -1,5 +1,5 @@
-#ifndef basic_dpd_engine_v3_raw_handlers_hpp
-#define basic_dpd_engine_v3_raw_handlers_hpp
+#ifndef basic_dpd_engine_v4_raw_handlers_hpp
+#define basic_dpd_engine_v4_raw_handlers_hpp
 
 #include "storage/bag_wrapper.hpp"
 #include "dpd_maths_core_half_step_raw.hpp"
@@ -7,22 +7,20 @@
 #include <iterator>
 #include <cstring>
 
-struct BasicDPDEngineV3RawConfig
+struct BasicDPDEnginev4RawConfig
 {
     static constexpr size_t MAX_BONDS_PER_BEAD = 3;
     static constexpr size_t MAX_BEADS_PER_CELL = 8;
-    static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=3;
+    static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
     static constexpr size_t MAX_BEAD_TYPES=8;
 };
 
-/*
-    Lowering the 
-*/
-template<class TConfig>
-struct BasicDPDEngineV3RawHandlers
+
+template<class TConfig = BasicDPDEnginev4RawConfig>
+struct BasicDPDEnginev4RawHandlers
 {
     static constexpr int MAX_BONDS_PER_BEAD = TConfig::MAX_BONDS_PER_BEAD;
     static constexpr int MAX_BEADS_PER_CELL = TConfig::MAX_BEADS_PER_CELL;
@@ -31,6 +29,8 @@ struct BasicDPDEngineV3RawHandlers
     static constexpr int MAX_ANGLE_BONDS_PER_BEAD = TConfig::MAX_ANGLE_BONDS_PER_BEAD;
 
     static constexpr int MAX_BEAD_TYPES = TConfig::MAX_BEAD_TYPES;
+
+    static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
 
     enum OutputFlags
     {
@@ -43,8 +43,7 @@ struct BasicDPDEngineV3RawHandlers
     {
         PreMigrate,
         Migrating,
-        Sharing,
-        Forcing
+        SharingAndForcing
     };
 
     static uint32_t get_bead_type(uint32_t bead_id)
@@ -83,13 +82,7 @@ struct BasicDPDEngineV3RawHandlers
     static uint32_t get_bead_type(const raw_bead_view_t &bead)
     { return get_bead_type(bead.id); }
 
-    struct raw_angle_bond_info_t
-    {
-        uint8_t partner_head;
-        uint8_t partner_tail;
-        uint8_t kappa;   // Kappa is just an integer. Typically this is quite small, e.g. 5 or 15. Should be less than 255
-        uint8_t _pad_;
-    };
+    
 
     struct raw_bead_resident_t
     {
@@ -104,9 +97,17 @@ struct BasicDPDEngineV3RawHandlers
         uint8_t bond_partners[MAX_BONDS_PER_BEAD+1]; // -1 means no bond
         static_assert(sizeof(bond_partners)==4); // Keep aligned
 
-        raw_angle_bond_info_t angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
+        struct raw_angle_bond_info_t
+        {
+            uint8_t partner_head;
+            uint8_t partner_tail;
+            uint8_t kappa;   // Kappa is just an integer. Typically this is quite small, e.g. 5 or 15. Should be less than 255
+            uint8_t _pad_;
+        }angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
     };
     static_assert(sizeof(raw_bead_resident_t)==48);
+
+    using raw_angle_bond_info_t = decltype(raw_bead_resident_t::angle_bonds[0]);
 
     template<class A, class B>
     static void copy_bead_view(A *dst, const B *src)
@@ -150,29 +151,14 @@ struct BasicDPDEngineV3RawHandlers
         float f[3];
     };
 
-
-    struct bead_bag
+    template<class A, class B>
+    static void copy_force_input(A *dst, const B *src)
     {
-        raw_bead_resident_t elements[MAX_BEADS_PER_CELL];
-        uint16_t n=0;
-        uint16_t lost=0;
-    };
-
-    struct cached_bond_bag
-    {
-        raw_cached_bond_t elements[MAX_CACHED_BONDS_PER_CELL];
-        uint16_t n=0;
-        uint16_t lost=0;
-    };
-
-    struct force_input_bag
-    {
-        raw_force_input_t elements[MAX_OUTGOING_FORCES_PER_CELL];
-        uint16_t n=0;
-        uint16_t lost=0;
-    };
-
-
+        static_assert(sizeof(A)==sizeof(B));
+        static_assert(offsetof(A,target_hash)==offsetof(B,target_hash));
+        static_assert( std::is_same<decltype(A::f),decltype(B::f)>::value );
+        memcpy(dst, src, sizeof(B));
+    }
 
     struct device_state_t
     {
@@ -194,10 +180,36 @@ struct BasicDPDEngineV3RawHandlers
         uint32_t steps_todo;
 
         uint32_t share_todo;
-        bead_bag resident;
-        bead_bag migrate_outgoing;
-        force_input_bag force_outgoing;
-        cached_bond_bag cached_bonds;
+        struct{
+            raw_bead_resident_t elements[MAX_BEADS_PER_CELL];
+            uint16_t n;
+            uint16_t lost;
+        }resident;
+        struct{
+            raw_bead_resident_t elements[MAX_BEADS_PER_CELL];
+            uint16_t n;
+            uint16_t lost;
+        }migrate_outgoing;
+        struct force_input_bag
+        {
+            struct raw_force_input_t
+            {
+                uint32_t target_hash;
+                float f[3];
+            } elements[MAX_OUTGOING_FORCES_PER_CELL];
+            uint16_t n;
+            uint16_t lost;
+        } force_outgoing;
+        struct cached_bond_bag
+        {
+            raw_cached_bond_t elements[MAX_CACHED_BONDS_PER_CELL];
+            uint16_t n;
+            uint16_t lost;
+        } cached_bonds;
+
+        // Should probably be co-located with the beads for caching
+        static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
+        uint8_t cached_bond_indices[MAX_BEADS_PER_CELL]; // 0xff if not seen, otherwise the first bond that was seen
     };
 
     static uint32_t calc_rts(const device_state_t &cell)
@@ -208,10 +220,9 @@ struct BasicDPDEngineV3RawHandlers
     static void on_barrier(device_state_t &cell)
     {
         switch(cell.phase){
-            case PreMigrate: on_barrier_pre_migrate(cell); break;
+            case PreMigrate:
+            case SharingAndForcing: on_barrier_pre_migrate(cell); break;
             case Migrating: on_barrier_pre_share(cell); break;
-            case Sharing: on_barrier_pre_force(cell); break;
-            case Forcing: on_barrier_post_force(cell); break;
             default: assert(false); break;
         }
     }
@@ -219,12 +230,13 @@ struct BasicDPDEngineV3RawHandlers
 
     static void on_barrier_pre_migrate(device_state_t &cell)
     {
-        assert(cell.phase==PreMigrate);
+        assert(cell.phase==PreMigrate || cell.phase==SharingAndForcing);
 
         auto resident=make_bag_wrapper(cell.resident);
         auto migrate_outgoing=make_bag_wrapper(cell.migrate_outgoing);
 
-        assert(make_bag_wrapper(cell.cached_bonds).empty());
+        make_bag_wrapper(cell.cached_bonds).clear();
+
         assert(make_bag_wrapper(cell.force_outgoing).empty());
         assert(make_bag_wrapper(cell.migrate_outgoing).empty());
         assert(cell.share_todo==0);
@@ -235,13 +247,20 @@ struct BasicDPDEngineV3RawHandlers
         while(0 < i){
             --i;
             auto &b = resident[i];
+
+            // We always apply the mom step here, rather than doing it in 
+            // a seperate step at the end. This means that the input needs
+            // to have been "reverse" update_mom'd, and the output must be
+            // mom'd again.
+            dpd_maths_core_half_step_raw::update_mom(cell.dt, b);
+
             // Actual position update, clears force
             dpd_maths_core_half_step_raw::update_pos(cell.dt, cell.box, b);
         
             // Check it is still in the right cell
-            int true_loc[3];
-            vec3_floor(true_loc, b.x);
-            if(true_loc != cell.location){
+            int32_t true_loc[3];
+            vec3_floor_nn(true_loc, b.x);
+            if( !vec3_equal(true_loc, cell.location) ){
                 // Movement is fairly unlikely
                 migrate_outgoing.push_back(b);
 
@@ -272,8 +291,8 @@ struct BasicDPDEngineV3RawHandlers
     {
         auto resident=make_bag_wrapper(cell.resident);
 
-        int incoming_loc[3];
-        vec3_floor(incoming_loc, incoming.x);
+        int32_t incoming_loc[3];
+        vec3_floor_nn(incoming_loc, incoming.x);
         if(vec3_equal(incoming_loc , cell.location)){
             resident.push_back(incoming);
         }
@@ -290,7 +309,11 @@ struct BasicDPDEngineV3RawHandlers
 
         cell.share_todo = resident.size();
 
-        cell.phase=Sharing;
+        for(unsigned i=0; i<resident.size(); i++){ 
+            cell.cached_bond_indices[i]=0xff;
+        }
+
+        cell.phase=SharingAndForcing;
         cell.rts=cell.share_todo==0 ? 0 : RTS_FLAG_share;
     }
 
@@ -305,18 +328,23 @@ struct BasicDPDEngineV3RawHandlers
         copy_bead_view( &outgoing, &b );
         outgoing.id = b.id;
 
-        cell.rts=cell.share_todo==0 ? 0 : RTS_FLAG_share;
+        if(cell.share_todo==0){
+            cell.rts &= ~RTS_FLAG_share;
+        }
     }
 
     static void on_recv_share(device_state_t &cell, const raw_bead_view_t &incoming)
     {
+        //std::cerr<<"  Recv: ("<<cell.location[0]<<","<<cell.location[1]<<","<<cell.location[2]<<"), p="<<&cell<<", nres="<<cell.resident.n<<", other="<<get_hash_code(incoming.id)<<"\n";
+
         auto resident=make_bag_wrapper(cell.resident);
         auto cached_bonds=make_bag_wrapper(cell.cached_bonds);
+        auto force_outgoing=make_bag_wrapper(cell.force_outgoing);
         
         float neighbour_x[3];
         vec3_copy(neighbour_x, incoming.x);
-        int neighbour_cell_pos[3];
-        vec3_floor(neighbour_cell_pos, neighbour_x);
+        int32_t neighbour_cell_pos[3];
+        vec3_floor_nn(neighbour_cell_pos, neighbour_x);
         for(int d=0; d<3; d++){
             if(cell.location[d]==0 && neighbour_cell_pos[d]==cell.box[d]-1){
                 neighbour_x[d] -= cell.box[d];
@@ -325,29 +353,34 @@ struct BasicDPDEngineV3RawHandlers
             }
         }
 
-        bool cache_neighbour=false;
+        bool cached=false;
 
-        for(auto &bead : resident){
+        unsigned cached_bond_index=cached_bonds.size(); // This is the index it will have, _if_ it is cached
+        for(unsigned bead_i=0; bead_i < resident.size(); bead_i++){
+            auto &bead=resident[bead_i];
+
+            //fprintf(stderr, "    Recv : bead_i=%u, home=%u, other=%u\n", bead_i, get_hash_code(bead.id), get_hash_code(incoming.id));
+
             // This implicitly interacts each bead with itself, which is handled with a
             // distance check in calc_force.
             float dx[3];
             vec3_sub(dx, bead.x, neighbour_x);
             float dr_sqr=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
-            if(dr_sqr >=1 || dr_sqr < 1e-5){ // The min threshold avoid large forces, and also skips self-interaction
+            if(dr_sqr >=1 || dr_sqr < float(1e-5)){ // The min threshold avoid large forces, and also skips self-interaction
                 continue;
             }
             float dr=sqrt(dr_sqr);
 
-            bool is_bonded=false;
             float kappa=0.0f;
             float r0=cell.bond_r0;
-            if(!(is_monomer(incoming.id) && is_monomer(bead.id) && (get_polymer_id(bead.id) == get_polymer_id(incoming.id)) ) ){
-                auto other_polymer_offset=get_polymer_offset(incoming.id);
-                for(unsigned i=0; i<MAX_BONDS_PER_BEAD; i++){
-                    if(other_polymer_offset==bead.bond_partners[i]){
-                        is_bonded=true;
-                        kappa=cell.bond_kappa;
-                        break;
+            if(!(is_monomer(incoming.id) || is_monomer(bead.id))){
+                if(get_polymer_id(bead.id) == get_polymer_id(incoming.id) ){
+                    auto other_polymer_offset=get_polymer_offset(incoming.id);
+                    for(unsigned i=0; i<MAX_BONDS_PER_BEAD; i++){
+                        if(other_polymer_offset==bead.bond_partners[i]){
+                            kappa=cell.bond_kappa;
+                            break;
+                        }
                     }
                 }
             }
@@ -368,84 +401,93 @@ struct BasicDPDEngineV3RawHandlers
             );
 
             vec3_add(bead.f, f);
-            cache_neighbour |= is_bonded;
-        }
 
-        if(cache_neighbour){
-            raw_cached_bond_t tmp;
-            tmp.bead_hash=get_hash_code(incoming.id);
-            vec3_copy(tmp.x, neighbour_x);
-            cached_bonds.push_back(tmp);
+            if(kappa!=0.0f){
+                //std::cerr<<"K: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
+                if(!cached){
+                    raw_cached_bond_t tmp;
+                    tmp.bead_hash=get_hash_code(incoming.id);
+                    vec3_copy(tmp.x, neighbour_x);
+                    cached_bonds.push_back(tmp);
+                    //std::cerr<<" caching, bead_i="<<bead_i<<", bead_id="<<get_hash_code(bead.id)<<" target="<<get_hash_code(incoming.id)<<"\n";
+                    cached=true;
+                }
+
+                static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
+                bool hit = get_polymer_offset(incoming.id) == bead.angle_bonds[0].partner_head || get_polymer_offset(incoming.id) == bead.angle_bonds[0].partner_tail;
+                if(hit){
+                    //std::cerr<<"  CB: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
+                    if(cell.cached_bond_indices[bead_i]==0xFF){
+                        //std::cerr<<"  S\n";
+                        cell.cached_bond_indices[bead_i] = cached_bond_index;
+                    }else{
+                        // Once both partners have arrived, we calculate force and push onto outgoing_forces
+                        //std::cerr<<"Force!`\n";
+                        assert(bead.id == resident[bead_i].id);
+                        calc_angle_force_for_middle_bead(cell, bead, cell.cached_bond_indices[bead_i], cached_bond_index);
+                        assert(force_outgoing.size()>0);
+                        cell.rts |= RTS_FLAG_force;
+                        //std::cerr<<"DoenFr\n";
+                    }
+                }
+            }
         }
     }
 
-    static void on_barrier_pre_force(device_state_t &cell)
+    static void calc_angle_force_for_middle_bead(device_state_t &cell, raw_bead_resident_t &bead, unsigned cache_index_a, unsigned cache_index_b)
     {
-        assert(cell.phase==Sharing);
+        assert(cell.phase==SharingAndForcing);
 
-        auto resident=make_bag_wrapper(cell.resident);
         auto cached_bonds=make_bag_wrapper(cell.cached_bonds);
         auto force_outgoing=make_bag_wrapper(cell.force_outgoing);
-        assert(force_outgoing.empty());
 
-        auto find_cached_pos=[&](uint32_t target_hash) -> const raw_cached_bond_t *
-        {
-            for(auto &cb : cached_bonds){
-                if(cb.bead_hash==target_hash){
-                    return &cb;
-                }
-            }
-            assert(0); // Should be impossible to get here unless bond has snapped
-            return 0;
-        };
+        static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
 
-        for(auto &bead : resident){
-            for(int i=0; i<MAX_ANGLE_BONDS_PER_BEAD; i++){
-                if(bead.angle_bonds[i].partner_head==0xFF){
-                    break;
-                }
-                auto head_hash=make_hash_from_offset(bead.id, bead.angle_bonds[i].partner_head);
-                auto tail_hash=make_hash_from_offset(bead.id, bead.angle_bonds[i].partner_tail);
-                const auto *head=find_cached_pos(head_hash);
-                const auto *tail=find_cached_pos(tail_hash);
-                
-                // The cache copies should already have wrapping applied
-                float first[3], second[3];
-                vec3_sub(first, bead.x, head->x);
-                vec3_sub(second, tail->x, bead.x);
+        const int ai=0;
+        // We only call this function if we already know it is an angle bond
+        assert(bead.angle_bonds[ai].partner_head!=0xFF);
 
-                float FirstLength= vec3_l2_norm(first);
-                float SecondLength  = vec3_l2_norm(second);
-                assert(FirstLength < 1);
-                assert(SecondLength < 1);
+        auto head_hash=make_hash_from_offset(bead.id, bead.angle_bonds[ai].partner_head);
+        auto tail_hash=make_hash_from_offset(bead.id, bead.angle_bonds[ai].partner_tail);
 
-                float headForce[3], middleForce[3], tailForce[3];
+        const auto *head=&cached_bonds[cache_index_a];
+        const auto *tail=&cached_bonds[cache_index_b];
 
-                dpd_maths_core_half_step_raw::calc_angle_force<float,float[3],float[3]>(
-                    (float)bead.angle_bonds[i].kappa, 0.0f, 0.0f,
-                    first, FirstLength,
-                    second, SecondLength,
-                    headForce, middleForce, tailForce
-                );
-
-                vec3_add(bead.f, middleForce);
-
-                raw_force_input_t tmp1;
-                tmp1.target_hash=head_hash;
-                vec3_copy(tmp1.f, headForce);
-                force_outgoing.push_back( tmp1 );
-
-                raw_force_input_t tmp2;
-                tmp2.target_hash=tail_hash;
-                vec3_copy(tmp2.f, tailForce);
-                force_outgoing.push_back( tmp2 );
-            }
+        if(head->bead_hash==tail_hash){
+            std::swap(head, tail);
         }
 
-        cached_bonds.clear();
+        assert(head->bead_hash==head_hash);
+        assert(tail->bead_hash==tail_hash);
+        
+        // The cache copies should already have wrapping applied
+        float first[3], second[3];
+        vec3_sub(first, bead.x, head->x);
+        vec3_sub(second, tail->x, bead.x);
 
-        cell.phase=Forcing;
-        cell.rts=force_outgoing.empty() ? 0 : RTS_FLAG_force;
+        float FirstLength= vec3_l2_norm(first);
+        float SecondLength  = vec3_l2_norm(second);
+        assert(FirstLength < 1);
+        assert(SecondLength < 1);
+
+        float headForce[3], middleForce[3], tailForce[3];
+
+        dpd_maths_core_half_step_raw::calc_angle_force<float,float[3],float[3]>(
+            (float)bead.angle_bonds[ai].kappa, 0.0f, 0.0f,
+            first, FirstLength,
+            second, SecondLength,
+            headForce, middleForce, tailForce
+        );
+
+        vec3_add(bead.f, middleForce);
+
+        force_outgoing.alloc_back();
+        force_outgoing.back().target_hash=head_hash;
+        vec3_copy(force_outgoing.back().f, headForce);
+
+        force_outgoing.alloc_back();
+        force_outgoing.back().target_hash=tail_hash;
+        vec3_copy(force_outgoing.back().f, tailForce);
     }
 
 
@@ -454,10 +496,12 @@ struct BasicDPDEngineV3RawHandlers
         auto force_outgoing=make_bag_wrapper(cell.force_outgoing);
 
         assert(!force_outgoing.empty());
-        outgoing=force_outgoing.back();
+        copy_force_input(&outgoing, &force_outgoing.back());
         force_outgoing.pop_back();
 
-        cell.rts=force_outgoing.empty() ? 0 : RTS_FLAG_force;
+        if(force_outgoing.empty()){
+            cell.rts &= ~RTS_FLAG_force;
+        }
     }
 
     static void on_recv_force(device_state_t &cell, const raw_force_input_t &incoming)
@@ -469,23 +513,6 @@ struct BasicDPDEngineV3RawHandlers
                 vec3_add(b.f, incoming.f);
             }
         }
-    }
-
-    static void on_barrier_post_force(device_state_t &cell)
-    {
-        assert(cell.phase==Forcing);
-
-        auto resident=make_bag_wrapper(cell.resident);
-        assert(make_bag_wrapper(cell.cached_bonds).empty());
-        assert(make_bag_wrapper(cell.force_outgoing).empty());
-        assert(make_bag_wrapper(cell.migrate_outgoing).empty());
-        assert(cell.share_todo==0);
-
-        for(auto &b : resident){
-            dpd_maths_core_half_step_raw::update_mom(cell.dt, b);
-        }
-
-        cell.phase=PreMigrate;
     }
 
 };
