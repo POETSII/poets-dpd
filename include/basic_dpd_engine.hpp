@@ -45,6 +45,7 @@ private:
     friend class BasicDPDEngineV4;
     friend class BasicDPDEngineV3Raw;
     friend class BasicDPDEngineV4Raw;
+    friend class BasicDPDEngineV5Raw;
 
     struct bead_id_t
     {
