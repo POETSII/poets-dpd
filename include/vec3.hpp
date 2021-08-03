@@ -34,6 +34,14 @@ struct vec3g_t
         : x{_x[0], _x[1], _x[2]}
     {}
 
+    template<class TT>
+    void assign(const TT _x[3])
+    {
+        for(int i=0; i<3; i++){
+            x[i]=_x[i];
+        }
+    }
+
     T operator[](size_t i) const
     { return x[i]; }
 
@@ -251,9 +259,11 @@ void vec3_floor_nn(int32_t dst[3], const T x[3])
 { for(int i=0; i<3; i++){ assert(x[i]>=0); dst[i] = int32_t(x[i]); } }
 
 template<class D, class T>
-void vec3_copy(D dst[3], const T src[3])
+void vec3_copy(D &dst, const T &src)
 {
-    std::copy(src, src+3, dst);
+    for(unsigned i=0; i<3; i++){
+        dst[i]=src[i];
+    }
 }
 
 template<class T>

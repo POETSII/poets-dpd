@@ -23,7 +23,8 @@ struct BasicDPDEngineV5RawHandlers
     {
         RTS_FLAG_migrate = 0x1,
         RTS_FLAG_share = 0x2,
-        RTS_FLAG_force = 0x4
+        RTS_FLAG_force = 0x4,
+        RTS_FLAG_output = 0x8
     };
 
     enum Phase
@@ -31,7 +32,7 @@ struct BasicDPDEngineV5RawHandlers
         PreMigrate,
         Migrating,
         SharingAndForcing,
-        Finished
+        Outputting
     };
 
     static uint32_t get_bead_type(uint32_t bead_id)
@@ -166,7 +167,7 @@ struct BasicDPDEngineV5RawHandlers
         Phase phase;
         uint32_t rts;
         uint32_t steps_todo;
-
+        uint32_t outputs_todo;
         uint32_t share_todo;
         struct{
             raw_bead_resident_t elements[MAX_BEADS_PER_CELL];
@@ -209,9 +210,9 @@ struct BasicDPDEngineV5RawHandlers
     {
         switch(cell.phase){
             case PreMigrate:
-            case Finished:
             case SharingAndForcing: return on_barrier_pre_migrate(cell); break;
             case Migrating: return on_barrier_pre_share(cell); break;
+            case Outputting: return false;
             default: assert(false); break;
         }
     }
@@ -219,17 +220,18 @@ struct BasicDPDEngineV5RawHandlers
 
     static bool on_barrier_pre_migrate(device_state_t &cell)
     {
-        assert(cell.phase==PreMigrate || cell.phase==SharingAndForcing || cell.phase==Finished);
-
-        if(cell.steps_todo==0){
-            cell.phase=Finished;
-            cell.rts=0;
-            return false;
-        }
-        cell.steps_todo -= 1;
+        assert(cell.phase==PreMigrate || cell.phase==SharingAndForcing);
 
         auto resident=make_bag_wrapper(cell.resident);
         auto migrate_outgoing=make_bag_wrapper(cell.migrate_outgoing);
+
+        if(cell.steps_todo==0){
+            cell.outputs_todo=resident.size();
+            cell.phase=Outputting;
+            cell.rts=cell.outputs_todo>0 ? RTS_FLAG_output : 0;
+            return true;
+        }
+        cell.steps_todo -= 1;
 
         make_bag_wrapper(cell.cached_bonds).clear();
 
@@ -513,6 +515,17 @@ struct BasicDPDEngineV5RawHandlers
                 vec3_add(b.f, incoming.f);
             }
         }
+    }
+
+    static void on_send_output(device_state_t &cell, raw_bead_resident_t &outgoing)
+    {
+        assert(cell.phase == Outputting);
+        assert(cell.steps_todo==0 && cell.outputs_todo>0);
+        
+        cell.outputs_todo--;
+        copy_bead_resident(&outgoing, &cell.resident.elements[cell.outputs_todo]);
+
+        cell.rts=cell.outputs_todo==0 ? 0 : RTS_FLAG_output;
     }
 
 };

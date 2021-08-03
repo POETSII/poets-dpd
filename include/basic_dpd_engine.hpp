@@ -47,6 +47,17 @@ private:
     friend class BasicDPDEngineV4Raw;
     friend class BasicDPDEngineV5Raw;
 
+    static uint32_t make_bead_id(bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
+    {
+        uint32_t bead_id;
+        if(is_monomer){
+            assert(polymer_offset==0);
+            bead_id = 0x8000'0000 | (polymer_id<<4) | bead_type;
+        }else{
+            bead_id = (polymer_offset<<24) | (polymer_id<<4) | bead_type;
+        }
+        return bead_id;
+    }
     struct bead_id_t
     {
         /*  1ppp pppp pppp pppp  pppp pppp pppp bbbb
@@ -62,14 +73,14 @@ private:
         */
         uint32_t bead_id;
 
+        void operator=(uint32_t x)
+        {
+            bead_id=x;
+        }
+
         void set_bead_id(bool _is_monomer, uint32_t polymer_id, uint32_t polymer_offset, uint32_t bead_type)
         {
-            if(_is_monomer){
-                assert(polymer_offset==0);
-                bead_id = 0x8000'0000 | (polymer_id<<4) | bead_type;
-            }else{
-                bead_id = (polymer_offset<<24) | (polymer_id<<4) | bead_type;
-            }
+            bead_id=make_bead_id(_is_monomer, polymer_id, polymer_offset, bead_type);
             assert(is_monomer() == _is_monomer);
             assert(polymer_id == get_polymer_id());
             assert(is_monomer() ? polymer_offset==0 : polymer_offset == get_polymer_offset());
@@ -101,7 +112,6 @@ private:
 
     };
     static_assert(sizeof(bead_id_t)==4);
-
 
     struct bead_view_t
     {
@@ -291,14 +301,69 @@ private:
         return x[0] + m_box[0]*x[1] + m_box[0]*m_box[1]*x[2];
     }
 
+
+
+    template<class TBeadResident>
+    void import_bead(TBeadResident &bb, const Bead &b)
+    {
+        const PolymerType &pt = m_state->polymer_types.at(b.polymer_type);
+        bool is_monomer=pt.bead_types.size()==1;
+
+        bb.id=make_bead_id(is_monomer, b.polymer_id, b.polymer_offset, b.bead_type);
+        vec3_copy(bb.x, b.x);
+        vec3_copy(bb.v, b.v);
+        vec3_copy(bb.f, b.f);
+        for(int i=0; i<MAX_BONDS_PER_BEAD; i++){
+            bb.bond_partners[i]=-1;
+        }
+        for(int i=0; i<MAX_ANGLE_BONDS_PER_BEAD; i++){
+            bb.angle_bonds[i].partner_head=-1;
+            bb.angle_bonds[i].partner_tail=-1;
+            bb.angle_bonds[i].kappa=0;
+        }
+
+        // Build up the bond info
+        if(!is_monomer){
+            int nbonds=0;
+            // TODO: this is slower than needed. Could be done once.
+            for(const auto &bond : pt.bonds){
+                if(bond.bead_offset_head==b.polymer_offset){
+                    bb.bond_partners[nbonds]=bond.bead_offset_tail;
+                    nbonds++;
+                }
+                if(bond.bead_offset_tail==b.polymer_offset){
+                    bb.bond_partners[nbonds]=bond.bead_offset_head;
+                    nbonds++;
+                }
+            }
+            require(nbonds <= MAX_BONDS_PER_BEAD, "Too many bonds per bead."); // Should already have been chcked.
+
+            int nangles=0;
+            for(const auto &bond_pair : pt.bond_pairs){
+                unsigned middle=pt.bonds[bond_pair.bond_offset_head].bead_offset_tail;
+                if(b.polymer_offset == middle){
+                    bb.angle_bonds[nangles].partner_head=pt.bonds[bond_pair.bond_offset_head].bead_offset_head;
+                    bb.angle_bonds[nangles].partner_tail=pt.bonds[bond_pair.bond_offset_tail].bead_offset_tail;
+                    bb.angle_bonds[nangles].kappa=(unsigned)bond_pair.kappa;
+                    bb.angle_bonds[nangles]._pad_=0;
+                    require(bond_pair.theta0==0, "Assume straight bonds."); // Should have been checked earlier
+                    nangles++;
+                }
+            }
+            require(nangles <= MAX_ANGLE_BONDS_PER_BEAD, "Too many angles per bead."); // Should already have been chcked.
+        }
+    }
+
+    void require(bool cond, const char *msg)
+    {
+        if(!cond){
+            throw std::string(msg);
+        }
+    };
+
     void check_constraints_and_setup()
     {
-        auto require=[](bool cond, const char *msg)
-        {
-            if(!cond){
-                throw std::string(msg);
-            }
-        };
+        
 
         require( m_state, "No state" );
         for(unsigned i=0; i<3; i++){
@@ -374,58 +439,11 @@ private:
         }
 
         for(const auto &b : m_state->beads){
-            const PolymerType &pt = m_state->polymer_types.at(b.polymer_type);
-            bool is_monomer=pt.bead_types.size()==1;
-
+            bead_resident_t bb;
+            import_bead(bb, b);
             vec3i_t cell_location=floor(b.x);
             unsigned cell_index=cell_location_to_cell_index(cell_location);
-            cell_t &cell = m_cells.at(cell_index);
-            bead_resident_t bb;
-            bb.id.set_bead_id(is_monomer, b.polymer_id, b.polymer_offset, b.bead_type);
-            bb.x=vec3f_t(b.x);
-            bb.v=vec3f_t(b.v);
-            bb.f=vec3f_t(b.f);
-            for(int i=0; i<MAX_BONDS_PER_BEAD; i++){
-                bb.bond_partners[i]=-1;
-            }
-            for(int i=0; i<MAX_ANGLE_BONDS_PER_BEAD; i++){
-                bb.angle_bonds[i].partner_head=-1;
-                bb.angle_bonds[i].partner_tail=-1;
-                bb.angle_bonds[i].kappa=0;
-            }
-
-            // Build up the bond info
-            if(!is_monomer){
-                int nbonds=0;
-                // TODO: this is slower than needed. Could be done once.
-                for(const auto &bond : pt.bonds){
-                    if(bond.bead_offset_head==b.polymer_offset){
-                        bb.bond_partners[nbonds]=bond.bead_offset_tail;
-                        nbonds++;
-                    }
-                    if(bond.bead_offset_tail==b.polymer_offset){
-                        bb.bond_partners[nbonds]=bond.bead_offset_head;
-                        nbonds++;
-                    }
-                }
-                require(nbonds <= MAX_BONDS_PER_BEAD, "Too many bonds per bead."); // Should already have been chcked.
-
-                int nangles=0;
-                for(const auto &bond_pair : pt.bond_pairs){
-                    unsigned middle=pt.bonds[bond_pair.bond_offset_head].bead_offset_tail;
-                    if(b.polymer_offset == middle){
-                        bb.angle_bonds[nangles].partner_head=pt.bonds[bond_pair.bond_offset_head].bead_offset_head;
-                        bb.angle_bonds[nangles].partner_tail=pt.bonds[bond_pair.bond_offset_tail].bead_offset_tail;
-                        bb.angle_bonds[nangles].kappa=(unsigned)bond_pair.kappa;
-                        bb.angle_bonds[nangles]._pad_=0;
-                        require(bond_pair.theta0==0, "Assume straight bonds."); // Should have been checked earlier
-                        nangles++;
-                    }
-                }
-                require(nangles <= MAX_ANGLE_BONDS_PER_BEAD, "Too many angles per bead."); // Should already have been chcked.
-            }
-
-            cell.beads.push_back(bb);
+            m_cells.at(cell_index).beads.push_back(bb);
         }
     }
 
