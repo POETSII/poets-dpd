@@ -5,6 +5,8 @@
 
 #ifndef TINSEL
 #include "POLiteSWSim_PGraph.h"
+#include <iostream>
+#include <unistd.h>
 #endif
 
 #include "POLiteHW.h"
@@ -120,10 +122,22 @@ public:
           Message    // Message
         >;
 
+#ifndef TINSEL
+    std::shared_ptr<typename Impl::HostLink> m_hostlink;
+
+    BasicDPDEngineV5RawTinsel()
+    {
+        std::cerr<<"Construct\n";
+    }
+
     std::vector<raw_bead_resident_t> step_all(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map) override
     {
-        typename Impl::HostLink hostlink;
+        if(!m_hostlink){
+            std::cerr<<"Opening hostlink\n";
+            m_hostlink = std::make_shared<typename Impl::HostLink>();
+        }
 
+        std::cerr<<"Building graph\n";
         typename Impl::template PGraph<Device, State, None, Message> graph;
 
         for(unsigned i=0; i<states.size(); i++){
@@ -164,20 +178,34 @@ public:
         std::vector<raw_bead_resident_t> outputs;
         outputs.reserve(nBeads);
 
-        graph.write(&hostlink);
+        std::cerr<<"Writing graph\n";
+        graph.write(m_hostlink.get());
 
-        hostlink.boot("dpd_engine_v5_raw_tinsel.code.v", "dpd_engine_v5_raw_tinsel.data.v");
-        hostlink.go();
+        std::cerr<<"Booting\n";
+        m_hostlink->boot("bin/engines/basic_dpd_engine_v5_raw_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v5_raw_tinsel_hw.riscv.data.v");
+        std::cerr<<"Go\n";
+        m_hostlink->go();
 
         
+        std::cerr<<"Waiting for output\n";
         while(outputs.size() < nBeads){
+            while(m_hostlink->pollStdOut(stderr));
+
             typename Impl::template PMessage<Message> msg;
-            hostlink.recvMsg(&msg, sizeof(msg));
-            outputs.push_back(msg.payload.bead_resident);
+            if(m_hostlink->canRecv()){
+                m_hostlink->recvMsg(&msg, sizeof(msg));
+                outputs.push_back(msg.payload.bead_resident);
+                std::cerr<<"  got "<<outputs.size()<<" out of "<<nBeads<<"\n";
+            }else{
+                usleep(1);
+            }
         }
+
+        m_hostlink.reset();
 
         return outputs;
     }
+#endif
 
 
 };

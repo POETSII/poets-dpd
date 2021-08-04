@@ -72,6 +72,17 @@ void * memcpy ( void * destination, const void * source, size_t num )
     return destination;
 }
 
+inline int floor_nn(float x)
+{
+    // MASSIVE TODO : The round-to-even behaviour of tinsel is a problem here
+    int r=0;
+    while(x>=1.0f){
+        x=x-1;
+        r=r+1;
+    }
+    return r;
+}
+
 int main()
 {
   // Point thread structure at base of thread's heap

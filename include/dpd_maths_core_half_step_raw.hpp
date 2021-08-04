@@ -140,7 +140,7 @@ void calc_angle_force(
                 forceMag = forceMag*(cos_theta0 - sin_theta0*InvPrefactor);
             }
         }else{
-            assert(sin_theta==0);
+            assert(sin_theta0==0);
         }
 
         //std::cerr<<"  kappa="<<kappa<<", cosPhiSq="<<cosPhiSq<<", forceMag="<<forceMag<<", maxProduct="<<magProduct<<"\n";

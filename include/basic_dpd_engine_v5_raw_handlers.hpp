@@ -95,7 +95,8 @@ struct BasicDPDEngineV5RawHandlers
         {
             uint8_t partner_head;
             uint8_t partner_tail;
-            uint8_t kappa;   // Kappa is just an integer. Typically this is quite small, e.g. 5 or 15. Should be less than 255
+            //This is signed because tinsel can only do int->float conversion. It cannot do unsigned->float
+            int8_t kappa;   // Kappa is just an integer. Typically this is quite small, e.g. 5 or 15. Should be less than 127
             uint8_t _pad_;
         }angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
     };
@@ -227,6 +228,9 @@ struct BasicDPDEngineV5RawHandlers
     static bool on_barrier_pre_migrate(device_state_t &cell)
     {
         assert(cell.phase==PreMigrate || cell.phase==SharingAndForcing);
+
+        //int tmp;
+        //printf("on_barrier_pre_migrate : %x, sp=%x\n", (unsigned)(intptr_t)&cell, (unsigned)(intptr_t)&tmp);
 
         auto resident=make_bag_wrapper(cell.resident);
         auto migrate_outgoing=make_bag_wrapper(cell.migrate_outgoing);

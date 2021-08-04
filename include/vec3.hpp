@@ -259,7 +259,7 @@ inline void vec3_floor(int32_t dst[3], const T x[3])
 // Does a floor with the pre-condition that x is non-negative
 template<class T>
 inline void vec3_floor_nn(int32_t dst[3], const T x[3])
-{ for(int i=0; i<3; i++){ assert(x[i]>=0); dst[i] = int32_t(x[i]); } }
+{ for(int i=0; i<3; i++){ assert(x[i]>=0); dst[i] = floor_nn(x[i]); } }
 
 template<class D, class T>
 inline void vec3_copy(D &dst, const T &src)

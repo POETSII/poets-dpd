@@ -59,5 +59,21 @@ inline double absolute(double x)
 { return fabs(x); }
 #endif
 
+inline int floor_nn(double x)
+#ifdef TINSEL
+;
+#else
+{ return (int)floor(x); }
+#endif
+
+inline int floor_nn(float x)
+#ifdef TINSEL
+;
+#else
+{ return (int)floor(x); }
+#endif
+
+
+
 
 #endif
