@@ -7,13 +7,13 @@ CPPFLAGS += -O3 -march=native
 #CPPFLAGS += -DNDEBUG=1
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
-POLITE_DIR = /mnt/c/UserData/dt10/external/POETS/tinsel
+TINSEL_ROOT = /mnt/c/UserData/dt10/external/POETS/tinsel
 
-CPPFLAGS += -I $(POLITE_DIR)/include
-CPPFLAGS += -I $(POLITE_DIR)/HostLink
-CPPFLAGS += -I $(POLITE_DIR)/apps/POLite/util/POLiteSWSim/include/POLite
+CPPFLAGS += -I $(TINSEL_ROOT)/include
+CPPFLAGS += -I $(TINSEL_ROOT)/HostLink
+CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 
-LDFLAGS += -L $(POLITE_DIR)/hostlink
+LDFLAGS += -L $(TINSEL_ROOT)/hostlink
 LDLIBS += -l:hostlink.a  -lmetis
 
 
@@ -25,7 +25,14 @@ TEST_BIN := bin/test_naive_engine \
 	bin/test_basic_engine_v3  bin/test_basic_engine_v3_diff \
 
 
+ENGINES := $(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp))
+
+
 all : $(TEST_BIN)
+
+ALL_ENGINE_OBJS := $(foreach e,$(ENGINES),obj/engines/$(e).o)
+
+all_engines : $(ALL_ENGINES_OBJS)
 
 test_results/%.txt : bin/%
 	mkdir -p test_results
@@ -36,24 +43,67 @@ test : $(patsubst bin/%,test_results/%.txt,$(TEST_BIN))
 
 
 obj/%.o : src/%.cpp
-	mkdir -p obj
+	mkdir -p obj/$(dir $*)
 	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
 
 src/%.S : src/%.cpp
 	mkdir -p obj
 	$(CXX) -S $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-RISCV_CXX = ../orchestrator_dependencies_7/riscv32-compile-driver/bin/riscv32-unknown-elf-g++
+RISCV_TOOLS = ../orchestrator_dependencies_7/riscv32-compile-driver/bin
 
 src/%.riscv.o : src/%.cpp
 	$(RISCV_CXX) -c -x c++ -I include -DTINSEL -Wdouble-promotion -DNDEBUG=1 -Os  -ffast-math -march=rv32imf -static -nostdlib -fwhole-program -g $< -o $@
 
-
 src/%.riscv : src/%.cpp
 	$(RISCV_CXX) -x c++ -I include -DTINSEL -Wdouble-promotion -DNDEBUG=1 -Os  -ffast-math -march=rv32imf -static -nostdlib -fwhole-program -g $< -o $@
 
+
+#############################################################
+## RISCV build stuff
+
+RV_TOOLS_DIR = ../orchestrator_dependencies_7/riscv32-compile-driver/bin
+
+# From tinsel/globals.mk
+RV_ARCH     = rv32imf
+RV_CC       = $(RV_TOOLS_DIR)/riscv32-unknown-elf-gcc
+RV_CPPC     = $(RV_TOOLS_DIR)/riscv32-unknown-elf-g++
+RV_LD       = $(RV_TOOLS_DIR)/riscv32-unknown-elf-ld
+RV_OBJCOPY  = $(RV_TOOLS_DIR)/riscv32-unknown-elf-objcopy
+RV_CFLAGS   = -mabi=ilp32 -march=$(RV_ARCH) -static -mcmodel=medany \
+              -fvisibility=hidden -nostdlib -nostartfiles \
+              -fsingle-precision-constant -fno-builtin-printf \
+              -ffp-contract=off -fno-builtin -ffreestanding
+
+# from POLite/utils.mk
+RV_CFLAGS := $(RV_CFLAGS) -O2 -I  $(TINSEL_ROOT)/include
+RV_LDFLAGS = -melf32lriscv -G 0 
+
+RV_CFLAGS := $(RV_CFLAGS) -I include
+RV_CFLAGS := $(RV_CFLAGS) -std=c++17 -DNDEBUG=1 -fwhole-program -Wdouble-promotion -g
+
+obj/engines/link.riscv.ld :
+	TINSEL_ROOT=$(TINSEL_ROOT) \
+    $(TINSEL_ROOT)/apps/POLite/util/genld.sh > $@ 
+
+obj/engines/entry.riscv.o :
+	$(RV_CPPC) $(RV_CFLAGS) -W -Wall -c -o $@ $(TINSEL_ROOT)/apps/POLite/util/entry.S
+
+obj/engines/%.riscv.o : src/engines/%.riscv.cpp
+	mkdir -p obj/engines
+	$(RV_CPPC) $(RV_CFLAGS) -W -Wall -c -DTINSEL -o $@  src/engines/$*.riscv.cpp
+
+bin/engines/%.riscv.elf : obj/engines/%.riscv.o obj/engines/entry.riscv.o obj/engines/link.riscv.ld
+	mkdir -p bin/engines
+	$(RV_LD) $(RV_LDFLAGS) -T src/engines/link.riscv.ld -o $@ obj/engines/entry.riscv.o obj/engines/$*.riscv.o $(TINSEL_ROOT)/lib/lib.o
+
+
+###############################################################
+
 bin/% : obj/%.o
 	mkdir -p bin
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 bin/test_hash : LDLIBS += -ltestu01
+
+bin/test_engine_diff : $(ALL_ENGINE_OBJS)
