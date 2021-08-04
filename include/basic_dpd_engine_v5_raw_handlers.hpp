@@ -21,10 +21,15 @@ struct BasicDPDEngineV5RawHandlers
 
     enum OutputFlags
     {
-        RTS_FLAG_migrate = 0x1,
-        RTS_FLAG_share = 0x2,
-        RTS_FLAG_force = 0x4,
-        RTS_FLAG_output = 0x8
+        RTS_INDEX_migrate=0,
+        RTS_INDEX_share=1,
+        RTS_INDEX_force=2,
+        RTS_INDEX_output=3,
+
+        RTS_FLAG_migrate = 1<<RTS_INDEX_migrate,
+        RTS_FLAG_share = 1<<RTS_INDEX_share,
+        RTS_FLAG_force = 1<<RTS_INDEX_force,
+        RTS_FLAG_output = 1<<RTS_INDEX_output
     };
 
     enum Phase
@@ -153,10 +158,10 @@ struct BasicDPDEngineV5RawHandlers
     {
 
         int32_t box[3];
-        float dt=nanf("");
-        float inv_root_dt=nanf("");
-        float bond_r0 = nanf("");
-        float bond_kappa = nanf("");
+        float dt;
+        float inv_root_dt;
+        float bond_r0;
+        float bond_kappa;
         float conservative[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
         float sqrt_dissipative;
         uint64_t t_hash;

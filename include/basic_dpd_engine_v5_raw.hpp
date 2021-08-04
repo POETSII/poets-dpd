@@ -30,7 +30,7 @@ public:
 
     using Handlers = BasicDPDEngineV5RawHandlers;
 
-
+    using OutputFlags = Handlers::OutputFlags;
     using raw_bead_view_t = Handlers::raw_bead_view_t;
     using raw_angle_bond_info_t = Handlers::raw_angle_bond_info_t;
     using raw_bead_resident_t = Handlers::raw_bead_resident_t;
@@ -172,7 +172,7 @@ public:
         }
     }
 
-    std::vector<raw_bead_resident_t> step_all(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map)
+    virtual std::vector<raw_bead_resident_t> step_all(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map)
     {
         std::vector<message_t> messages;
         std::vector<message_t> messages_next;

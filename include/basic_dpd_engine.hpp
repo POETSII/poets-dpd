@@ -260,7 +260,7 @@ public:
         export_beads();
     }
 
-private:
+protected:
     WorldState *m_state;
 
     unsigned m_numBeadTypes;
