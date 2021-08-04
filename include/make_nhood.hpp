@@ -3,6 +3,7 @@
 
 #include <vec3.hpp>
 #include <vector>
+#include <unordered_set>
 
 enum struct NHoodType
 {

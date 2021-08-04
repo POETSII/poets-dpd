@@ -10,6 +10,7 @@
 #include <cassert>
 #include <cmath>
 #include <array>
+#include <cfloat>
 
 
 /*
@@ -87,7 +88,7 @@ private:
         }
 
         m_numBeadTypes=m_state->bead_types.size();
-        m_inv_root_dt=1.0/sqrt(m_state->dt);
+        m_inv_root_dt=recip_pow_half(m_state->dt);
     }
 
     unsigned calc_num_cells() const
@@ -274,7 +275,7 @@ private:
             vec3r_t f;
             if(dr < 1 && dr>=0.000000001){
                 dpd_maths_core::calc_force(
-                    (m_state->lambda * m_state->dt), (1.0/sqrt(m_state->dt)),
+                    (m_state->lambda * m_state->dt), (recip_pow_half(m_state->dt)),
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].dissipative; },
                     m_t_hash,
@@ -319,7 +320,7 @@ private:
 
         double dissForce = -gammap*rdotv;
         double u = RandSym(hb->get_hash_code(), ob->get_hash_code());
-		double randForce = sqrt(gammap) * (1.0/sqrt(m_state->dt)) * u;
+		double randForce = pow_half(gammap) * (recip_pow_half(m_state->dt)) * u;
 
         double scaled_force = (conForce + dissForce + randForce) * inv_dr;
 
@@ -432,7 +433,7 @@ private:
                 double forceMag = 0.0;
 
                 // Check that the bond angle is not exactly 90 deg but allow the cosine to be < 0
-                if(fabs(b1Dotb2) > 0.000001)
+                if(absolute(b1Dotb2) > 0.000001)
                 {
                     double Prefactor = sqrt(1.0/cosPhiSq - 1.0);
                     Prefactor = std::max(Prefactor, 0.000001);

@@ -52,7 +52,7 @@ b ^= (a>>16);
 
 
 
-uint64_t next_t_hash(uint64_t &seed)
+inline uint64_t next_t_hash(uint64_t &seed)
 {
     seed += 0x9E3779B97F4A7C15ull;
     return riscv_mix64_m2(seed) | 0x0000000100000001ull;

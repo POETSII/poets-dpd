@@ -5,27 +5,10 @@
 #include "vec3.hpp"
 #include "hash.hpp"
 
+#include "dpd_maths_primitives.hpp"
+
 namespace dpd_maths_core
 {
-
-    double half(double x)
-    { return x*0.5; }
-
-    float half(float x)
-    { return x*0.5f; }
-
-    double recip(double x)
-    { return 1.0/x; }
-
-    float recip(float x)
-    { return 1.0f/x; }
-
-    double recip_sqrt(double x)
-    { return 1.0/sqrt(x); }
-
-    float recip_sqrt(float x)
-    { return 1.0f/sqrtf(x); }
-
 
 
 struct bead_concept_t
@@ -57,13 +40,13 @@ namespace detail
     }
 };
 
-inline double default_hash(uint64_t base, uint32_t s1, uint32_t s2)
+inline float default_hash(uint64_t base, uint32_t s1, uint32_t s2)
 {
     uint32_t ru=hash_rng_sym(base, s1, s2);
     int32_t rs=detail::uint32_to_int32(ru);  // in [-2^31,2^31)
-    //const double scale=ldexp(2.0,-32) / sqrt(1/3.0); // gives stddev of 1 (same as groot-warren paper)
-    const double scale=ldexp(2.0, -32); // Gives range of [-0.5,0.5]  (same as Osprey-DPD)
-    double u = rs * scale; 
+    //const double scale=ldexp(1.0,-32) / sqrt(1/3.0); // gives stddev of 1 (same as groot-warren paper)
+    const float scale=0.00000000023283064365386962890625f; // Gives range of [-0.5,0.5]  (same as Osprey-DPD)
+    float u = rs * scale; 
     /*
     static double u_sum_sqr=0, u_sum=0;
     static unsigned u_count=0;
@@ -151,7 +134,7 @@ void calc_force(
 
     TScalar dissForce = -gammap*rdotv;
     TScalar u = default_hash(t_hash, home.get_hash_code(), other.get_hash_code());
-    TScalar randForce = sqrt(gammap) * inv_sqrt_dt * u;
+    TScalar randForce = pow_half(gammap) * inv_sqrt_dt * u;
 
     TScalar scaled_force = (conForce + dissForce + randForce) * inv_dr;
 
@@ -200,8 +183,8 @@ void calc_angle_force(
         TScalar forceMag = kappa/magProduct;
 
         // Check that the bond angle is not exactly 90 deg but allow the cosine to be < 0
-        if(fabs(b1Dotb2) > TScalar(0.000001) && sin_theta0>0){
-            TScalar InvPrefactor = recip_sqrt(recip(cosPhiSq) - 1);
+        if(absolute(b1Dotb2) > TScalar(0.000001) && sin_theta0>0){
+            TScalar InvPrefactor = recip_pow_half(recip(cosPhiSq) - 1);
 
             // Add the restoring force if there is a preferred angle
             forceMag = forceMag*(cos_theta0 - sin_theta0*InvPrefactor);

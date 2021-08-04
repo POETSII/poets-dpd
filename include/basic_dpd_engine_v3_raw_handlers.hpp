@@ -336,7 +336,7 @@ struct BasicDPDEngineV3RawHandlers
             if(dr_sqr >=1 || dr_sqr < 1e-5){ // The min threshold avoid large forces, and also skips self-interaction
                 continue;
             }
-            float dr=sqrt(dr_sqr);
+            float dr=pow_half(dr_sqr);
 
             bool is_bonded=false;
             float kappa=0.0f;
@@ -421,7 +421,7 @@ struct BasicDPDEngineV3RawHandlers
 
                 float headForce[3], middleForce[3], tailForce[3];
 
-                dpd_maths_core_half_step_raw::calc_angle_force<float,float[3],float[3]>(
+                dpd_maths_core_half_step_raw::calc_angle_force<true,float,float[3],float[3]>(
                     (float)bead.angle_bonds[i].kappa, 0.0f, 0.0f,
                     first, FirstLength,
                     second, SecondLength,

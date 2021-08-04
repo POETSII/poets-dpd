@@ -1,0 +1,4 @@
+[submodule "tinsel"]
+	path = tinsel
+	url = git@github.com:POETSII/tinsel.git
+	branch = dt10_polite_as_type

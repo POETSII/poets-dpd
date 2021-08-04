@@ -72,7 +72,7 @@ public:
 
             m_box.extract(dst.box);
             dst.dt=m_state->dt;
-            dst.inv_root_dt=1.0f/sqrtf(m_state->dt);
+            dst.inv_root_dt=recip_pow_half(m_state->dt);
             dst.bond_r0=m_bond_r0;
             dst.bond_kappa=m_bond_kappa;
             for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -80,7 +80,7 @@ public:
                     dst.conservative[i*MAX_BEAD_TYPES+j]=m_state->interactions[i*m_state->bead_types.size()+j].conservative;
                 }
             }
-            dst.sqrt_dissipative=sqrt(m_state->interactions[0].dissipative);
+            dst.sqrt_dissipative=pow_half(m_state->interactions[0].dissipative);
             dst.t_hash = m_t_hash;
             dst.t_seed = m_state->seed;
             src.location.extract(dst.location);

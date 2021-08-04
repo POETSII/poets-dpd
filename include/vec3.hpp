@@ -10,6 +10,8 @@
 #include <sstream>
 #endif
 
+#include "dpd_maths_primitives.hpp"
+
 template<class T>
 struct vec3g_t
 {
@@ -48,7 +50,8 @@ struct vec3g_t
     T &operator[](size_t i)
     { return x[i]; }
 
-    void extract(T dst[3]) const
+    template<class TT>
+    void extract(TT dst[3]) const
     {
         std::copy(x.begin(), x.end(), dst);
     }
@@ -118,7 +121,7 @@ struct vec3g_t
 
     T l2_norm() const
     {
-        return sqrt(x[0]*x[0] + x[1]*x[1] + x[2] * x[2]);
+        return pow_half(x[0]*x[0] + x[1]*x[1] + x[2] * x[2]);
     }
 };
 
@@ -134,7 +137,7 @@ using vec3r_t = vec3g_t<double>;
 using vec3f_t = vec3g_t<float>;
 using vec3i_t = vec3g_t<int>;
 
-vec3r_t normalise(const vec3r_t &x)
+inline vec3r_t normalise(const vec3r_t &x)
 {
     double r=x.l2_norm();
     if(r==0){
@@ -144,17 +147,17 @@ vec3r_t normalise(const vec3r_t &x)
     }
 }
 
-bool isfinite(const vec3r_t &x)
+inline bool isfinite(const vec3r_t &x)
 {
     return std::isfinite(x[0]) && std::isfinite(x[1]) && std::isfinite(x[2]);
 }
 
-bool isfinite(const vec3f_t &x)
+inline bool isfinite(const vec3f_t &x)
 {
     return std::isfinite(x[0]) && std::isfinite(x[1]) && std::isfinite(x[2]);
 }
 
-double angle(const vec3r_t &a, const vec3r_t &b)
+inline double angle(const vec3r_t &a, const vec3r_t &b)
 {
     double dot=a.dot(b);
     double l1=a.l2_norm();
@@ -166,12 +169,12 @@ double angle(const vec3r_t &a, const vec3r_t &b)
     return res;
 }
 
-vec3i_t floor(const vec3r_t &x)
+inline vec3i_t floor(const vec3r_t &x)
 {
     return {(int)std::floor(x[0]),(int)std::floor(x[1]),(int)std::floor(x[2])}; 
 }
 
-vec3i_t floor(const vec3f_t &x)
+inline vec3i_t floor(const vec3f_t &x)
 {
     return {(int)std::floor(x[0]),(int)std::floor(x[1]),(int)std::floor(x[2])}; 
 }
@@ -180,7 +183,7 @@ vec3i_t floor(const vec3f_t &x)
 Wraps a vector into the range [0,bounds) in each dimension.
 */
 template<class T>
-vec3g_t<T> vec_wrap(const vec3g_t<T> &x, const vec3g_t<T> &bounds)
+inline vec3g_t<T> vec_wrap(const vec3g_t<T> &x, const vec3g_t<T> &bounds)
 {
     return {
         x[0] + ((x[0]<0) ? bounds[0] : 0) - (x[0]>=bounds[0] ? -bounds[0] : 0),
@@ -204,62 +207,62 @@ namespace std
 
 
 template<class T>
-void vec3_add(T x[3], const T y[3])
+inline void vec3_add(T x[3], const T y[3])
 { for(int i=0; i<3; i++){ x[i] += y[i]; } }
 
 template<class T>
-void vec3_add(T dst[3], const T x[3], const T y[3])
+inline void vec3_add(T dst[3], const T x[3], const T y[3])
 { for(int i=0; i<3; i++){ dst[i] = x[i] + y[i]; } }
 
 template<class T>
-void vec3_sub(T dst[3], const T x[3])
+inline void vec3_sub(T dst[3], const T x[3])
 { for(int i=0; i<3; i++){ dst[i] -= x[i]; } }
 
 template<class T>
-void vec3_sub(T dst[3], const T x[3], const T y[3])
+inline void vec3_sub(T dst[3], const T x[3], const T y[3])
 { for(int i=0; i<3; i++){ dst[i] = x[i] - y[i]; } }
 
 template<class T>
-void vec3_mul(T dst[3], T s)
+inline void vec3_mul(T dst[3], T s)
 { for(int i=0; i<3; i++){ dst[i] *= s; } }
 
 template<class T>
-void vec3_mul(T dst[3], const T x[3], T s)
+inline void vec3_mul(T dst[3], const T x[3], T s)
 { for(int i=0; i<3; i++){ dst[i] = x[i] * s; } }
 
 template<class T>
-void vec3_neg(T dst[3])
+inline void vec3_neg(T dst[3])
 { for(int i=0; i<3; i++){ dst[i] = -dst[i]; } }
 
 template<class T>
-void vec3_add_mul(T dst[3], const T x[3], T s)
+inline void vec3_add_mul(T dst[3], const T x[3], T s)
 { for(int i=0; i<3; i++){ dst[i] += x[i] * s; } }
 
 template<class T>
-T vec3_dot(const T x[3], const T y[3])
+inline T vec3_dot(const T x[3], const T y[3])
 { return x[0]*y[0] + x[1]*y[1] + x[2]*y[2]; }
 
 template<class T>
-T vec3_dot_self(const T x[3])
+inline T vec3_dot_self(const T x[3])
 { return x[0]*x[0] + x[1]*x[1] + x[2]*x[2]; }
 
 template<class T>
-T vec3_l2_norm(const T x[3])
+inline T vec3_l2_norm(const T x[3])
 {
-    return sqrt(vec3_dot_self(x));
+    return pow_half(vec3_dot_self(x));
 }
 
 template<class T>
-void vec3_floor(int32_t dst[3], const T x[3])
+inline void vec3_floor(int32_t dst[3], const T x[3])
 { for(int i=0; i<3; i++){ dst[i] = floor(x[i]); } }
 
 // Does a floor with the pre-condition that x is non-negative
 template<class T>
-void vec3_floor_nn(int32_t dst[3], const T x[3])
+inline void vec3_floor_nn(int32_t dst[3], const T x[3])
 { for(int i=0; i<3; i++){ assert(x[i]>=0); dst[i] = int32_t(x[i]); } }
 
 template<class D, class T>
-void vec3_copy(D &dst, const T &src)
+inline void vec3_copy(D &dst, const T &src)
 {
     for(unsigned i=0; i<3; i++){
         dst[i]=src[i];
@@ -267,13 +270,13 @@ void vec3_copy(D &dst, const T &src)
 }
 
 template<class T>
-bool vec3_equal(const T x[3], const T y[3])
+inline bool vec3_equal(const T x[3], const T y[3])
 {
     return x[0]==y[0] && x[1]==y[1] && x[2]==y[2];
 }
 
 template<class T>
-void vec3_clear(T x[3])
+inline void vec3_clear(T x[3])
 { for(int i=0; i<3; i++){ x[i]=0; } }
 
 

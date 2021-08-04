@@ -82,7 +82,7 @@ private:
         }
 
         m_numBeadTypes=m_state->bead_types.size();
-        m_inv_root_dt=1.0/sqrt(m_state->dt);
+        m_inv_root_dt=recip_pow_half(m_state->dt);
     }
 
     unsigned calc_num_cells() const
@@ -246,7 +246,7 @@ private:
                     continue;
                 }
 
-                double dr=sqrt(dr2);
+                double dr=pow_half(dr2);
 
                 double kappa,r0;
                 is_bonded(*hb, *ob, kappa, r0);
@@ -254,9 +254,9 @@ private:
                 vec3r_t f;
                 
                 dpd_maths_core_half_step::calc_force(
-                    (1.0/sqrt(m_state->dt)),
+                    (recip_pow_half(m_state->dt)),
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
-                    [&](unsigned a, unsigned b){ return sqrt(m_state->interactions[a*m_numBeadTypes+b].dissipative); },
+                    [&](unsigned a, unsigned b){ return pow_half(m_state->interactions[a*m_numBeadTypes+b].dissipative); },
                     m_t_hash,
                     dx, dr,
                     kappa, r0,

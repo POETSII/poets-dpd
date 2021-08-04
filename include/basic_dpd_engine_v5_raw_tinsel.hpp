@@ -3,7 +3,10 @@
 
 #include "basic_dpd_engine_v5_raw.hpp"
 
+#ifndef TINSEL
 #include "POLiteSWSim_PGraph.h"
+#endif
+
 #include "POLiteHW.h"
 
 template<class Impl = POLiteHW>
@@ -109,6 +112,13 @@ public:
         inline bool finish(BasicDPDEngineV5RawTinsel::Message volatile*)
         { return false; }
     };
+
+    using Thread = PThread<
+          Device,
+          State,     // State
+          None,         // Edge label
+          Message    // Message
+        >;
 
     std::vector<raw_bead_resident_t> step_all(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map) override
     {

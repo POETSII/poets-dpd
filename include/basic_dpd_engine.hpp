@@ -6,12 +6,14 @@
 #include "dpd_maths_core_half_step.hpp"
 
 #include "vec3.hpp"
+
 #include "make_nhood.hpp"
 
 #include <cassert>
 #include <cmath>
 #include <array>
 #include <cstdint>
+#include <math.h>
 
 
 
@@ -208,7 +210,7 @@ public:
 
         for(const auto &pt : state->polymer_types){
             for(const auto &b : pt.bonds){
-                if(isnanf(bond_kappa)){
+                if(isnan(bond_kappa)){
                     bond_kappa=b.kappa;
                     bond_r0=b.r0;
                 }else{
@@ -379,7 +381,7 @@ protected:
             std::vector<int> nbonds(pt.bead_types.size(), 0);
             for(const auto &bond : pt.bonds){
                 // This could both be changed, with a bit more state and work at run-time.
-                if(isnanf(m_bond_kappa)){
+                if(isnan(m_bond_kappa)){
                     m_bond_kappa=bond.kappa;
                     m_bond_r0=bond.r0;
                 }else{
@@ -409,10 +411,10 @@ protected:
         m_numBeadTypes=m_state->bead_types.size();
         m_interactions=m_state->interactions;
         for(auto &ii : m_interactions){
-            ii.dissipative=sqrt(ii.dissipative);
+            ii.dissipative=pow_half(ii.dissipative);
         }
         m_dt=m_state->dt;
-        m_inv_root_dt=1.0/sqrt(m_state->dt);
+        m_inv_root_dt=recip_pow_half(m_state->dt);
 
         m_cells.resize( m_box[0] * m_box[1] * m_box[2] );
         vec3i_t pos;
@@ -619,7 +621,7 @@ protected:
         if(dr_sqr >=1 || dr_sqr < 1e-5){ // The min threshold avoid large forces, and also skips self-interaction
             return false;
         }
-        float dr=sqrt(dr_sqr);
+        float dr=pow_half(dr_sqr);
 
         //std::cerr<<"dut : a="<<a.get_bead_id()<<", b="<<b.get_bead_id()<<", dx="<<dx<<"\n";
 

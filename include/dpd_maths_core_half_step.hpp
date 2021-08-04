@@ -8,10 +8,6 @@
 namespace dpd_maths_core_half_step
 {
 
-    using dpd_maths_core::half;
-    using dpd_maths_core::recip;
-    using dpd_maths_core::recip_sqrt;
-
     using dpd_maths_core::default_hash;
 
     // After this method b.f is dead
@@ -81,7 +77,7 @@ void calc_force(
 
     auto dv = home.v - other.v;
 
-    TScalar wr = (1.0 - dr);
+    TScalar wr = (TScalar(1) - dr);
         
     TScalar conForce = conStrength*wr;
 
@@ -136,8 +132,8 @@ void calc_angle_force(
         TScalar forceMag = kappa/magProduct;
 
         // Check that the bond angle is not exactly 90 deg but allow the cosine to be < 0
-        if(fabs(b1Dotb2) > 0.000001 && sin_theta0>0){
-            TScalar InvPrefactor = recip_sqrt(recip(cosPhiSq) - 1.0);
+        if(absolute(b1Dotb2) > TScalar(0.000001) && sin_theta0>0){
+            TScalar InvPrefactor = recip_pow_half(recip(cosPhiSq) - 1.0);
 
             // Add the restoring force if there is a preferred angle
             forceMag = forceMag*(cos_theta0 - sin_theta0*InvPrefactor);

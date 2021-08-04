@@ -3,6 +3,10 @@
 
 #include "dpd_state.hpp"
 
+#include <memory>
+#include <map>
+#include <functional>
+
 /*
 class EngineLog
 {
@@ -92,6 +96,51 @@ public:
     // An engine can reasonably assume that nSteps will be large
     // enough to ammortise any setup costs.
     virtual void Run(unsigned nSteps) =0;
+};
+
+class DPDEngineFactory
+{
+public:
+    using creator_func_t = std::function<std::shared_ptr<DPDEngine>()>;
+
+    static std::vector<std::string> ListFactories()
+    {
+        auto &m=get_map();
+        std::vector<std::string> res;
+        for(const auto &e : m){
+            res.push_back(e.first);
+        }
+        return res;
+    }
+    
+    static bool RegisterFactory(const std::string &name, creator_func_t func)
+    {
+        auto &m=get_map();
+        auto it=m.find(name);
+        if(it!=m.end()){
+            throw std::runtime_error("Duplicate DPD engines registered as '"+name+"'");
+        }
+        m.insert({name,func});
+        return true;
+    }
+
+    static std::shared_ptr<DPDEngine> create(const std::string &name)
+    {
+        auto &m=get_map();
+        auto it=m.find(name);
+        if(it==m.end()){
+            throw std::runtime_error("No DPD engine registered called '"+name+"'");
+        }
+        return it->second();
+    }
+private:
+    using factory_map=std::map<std::string,creator_func_t>;
+
+    static factory_map &get_map()
+    {
+        static factory_map the_map;
+        return the_map;
+    }
 };
 
 #endif

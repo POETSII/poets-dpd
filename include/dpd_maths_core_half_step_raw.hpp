@@ -8,10 +8,6 @@
 namespace dpd_maths_core_half_step_raw
 {
 
-    using dpd_maths_core::half;
-    using dpd_maths_core::recip;
-    using dpd_maths_core::recip_sqrt;
-
     using dpd_maths_core::default_hash;
 
     // After this method b.f is dead
@@ -102,12 +98,12 @@ void calc_force(
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
     //std::cerr<<"  DUT: home="<<home_hash<<", other="<<other_hash<<", t_hash="<<t_hash<<", dx=("<<(dx[0]*dr)<<","<<(dx[1]*dr)<<","<<(dx[2]*dr)<<"), r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook="<<hookeanForce<<"\n";
-    //std::cerr<<"     sqrt_gammap="<<sqrt_gammap<<", rdotv="<<rdotv<<", sqrt(dissStrength)="<<sqrtDissStrength<<"\n";
+    //std::cerr<<"     sqrt_gammap="<<sqrt_gammap<<", rdotv="<<rdotv<<", pow_half(dissStrength)="<<sqrtDissStrength<<"\n";
 
     vec3_mul(force_home, dx , scaled_force);
 }
 
-template<class TScalar, class TVector, class TForce>
+template<bool AlwaysStraight, class TScalar, class TVector, class TForce>
 void calc_angle_force(
     TScalar kappa,
     TScalar cos_theta0,
@@ -135,12 +131,16 @@ void calc_angle_force(
 
         TScalar forceMag = kappa/magProduct;
 
-        // Check that the bond angle is not exactly 90 deg but allow the cosine to be < 0
-        if(fabsf(b1Dotb2) > TScalar(0.000001) && sin_theta0>0){
-            TScalar InvPrefactor = recip_sqrt(recip(cosPhiSq) - TScalar(1));
+        if(!AlwaysStraight){
+            // Check that the bond angle is not exactly 90 deg but allow the cosine to be < 0
+            if(absolute(b1Dotb2) > TScalar(0.000001) && sin_theta0>0){
+                TScalar InvPrefactor = recip_pow_half(recip(cosPhiSq) - TScalar(1));
 
-            // Add the restoring force if there is a preferred angle
-            forceMag = forceMag*(cos_theta0 - sin_theta0*InvPrefactor);
+                // Add the restoring force if there is a preferred angle
+                forceMag = forceMag*(cos_theta0 - sin_theta0*InvPrefactor);
+            }
+        }else{
+            assert(sin_theta==0);
         }
 
         //std::cerr<<"  kappa="<<kappa<<", cosPhiSq="<<cosPhiSq<<", forceMag="<<forceMag<<", maxProduct="<<magProduct<<"\n";
