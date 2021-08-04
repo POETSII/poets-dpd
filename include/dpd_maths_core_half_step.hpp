@@ -72,8 +72,8 @@ void calc_force(
     auto home_bead_type=home.get_bead_type();
     auto other_bead_type=other.get_bead_type();
         
-    auto conStrength=conservative(home_bead_type, other_bead_type);
-    auto sqrtDissStrength=sqrt_dissipative(home_bead_type, other_bead_type); // This might be a constant
+    auto conStrength=(TScalar)conservative(home_bead_type, other_bead_type);
+    auto sqrtDissStrength=(TScalar)sqrt_dissipative(home_bead_type, other_bead_type); // This might be a constant
 
     auto dv = home.v - other.v;
 

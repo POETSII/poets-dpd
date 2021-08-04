@@ -48,6 +48,7 @@ private:
     friend class BasicDPDEngineV3Raw;
     friend class BasicDPDEngineV4Raw;
     friend class BasicDPDEngineV5Raw;
+    friend class BasicDPDEngineV6Raw;
 
     static uint32_t make_bead_id(bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
     {

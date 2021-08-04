@@ -11,6 +11,7 @@
 #include <cmath>
 #include <array>
 #include <cfloat>
+#include <iostream>
 
 
 /*
@@ -247,7 +248,7 @@ private:
         uint32_t ru=hash_rng_sym(m_t_hash, s1,s2);
         int32_t rs=uint32_to_int32(ru);  // in [-2^31,2^31)
         //const double scale=ldexp(2.0,-32) / sqrt(1/3.0); // gives stddev of 1 (same as groot-warren paper)
-        const double scale=ldexp(2.0, -32); // Gives range of [-0.5,0.5]  (same as Osprey-DPD)
+        const double scale=ldexp(1.0, -32); // Gives range of [-0.5,0.5]  (same as Osprey-DPD)
         double u = rs * scale; 
         /*
         static double u_sum_sqr=0, u_sum=0;

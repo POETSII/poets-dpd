@@ -147,8 +147,8 @@ public:
         m_prev_dist=dist;
 
         if(s.t < 20){
-            m_steps_done += 1;
-            return 1;
+            m_steps_done += m_step_dist;
+            return m_step_dist++;
         }else{
             //std::cerr<<"# t="<<s.t<<", dist="<<dist<<", equib="<<m_r_equilibrium<<", mean="<<m_sum_dist/m_count_dist<<"\n";
             double mean_dist=m_sum_dist / m_count_dist;

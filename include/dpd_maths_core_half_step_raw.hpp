@@ -5,6 +5,10 @@
 
 #include "hash.hpp"
 
+#ifndef TINSEL
+#include <iostream>
+#endif
+
 namespace dpd_maths_core_half_step_raw
 {
 
@@ -97,8 +101,10 @@ void calc_force(
 
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
+#ifndef TINSEL
     //std::cerr<<"  DUT: home="<<home_hash<<", other="<<other_hash<<", t_hash="<<t_hash<<", dx=("<<(dx[0]*dr)<<","<<(dx[1]*dr)<<","<<(dx[2]*dr)<<"), r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook="<<hookeanForce<<"\n";
     //std::cerr<<"     sqrt_gammap="<<sqrt_gammap<<", rdotv="<<rdotv<<", pow_half(dissStrength)="<<sqrtDissStrength<<"\n";
+#endif
 
     vec3_mul(force_home, dx , scaled_force);
 }

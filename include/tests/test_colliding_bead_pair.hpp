@@ -158,7 +158,7 @@ public:
 
         if(m_reversals < 4){
             m_steps_done += m_step_dist;
-            return 1;
+            return m_step_dist;
         }else{
             return 0;
         }
