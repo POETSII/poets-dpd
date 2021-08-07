@@ -96,6 +96,36 @@ public:
     // An engine can reasonably assume that nSteps will be large
     // enough to ammortise any setup costs.
     virtual void Run(unsigned nSteps) =0;
+
+    // Run the world state for a number of intervals of given
+    // size, with the callback called at the end of each interval.
+    // When the callback is invoked the world-state will be valid,
+    // though execution may still be proceeding in parallel.
+    // The callback should return true to continue execution, or
+    // false to terminate early
+    // Returns the number of steps actually completed.
+    // If interval_count is -1 then run for ever.
+    virtual unsigned Run(
+        int interval_count,
+        unsigned interval_size,
+        std::function<bool()> &interval_callback
+    ) {
+        unsigned done=0;
+        while(1){
+            if(interval_count==0){
+                break;
+            }
+            Run(interval_size);
+            done += interval_size;
+            if(!interval_callback()){
+                break;
+            }
+            if(interval_count>0){
+                --interval_count;
+            }
+        }
+        return done;
+    }
 };
 
 class DPDEngineFactory

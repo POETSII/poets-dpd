@@ -3,7 +3,7 @@
 #include <tinsel.h>
 #include <POLite.h>
 
-using Thread = typename BasicDPDEngineV5RawTinsel<POLiteHW>::Thread;
+using Thread = typename BasicDPDEngineV5RawTinsel<POLiteHW<>>::Thread;
 
 float absolute(float x)
 {

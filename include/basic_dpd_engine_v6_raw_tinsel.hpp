@@ -11,16 +11,19 @@
 
 #include "POLiteHW.h"
 
-template<class Impl = POLiteHW>
+template<class Impl = POLiteHW<2>>
 class BasicDPDEngineV6RawTinsel
     : public BasicDPDEngineV6Raw
 {
 public:
+    static_assert(Impl::NUM_PINS==2);
+
     using Handlers = BasicDPDEngineV6RawHandlers;
 
     using None = typename Impl::None;
 
     static constexpr auto NHoodPin = Impl::Pin(0);
+    static constexpr auto BeginPin = Impl::Pin(1);
 
 
     struct Message
@@ -30,6 +33,7 @@ public:
             raw_bead_resident_t bead_resident;
             raw_bead_view_t bead_view;
             raw_force_input_t force_input;
+            raw_begin_t begin;
         };
     };
 
@@ -49,6 +53,8 @@ public:
             auto rts=BasicDPDEngineV6RawHandlers::calc_rts(s->state);
             if(rts&OutputFlags::RTS_FLAG_output){
                 *readyToSend = Impl::HostPin;
+            }else if(rts&OutputFlags::RTS_FLAG_begin){
+                *readyToSend = BeginPin;
             }else if(rts){
                 *readyToSend = NHoodPin;
             }else{
@@ -87,6 +93,10 @@ public:
                 Handlers::on_send_output(s->state, (raw_bead_resident_t&)msg->bead_resident);
                 msg->type=OutputFlags::RTS_INDEX_output;
 
+            }else if(rts&OutputFlags::RTS_FLAG_begin){
+                Handlers::on_send_begin(s->state, (raw_begin_t&)msg->begin);
+                msg->type=OutputFlags::RTS_INDEX_begin;
+
             }else{
                 assert(false);
             }
@@ -103,6 +113,12 @@ public:
 
             }else if(msg->type==OutputFlags::RTS_INDEX_migrate){
                 Handlers::on_recv_migrate(s->state, msg->bead_resident);
+
+            }else if(msg->type==OutputFlags::RTS_INDEX_begin){
+                Handlers::on_recv_begin(s->state, msg->begin);
+
+            }else if(msg->type==OutputFlags::RTS_INDEX_output){
+                Handlers::on_recv_input(s->state, msg->bead_resident);
             
             }else{
                 assert(false);
@@ -115,11 +131,11 @@ public:
         { return false; }
     };
 
-    using Thread = PThread<
+    using Thread = typename Impl::template PThread<
           Device,
           State,     // State
           None,         // Edge label
-          Message    // Message
+          Message    // Message,
         >;
 
 #ifndef TINSEL
@@ -130,7 +146,12 @@ public:
         std::cerr<<"Construct\n";
     }
 
-    std::vector<raw_bead_resident_t> step_all(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map) override
+    std::vector<raw_bead_resident_t> step_all(
+        std::vector<device_state_t> &states,
+        std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map,
+        std::unordered_map<device_state_t*,std::vector<device_state_t*>> &begin_fanout_map,
+        std::vector<message_t> &messages
+    ) override
     {
         if(!m_hostlink){
             std::cerr<<"Opening hostlink\n";
@@ -155,14 +176,19 @@ public:
         };
 
         // Build up connectivity
-        // We only have two types of connectivity:
+        // We have three types of connectivity:
         // - HostPin : doing output (already setup)
         // - NHoodPin : sending to all neighbours including self
+        // - BeginPin : a spanning tree for starting each iteration off
         for(unsigned i=0; i<states.size(); i++){
             auto &s = states[i];
             for(auto nb : neighbour_map[&s]){
                 unsigned target=get_device_id(nb);
                 graph.addEdge(i, /*PinId*/0, target);
+            }
+            for(auto nb : begin_fanout_map[&s]){
+                unsigned target=get_device_id(nb);
+                graph.addEdge(i, /*PinId*/1, target);
             }
         }
 
@@ -186,6 +212,8 @@ public:
         std::cerr<<"Go\n";
         m_hostlink->go();
 
+        std::cerr<<"Sending inputs.\n";
+        m_hostlink->send(#HERE)
         
         std::cerr<<"Waiting for output\n";
         while(outputs.size() < nBeads){

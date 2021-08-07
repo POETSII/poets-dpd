@@ -28,6 +28,7 @@ TEST_BIN := bin/test_naive_engine \
 ENGINES := $(filter-out %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp)))
 ENGINES_RISCV := $(filter %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp)))
 
+ENGINES := $(filter-out basic_dpd_engine_v6_raw_tinsel_swsim,$(ENGINES))
 
 all : $(TEST_BIN)
 
@@ -116,3 +117,5 @@ bin/% : obj/%.o
 bin/test_hash : LDLIBS += -ltestu01
 
 bin/test_engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+
+bin/benchmark_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)

@@ -11,7 +11,7 @@
 
 #include "POLiteHW.h"
 
-template<class Impl = POLiteHW>
+template<class Impl = POLiteHW<>>
 class BasicDPDEngineV5RawTinsel
     : public BasicDPDEngineV5Raw
 {
@@ -119,7 +119,8 @@ public:
           Device,
           State,     // State
           None,         // Edge label
-          Message    // Message
+          Message,    // Message
+          1
         >;
 
 #ifndef TINSEL

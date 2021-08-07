@@ -113,9 +113,6 @@ public:
 
         if(s.t < 20){
             m_steps_done += m_step_dist;
-            if(m_step_dist<0){
-                m_step_dist++;
-            }
             return m_step_dist;
         }else{
             //std::cerr<<"# t="<<s.t<<", dt="<<s.dt<<", dist="<<dist01+dist12<<", equib="<<2*m_r_equilibrium<<", mean="<<m_sum_dist/m_count_dist<<"\n";

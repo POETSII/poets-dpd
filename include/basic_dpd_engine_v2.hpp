@@ -59,7 +59,7 @@ private:
         }
     }
 
-    void on_barrier_pre_share(cell_t &c)
+    void on_barrier_pre_share(cell_t &)
     {}
 
     void on_send_share(cell_t &cell, std::vector<bead_view_t> &outgoing)
