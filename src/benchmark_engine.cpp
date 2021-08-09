@@ -71,6 +71,11 @@ int main(int argc, const char *argv[])
         usage();
     }
 
+    int nStart=1;
+    if(argc>3){
+        nStart=std::stoi(argv[3]);
+    }
+
     WorldState state;
 
     if(mode.substr(0,7)=="uniform"){
@@ -87,7 +92,7 @@ int main(int argc, const char *argv[])
 
     int volume=state.box[0]*state.box[1]*state.box[2];
 
-    for(int todo=1; todo<1000; todo=std::max(2,todo*3/2)){
+    for(int todo=nStart; todo<1000000; todo=std::max(2,todo*3/2)){
         double t0=now();
 
         engine->Attach(&state);

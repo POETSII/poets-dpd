@@ -3,7 +3,7 @@ CPPFLAGS += -Wno-unused-variable -fmax-errors=2
 CPPFLAGS += -fopenmp
 #LDFLAGS += -fuse-ld=gold -pthread
 
-CPPFLAGS += -O3 -march=native
+#CPPFLAGS += -O3 -march=native
 #CPPFLAGS += -DNDEBUG=1
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
@@ -79,11 +79,11 @@ RV_CFLAGS   = -mabi=ilp32 -march=$(RV_ARCH) -static -mcmodel=medany \
               -ffp-contract=off -fno-builtin -ffreestanding
 
 # from POLite/utils.mk
-RV_CFLAGS := $(RV_CFLAGS) -O2 -I  $(TINSEL_ROOT)/include
+RV_CFLAGS := $(RV_CFLAGS) -O3 -I  $(TINSEL_ROOT)/include
 RV_LDFLAGS = -melf32lriscv -G 0 
 
 RV_CFLAGS := $(RV_CFLAGS) -I include
-RV_CFLAGS := $(RV_CFLAGS) -std=c++17 -DNDEBUG=1 -fwhole-program -Wdouble-promotion -g
+RV_CFLAGS := $(RV_CFLAGS) -std=c++17 -DNDEBUG=1 -fwhole-program -Wdouble-promotion -g -ffast-math
 
 obj/engines/link.riscv.ld :
 	TINSEL_ROOT=$(TINSEL_ROOT) \

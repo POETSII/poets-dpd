@@ -125,10 +125,55 @@ public:
 
 #ifndef TINSEL
     std::shared_ptr<typename Impl::HostLink> m_hostlink;
+    std::shared_ptr<typename Impl::template PGraph<Device, State, None, Message>> m_graph;
 
     BasicDPDEngineV5RawTinsel()
     {
         std::cerr<<"Construct\n";
+    }
+
+    void Attach(WorldState *state) override
+    {
+        if(!m_hostlink){
+            std::cerr<<"Opening hostlink\n";
+            m_hostlink = std::make_shared<typename Impl::HostLink>();
+        }
+        BasicDPDEngineV5Raw::Attach(state);
+
+        std::cerr<<"Building graph\n";
+
+        m_graph=std::make_shared<typename Impl::template PGraph<Device, State, None, Message>>();
+        auto &graph=*m_graph;
+        
+
+        for(unsigned i=0; i<m_devices.size(); i++){
+            auto id=graph.newDevice();
+            if(id!=i){
+                throw std::logic_error("Device ids not sequentials.");
+            }
+        }
+        // PGraph ids are simply the index of the state in states
+        auto get_device_id=[&](const device_state_t *s)
+        {
+            size_t index=s-&m_devices[0];
+            assert(index<m_devices.size());
+            return index;
+        };
+
+        // Build up connectivity
+        // We only have two types of connectivity:
+        // - HostPin : doing output (already setup)
+        // - NHoodPin : sending to all neighbours including self
+        for(unsigned i=0; i<m_devices.size(); i++){
+            auto &s = m_devices[i];
+            for(auto nb : m_neighbour_map[&s]){
+                unsigned target=get_device_id(nb);
+                graph.addEdge(i, /*PinId*/0, target);
+            }
+        }
+
+        graph.map();
+
     }
 
     std::vector<raw_bead_resident_t> step_all(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map) override
@@ -138,36 +183,11 @@ public:
             m_hostlink = std::make_shared<typename Impl::HostLink>();
         }
 
-        std::cerr<<"Building graph\n";
-        typename Impl::template PGraph<Device, State, None, Message> graph;
+        auto &graph=*m_graph;
 
-        for(unsigned i=0; i<states.size(); i++){
-            auto id=graph.newDevice();
-            if(id!=i){
-                throw std::logic_error("Device ids not sequentials.");
-            }
-        }
-        // PGraph ids are simply the index of the state in states
-        auto get_device_id=[&](const device_state_t *s)
-        {
-            size_t index=s-&states[0];
-            assert(index<states.size());
-            return index;
-        };
-
-        // Build up connectivity
-        // We only have two types of connectivity:
-        // - HostPin : doing output (already setup)
-        // - NHoodPin : sending to all neighbours including self
-        for(unsigned i=0; i<states.size(); i++){
-            auto &s = states[i];
-            for(auto nb : neighbour_map[&s]){
-                unsigned target=get_device_id(nb);
-                graph.addEdge(i, /*PinId*/0, target);
-            }
-        }
-
-        graph.map();
+        unsigned nBeads=m_state->beads.size();
+        std::vector<raw_bead_resident_t> outputs;
+        outputs.reserve(nBeads);
 
         for(unsigned i=0; i<states.size(); i++){
             graph.devices[i]->state.state = states[i];
@@ -175,20 +195,25 @@ public:
             graph.devices[i]->state.state.t_seed = m_state->seed;
         }
 
-        unsigned nBeads=m_state->beads.size();
-        std::vector<raw_bead_resident_t> outputs;
-        outputs.reserve(nBeads);
-
-        std::cerr<<"Writing graph\n";
+        //std::cerr<<"Writing graph\n";
         graph.write(m_hostlink.get());
 
-        std::cerr<<"Booting\n";
+        //std::cerr<<"Booting\n";
         m_hostlink->boot("bin/engines/basic_dpd_engine_v5_raw_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v5_raw_tinsel_hw.riscv.data.v");
-        std::cerr<<"Go\n";
+        //std::cerr<<"Go\n";
         m_hostlink->go();
 
+        auto now=[]()
+        {
+            timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            return ts.tv_sec+1e-9*ts.tv_nsec;
+        };
+
         
-        std::cerr<<"Waiting for output\n";
+        //std::cerr<<"Waiting for output\n";
+        double tStart=now();
+        double tPrint=tStart+4;
         while(outputs.size() < nBeads){
             while(m_hostlink->pollStdOut(stderr));
 
@@ -196,8 +221,12 @@ public:
             if(m_hostlink->canRecv()){
                 m_hostlink->recvMsg(&msg, sizeof(msg));
                 outputs.push_back(msg.payload.bead_resident);
-                std::cerr<<"  got "<<outputs.size()<<" out of "<<nBeads<<"\n";
             }else{
+                double tNow=now();
+                if(tNow>tPrint){
+                    std::cerr<<"  got "<<outputs.size()<<" out of "<<nBeads<<"\n";
+                    tPrint=tStart+1.5*(tNow-tStart);
+                }
                 usleep(1);
             }
         }

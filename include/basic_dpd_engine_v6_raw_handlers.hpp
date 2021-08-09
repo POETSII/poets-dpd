@@ -155,7 +155,8 @@ struct BasicDPDEngineV6RawHandlers
         static_assert(sizeof(A)==sizeof(B));
         static_assert(offsetof(A,target_hash)==offsetof(B,target_hash));
         static_assert( std::is_same<decltype(A::f),decltype(B::f)>::value );
-        memcpy(dst, src, sizeof(B));
+        static_assert( (sizeof(B) % 4 ) == 0);
+        memcpy32((uint32_t*)dst, (const uint32_t*)src, sizeof(B)/4);
     }
 
     struct raw_begin_t

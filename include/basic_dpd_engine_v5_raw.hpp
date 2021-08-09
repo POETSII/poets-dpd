@@ -123,7 +123,9 @@ public:
 
         for(auto &device : m_devices){
             device.phase=Handlers::PreMigrate;
-            device.steps_todo=nSteps;
+            device.interval_size=nSteps;
+            device.intervals_todo=1;
+            device.interval_offset=nSteps;
             device.share_todo=0;
             device.outputs_todo=0;
             make_bag_wrapper(device.resident).clear();

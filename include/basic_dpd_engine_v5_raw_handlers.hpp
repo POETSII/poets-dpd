@@ -99,8 +99,10 @@ struct BasicDPDEngineV5RawHandlers
             int8_t kappa;   // Kappa is just an integer. Typically this is quite small, e.g. 5 or 15. Should be less than 127
             uint8_t _pad_;
         }angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
+
+        uint32_t t;  // Time-step
     };
-    static_assert(sizeof(raw_bead_resident_t)==48);
+    static_assert(sizeof(raw_bead_resident_t)==52);
 
     using raw_angle_bond_info_t = decltype(raw_bead_resident_t::angle_bonds[0]);
 
@@ -113,7 +115,8 @@ struct BasicDPDEngineV5RawHandlers
         static_assert(offsetof(A,x)==offsetof(B,x));
         static_assert(offsetof(A,v)==offsetof(A,x)+sizeof(A::x));
         static_assert(offsetof(A,v)==offsetof(B,v));
-        memcpy(dst, src, offsetof(A,v)+sizeof(A::v));
+        static_assert( (offsetof(A,v)+sizeof(A::v)) % 4 == 0 );
+        memcpy32((uint32_t*)dst, (const uint32_t*)src, (offsetof(A,v)+sizeof(A::v))/4);
     }
 
 
@@ -130,7 +133,9 @@ struct BasicDPDEngineV5RawHandlers
         static_assert(offsetof(A,f)==offsetof(B,f));
         static_assert(offsetof(A,bond_partners)==offsetof(B,bond_partners));
         static_assert(offsetof(A,angle_bonds)==offsetof(B,angle_bonds));
-        memcpy((char*)dst, (char*)src, sizeof(A));
+        static_assert(offsetof(A,t)==offsetof(B,t));
+        static_assert(sizeof(A)%4==0);
+        memcpy32((uint32_t*)dst, (const uint32_t*)src, sizeof(A)/4);
     }
 #pragma GCC diagnostic pop
 
@@ -152,7 +157,8 @@ struct BasicDPDEngineV5RawHandlers
         static_assert(sizeof(A)==sizeof(B));
         static_assert(offsetof(A,target_hash)==offsetof(B,target_hash));
         static_assert( std::is_same<decltype(A::f),decltype(B::f)>::value );
-        memcpy(dst, src, sizeof(B));
+        static_assert( (sizeof(A)%4) == 0 );
+        memcpy32((uint32_t*)dst, (const uint32_t*)src, sizeof(B)/4);
     }
 
     struct device_state_t
@@ -167,12 +173,17 @@ struct BasicDPDEngineV5RawHandlers
         float sqrt_dissipative;
         uint64_t t_hash;
         uint64_t t_seed;
+        uint32_t interval_size;
 
         int32_t location[3];
 
         Phase phase;
         uint32_t rts;
-        uint32_t steps_todo;
+
+        uint32_t intervals_todo;
+        uint32_t interval_offset; // When offset reaches zero we output
+
+
         uint32_t outputs_todo;
         uint32_t share_todo;
         struct{
@@ -217,17 +228,16 @@ struct BasicDPDEngineV5RawHandlers
         switch(cell.phase){
             default: assert(false); // fallthrough
             case PreMigrate:
+            case Outputting: 
             case SharingAndForcing: return on_barrier_pre_migrate(cell); break;
-            case Migrating: return on_barrier_pre_share(cell); break;
-            case Outputting: return false;
-            
+            case Migrating: return on_barrier_pre_share(cell); break;            
         }
     }
 
 
     static bool on_barrier_pre_migrate(device_state_t &cell)
     {
-        assert(cell.phase==PreMigrate || cell.phase==SharingAndForcing);
+        assert(cell.phase==PreMigrate || cell.phase==SharingAndForcing || cell.phase==Outputting);
 
         //int tmp;
         //printf("on_barrier_pre_migrate : %x, sp=%x\n", (unsigned)(intptr_t)&cell, (unsigned)(intptr_t)&tmp);
@@ -235,13 +245,18 @@ struct BasicDPDEngineV5RawHandlers
         auto resident=make_bag_wrapper(cell.resident);
         auto migrate_outgoing=make_bag_wrapper(cell.migrate_outgoing);
 
-        if(cell.steps_todo==0){
+        if(cell.intervals_todo==0){
+            return false;
+        }else if(cell.interval_offset==0){
+            cell.interval_offset=cell.interval_size;
+            --cell.intervals_todo;
+
             cell.outputs_todo=resident.size();
             cell.phase=Outputting;
             cell.rts=cell.outputs_todo>0 ? RTS_FLAG_output : 0;
             return true;
         }
-        cell.steps_todo -= 1;
+        cell.interval_offset -= 1;
 
         make_bag_wrapper(cell.cached_bonds).clear();
 
@@ -264,6 +279,8 @@ struct BasicDPDEngineV5RawHandlers
 
             // Actual position update, clears force
             dpd_maths_core_half_step_raw::update_pos(cell.dt, cell.box, b);
+
+            ++b.t;
         
             // Check it is still in the right cell
             int32_t true_loc[3];
@@ -530,7 +547,7 @@ struct BasicDPDEngineV5RawHandlers
     static void on_send_output(device_state_t &cell, raw_bead_resident_t &outgoing)
     {
         assert(cell.phase == Outputting);
-        assert(cell.steps_todo==0 && cell.outputs_todo>0);
+        assert(cell.interval_offset==cell.interval_size && cell.outputs_todo>0);
         
         cell.outputs_todo--;
         copy_bead_resident(&outgoing, &cell.resident.elements[cell.outputs_todo]);

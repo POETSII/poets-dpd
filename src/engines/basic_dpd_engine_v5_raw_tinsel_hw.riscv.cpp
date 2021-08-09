@@ -5,21 +5,34 @@
 
 using Thread = typename BasicDPDEngineV5RawTinsel<POLiteHW<>>::Thread;
 
+using f2i_t = union{
+        float f;
+        int32_t i;
+        uint32_t u;
+    };
+
 float absolute(float x)
 {
-    uint32_t y=*(uint32_t*)&x;
-    y &= 0x7FFFFFFFul;
-    return *(float*)&y;
+    f2i_t tmp;
+    tmp.f=x;
+    tmp.u &= 0x7FFFFFFFul;
+    return tmp.f;
 }
 
 // inverse square root using bit twiddling cleverness (taken from http://www.lomont.org/Math/Papers/2003/InvSqrt.pdf)
 // uses newton raphson
 float recip_pow_half(float x) {
     float xhalf = 0.5f*x;
-    int i = *(int*)&x; // get bits for floating value
-    i = 0x5f3759df - (i>>1); // gives initial guess y0
-    x = *(float*)&i; // convert bits back to float
-    for(int i=0; i<5; i++) {
+
+    f2i_t tmp;
+    tmp.f=x;
+    tmp.i = 0x5f3759df - (tmp.i>>1); // gives initial guess y0
+    x = tmp.f; // convert bits back to float
+    // Relative error is:
+    // - 0.175228 after 1 iteration
+    // - 4.66e-004 after 2 iterations
+    // - (estimated) 2^-22 after 3 iterations
+    for(int i=0; i<3; i++) {
         x = x*(1.5f-xhalf*x*x); // Newton step, repeating increases accuracy
     }
     return x;
@@ -64,15 +77,22 @@ float pow_half(float x) {
 }
 
 
-void * memcpy ( void * destination, const void * source, size_t num )
+/*void * memcpy ( void * destination, const void * source, size_t num )
 {
     for(size_t i=0; i<num; i++){
         ((char*)destination)[i] = ((const char*)source)[i];
     }
     return destination;
+}*/
+
+void memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
+{
+    for(unsigned i=0; i<n; i++){
+        a[i]=b[i];
+    }
 }
 
-inline int floor_nn(float x)
+inline int floor_nn_iter(float x)
 {
     // MASSIVE TODO : The round-to-even behaviour of tinsel is a problem here
     int r=0;
@@ -80,6 +100,18 @@ inline int floor_nn(float x)
         x=x-1;
         r=r+1;
     }
+    return r;
+}
+
+inline int floor_nn(float x)
+{
+    // WARNING : The round-to-even behaviour of tinsel is a problem here
+    // I think this is equivalent to floor, _assumign_ that int conversion is round to even
+    const float delta=0.499999970198;
+    int r=(int)(x-delta); // Warning! This will get converted to round to nearest even
+    
+    assert( r= floorf(x) ); // Note: this is _expected to fail in x86. It should pass in tinsel though.
+
     return r;
 }
 

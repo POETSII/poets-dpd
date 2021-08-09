@@ -117,7 +117,8 @@ struct BasicDPDEngineV3RawHandlers
         static_assert(offsetof(A,x)==offsetof(B,x));
         static_assert(offsetof(A,v)==offsetof(A,x)+sizeof(A::x));
         static_assert(offsetof(A,v)==offsetof(B,v));
-        memcpy(dst, src, offsetof(A,v)+sizeof(A::v));
+        static_assert( (offsetof(A,v)+sizeof(A::v)) % 32 == 4);
+        memcpy32((uint32_t*)dst, (const uint32_t*)src, (offsetof(A,v)+sizeof(A::v))/4);
     }
 
 
@@ -134,7 +135,7 @@ struct BasicDPDEngineV3RawHandlers
         static_assert(offsetof(A,f)==offsetof(B,f));
         static_assert(offsetof(A,bond_partners)==offsetof(B,bond_partners));
         static_assert(offsetof(A,angle_bonds)==offsetof(B,angle_bonds));
-        memcpy((char*)dst, (char*)src, sizeof(A));
+        memcpy32((uint32_t*)dst, (const uint32_t*)src, sizeof(A)/4);
     }
 #pragma GCC diagnostic pop
 

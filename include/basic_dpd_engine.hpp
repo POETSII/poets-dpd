@@ -148,15 +148,17 @@ private:
         static_assert(sizeof(bond_partners)==4); // Keep aligned
 
         angle_bond_info_t angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
+
+        uint32_t t;
     };
-    static_assert(sizeof(bead_exchange_t)==48);
+    static_assert(sizeof(bead_exchange_t)==52);
 
     struct bead_resident_t
         : bead_exchange_t
     {
         // Nothing here at the moment
     };
-    static_assert(sizeof(bead_resident_t)==48);
+    static_assert(sizeof(bead_resident_t)==52);
 
     struct force_input_t
     {
@@ -485,7 +487,6 @@ protected:
 
     void export_beads()
     {
-        unsigned done=0;
         for(unsigned cell_index=0; cell_index<m_cells.size(); cell_index++){
             const cell_t &c = m_cells.at(cell_index);
 
@@ -550,7 +551,6 @@ protected:
                 //std::cerr<<m_state->t<<", i="<<tmp<<", cell="<<cell.location<<", nbor="<<neighbour.location<<"\n";
                 tmp++;
 
-                bool self=(&neighbour==&cell);
                 // Stay on one neighbour so we can tell if it must be cached
                 // We do wrapping on a per bead basis, to simulate receiving each one
                 for(unsigned j=0; j<neighbour.beads.size(); j++){

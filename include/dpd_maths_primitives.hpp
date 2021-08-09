@@ -2,6 +2,7 @@
 #define dpd_maths_primitives_hpp
 
 #include <cstdint>
+#include <cstring>
 
 inline double half(double x)
 { return x*0.5; }
@@ -24,17 +25,19 @@ inline double recip_pow_half(double x)
 { return 1.0/sqrt(x); }
 #endif
 
-inline float recip_pow_half(float x)
+
 #ifdef TINSEL
-;
+float recip_pow_half(float x);
 #else
+inline float recip_pow_half(float x)
 { return 1.0f/sqrtf(x); }
 #endif
 
-inline double pow_half(double x)
+
 #ifdef TINSEL
-;
+double pow_half(double x);
 #else
+inline double pow_half(double x)
 { return sqrt(x); }
 #endif
 
@@ -73,7 +76,14 @@ inline int floor_nn(float x)
 { return (int)floor(x); }
 #endif
 
-
+#ifdef TINSEL
+void memcpy32(uint32_t *a, const uint32_t *b, unsigned n);
+#else
+inline void memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
+{
+    memcpy(a, b, n*4);
+}
+#endif
 
 
 #endif

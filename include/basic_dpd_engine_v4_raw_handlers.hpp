@@ -104,8 +104,10 @@ struct BasicDPDEnginev4RawHandlers
             uint8_t kappa;   // Kappa is just an integer. Typically this is quite small, e.g. 5 or 15. Should be less than 255
             uint8_t _pad_;
         }angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
+
+        uint32_t t;
     };
-    static_assert(sizeof(raw_bead_resident_t)==48);
+    static_assert(sizeof(raw_bead_resident_t)==52);
 
     using raw_angle_bond_info_t = decltype(raw_bead_resident_t::angle_bonds[0]);
 

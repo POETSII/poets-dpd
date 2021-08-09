@@ -69,7 +69,8 @@ inline uint32_t hash_rng_sym(uint64_t t_hash, uint32_t a, uint32_t b)
     if(a>b){
         std::swap(a,b);
     }
-    return riscv_mix64_m3( (a|(uint64_t(b)<<32)) ^ t_hash);
+    // m3 is safer from randomness testing perspective, but m2 is ok in practise.
+    return riscv_mix64_m2( (a|(uint64_t(b)<<32)) ^ t_hash);
 }
 
 inline uint32_t hash_rng_sym_new(uint64_t t_hash, uint32_t a, uint32_t b)
