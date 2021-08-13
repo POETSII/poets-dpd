@@ -38,6 +38,12 @@ namespace dpd_maths_core_half_step_raw
         for(int i=0; i<3; i++){
             x[i] += (x[i]<0 ? dims[i] : 0);
             x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
+            if(x[i] < 0){
+                printf("<\n");
+            }
+            if(x[i] >= dims[i]){
+                printf(">\n");
+            }
         }
         vec3_copy(b.x, x);
         vec3_add_mul(b.v, b.f, half(dt));

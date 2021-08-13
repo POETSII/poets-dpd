@@ -146,6 +146,17 @@ public:
         std::cerr<<"Construct\n";
     }
 
+    void ensure_hostlink()
+    {
+        if(!m_hostlink){
+            std::cerr<<"Opening hostlink\n";
+            HostLinkParams params;
+            params.numBoxesX=Impl::NumBoxesX;
+            params.numBoxesY=Impl::NumBoxesY;
+            m_hostlink = std::make_shared<typename Impl::HostLink>(params);
+        }
+    }
+
     std::vector<raw_bead_resident_t> step_all(
         std::vector<device_state_t> &states,
         std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map,
@@ -153,10 +164,7 @@ public:
         std::vector<message_t> &messages
     ) override
     {
-        if(!m_hostlink){
-            std::cerr<<"Opening hostlink\n";
-            m_hostlink = std::make_shared<typename Impl::HostLink>();
-        }
+        ensure_hostlink();
 
         std::cerr<<"Building graph\n";
         typename Impl::template PGraph<Device, State, None, Message> graph;

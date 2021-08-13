@@ -16,6 +16,18 @@
 #include <math.h>
 
 
+// Calculate checksum except for the last 4 bytes (assumed to be the checksum field).
+    template<class T>
+    static uint32_t calc_checksum(const T &x)
+    {
+        static_assert( (sizeof(T) % 4) == 0 );
+        const uint32_t *src=(const uint32_t*)&x;
+        uint32_t res=0;
+        for(unsigned i=0; i<sizeof(T)/4-1; i++){
+            res = res + (res>>16) + src[i];
+        }
+        return res;
+    }
 
 /*
     This is a minimal engine which models the data requirements of working
@@ -150,15 +162,16 @@ private:
         angle_bond_info_t angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
 
         uint32_t t;
+        uint32_t checksum;
     };
-    static_assert(sizeof(bead_exchange_t)==52);
+    static_assert(sizeof(bead_exchange_t)==56);
 
     struct bead_resident_t
         : bead_exchange_t
     {
         // Nothing here at the moment
     };
-    static_assert(sizeof(bead_resident_t)==52);
+    static_assert(sizeof(bead_resident_t)==56);
 
     struct force_input_t
     {
@@ -357,12 +370,14 @@ protected:
             }
             require(nangles <= MAX_ANGLE_BONDS_PER_BEAD, "Too many angles per bead."); // Should already have been chcked.
         }
+
+        bb.checksum = calc_checksum(bb);
     }
 
-    void require(bool cond, const char *msg)
+    static void require(bool cond, const char *msg)
     {
         if(!cond){
-            throw std::string(msg);
+            throw std::runtime_error(msg);
         }
     };
 
@@ -491,6 +506,8 @@ protected:
             const cell_t &c = m_cells.at(cell_index);
 
             for(const auto &bb : c.beads){
+                assert(calc_checksum(bb)==bb.checksum);
+
                 auto bead_id=m_state->polymers.at(bb.id.get_polymer_id()).bead_ids.at(bb.id.get_polymer_offset());
                 auto &b=m_state->beads.at(bead_id);
                 b.x=vec3r_t(bb.x);
@@ -586,9 +603,6 @@ protected:
                     }
                 }
             }
-            for(const auto &b : cell.beads){
-                //std::cerr<<"  bpo="<<b.get_hash_code()<<", fdpd="<<b.f<<"\n";
-            }
         }
 
         // At some point we have received and cached all angle bond updates.
@@ -608,6 +622,7 @@ protected:
         for(cell_t &cell : m_cells){
             for(auto &b : cell.beads){
                 dpd_maths_core_half_step::update_mom(dt, b);
+                b.checksum=calc_checksum(b);
             }
         }
 

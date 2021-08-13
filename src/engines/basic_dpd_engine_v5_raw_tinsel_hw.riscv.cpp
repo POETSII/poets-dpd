@@ -77,13 +77,13 @@ float pow_half(float x) {
 }
 
 
-/*void * memcpy ( void * destination, const void * source, size_t num )
+extern "C" void * memcpy ( void * destination, const void * source, size_t num )
 {
     for(size_t i=0; i<num; i++){
         ((char*)destination)[i] = ((const char*)source)[i];
     }
     return destination;
-}*/
+}
 
 void memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
 {

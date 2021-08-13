@@ -70,7 +70,11 @@ struct bag_wrapper
         if(new_n < MAX_N){
             storage.n=new_n;
         }else{
+            #ifdef TINSEL
+            printf("Lost");
+            #else
             assert(false);
+            #endif
             storage.lost += new_n-storage.n;
         }
     }
@@ -82,7 +86,12 @@ struct bag_wrapper
             storage.elements[storage.n]=x;
             storage.n=storage.n+1;
         }else{
+            #ifdef TINSEL
+            printf("Lost\n");
+            #else
             assert(false);
+            #endif
+            
             storage.lost++;
         }
     }
@@ -94,7 +103,11 @@ struct bag_wrapper
             // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
             storage.n=storage.n+1;
         }else{
+            #ifdef TINSEL
+            printf("Lost");
+            #else
             assert(false);
+            #endif
             storage.lost++;
         }
     }

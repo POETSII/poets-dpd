@@ -108,7 +108,7 @@ public:
     virtual unsigned Run(
         int interval_count,
         unsigned interval_size,
-        std::function<bool()> &interval_callback
+        std::function<bool()> interval_callback
     ) {
         unsigned done=0;
         while(1){

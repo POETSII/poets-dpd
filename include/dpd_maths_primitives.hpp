@@ -5,13 +5,13 @@
 #include <cstring>
 
 inline double half(double x)
-{ return x*0.5; }
+{ return x*(double)0.5; }
 
 inline float half(float x)
 { return x*0.5f; }
 
 inline double recip(double x)
-{ return 1.0/x; }
+{ return double(1.0)/x; }
 
 inline float recip(float x)
 { return 1.0f/x; }

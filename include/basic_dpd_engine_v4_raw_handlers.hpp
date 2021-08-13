@@ -106,8 +106,9 @@ struct BasicDPDEnginev4RawHandlers
         }angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
 
         uint32_t t;
+        uint32_t checksum;
     };
-    static_assert(sizeof(raw_bead_resident_t)==52);
+    static_assert(sizeof(raw_bead_resident_t)==56);
 
     using raw_angle_bond_info_t = decltype(raw_bead_resident_t::angle_bonds[0]);
 
@@ -297,6 +298,15 @@ struct BasicDPDEnginev4RawHandlers
         vec3_floor_nn(incoming_loc, incoming.x);
         if(vec3_equal(incoming_loc , cell.location)){
             resident.push_back(incoming);
+        }else{
+            for(int i=0; i<3; i++){
+                if(incoming_loc[i] < 0){
+                    printf("<m\n");
+                }
+                if(incoming_loc[i] >= cell.box[i]){
+                    printf(">m\n");
+                }
+            }
         }
     }
 

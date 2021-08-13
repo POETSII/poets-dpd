@@ -102,8 +102,11 @@ struct BasicDPDEngineV6RawHandlers
             int8_t kappa;   // Kappa is just an integer. Typically this is quite small, e.g. 5 or 15. Should be less than 127
             uint8_t _pad_;
         }angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
+
+        uint32_t t;
+        uint32_t checksum;
     };
-    static_assert(sizeof(raw_bead_resident_t)==48);
+    static_assert(sizeof(raw_bead_resident_t)==56);
 
     using raw_angle_bond_info_t = decltype(raw_bead_resident_t::angle_bonds[0]);
 
@@ -133,6 +136,8 @@ struct BasicDPDEngineV6RawHandlers
         static_assert(offsetof(A,f)==offsetof(B,f));
         static_assert(offsetof(A,bond_partners)==offsetof(B,bond_partners));
         static_assert(offsetof(A,angle_bonds)==offsetof(B,angle_bonds));
+        static_assert(offsetof(A,t)==offsetof(B,t));
+        static_assert(offsetof(A,checksum)==offsetof(B,checksum));
         memcpy((char*)dst, (char*)src, sizeof(A));
     }
 #pragma GCC diagnostic pop

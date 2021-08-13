@@ -7,10 +7,20 @@
 #include <iterator>
 #include <cstring>
 
+inline void tinsel_require(bool cond, const char *msg)
+{
+    if(!cond){
+        #ifdef TINSEL
+        printf(msg);
+        #else
+        throw std::runtime_error(msg);
+        #endif
+    }
+}
 struct BasicDPDEngineV5RawHandlers
 {
     static constexpr size_t MAX_BONDS_PER_BEAD = 3;
-    static constexpr size_t MAX_BEADS_PER_CELL = 8;
+    static constexpr size_t MAX_BEADS_PER_CELL = 16;
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
@@ -32,7 +42,7 @@ struct BasicDPDEngineV5RawHandlers
         RTS_FLAG_output = 1<<RTS_INDEX_output
     };
 
-    enum Phase
+    enum Phase : uint32_t
     {
         PreMigrate,
         Migrating,
@@ -101,8 +111,9 @@ struct BasicDPDEngineV5RawHandlers
         }angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
 
         uint32_t t;  // Time-step
+        uint32_t checksum;
     };
-    static_assert(sizeof(raw_bead_resident_t)==52);
+    static_assert(sizeof(raw_bead_resident_t)==56);
 
     using raw_angle_bond_info_t = decltype(raw_bead_resident_t::angle_bonds[0]);
 
@@ -134,6 +145,7 @@ struct BasicDPDEngineV5RawHandlers
         static_assert(offsetof(A,bond_partners)==offsetof(B,bond_partners));
         static_assert(offsetof(A,angle_bonds)==offsetof(B,angle_bonds));
         static_assert(offsetof(A,t)==offsetof(B,t));
+        static_assert(offsetof(A,checksum)==offsetof(B,checksum));
         static_assert(sizeof(A)%4==0);
         memcpy32((uint32_t*)dst, (const uint32_t*)src, sizeof(A)/4);
     }
@@ -174,6 +186,7 @@ struct BasicDPDEngineV5RawHandlers
         uint64_t t_hash;
         uint64_t t_seed;
         uint32_t interval_size;
+        uint32_t output_reps;  // Used to get around lost output packets. Each packet sent this many times
 
         int32_t location[3];
 
@@ -183,7 +196,7 @@ struct BasicDPDEngineV5RawHandlers
         uint32_t intervals_todo;
         uint32_t interval_offset; // When offset reaches zero we output
 
-
+        uint32_t output_reps_todo;
         uint32_t outputs_todo;
         uint32_t share_todo;
         struct{
@@ -218,6 +231,8 @@ struct BasicDPDEngineV5RawHandlers
         uint8_t cached_bond_indices[MAX_BEADS_PER_CELL]; // 0xff if not seen, otherwise the first bond that was seen
     };
 
+    static const bool DO_CHECKSUM=false;
+
     static uint32_t calc_rts(const device_state_t &cell)
     {
         return cell.rts;
@@ -231,6 +246,24 @@ struct BasicDPDEngineV5RawHandlers
             case Outputting: 
             case SharingAndForcing: return on_barrier_pre_migrate(cell); break;
             case Migrating: return on_barrier_pre_share(cell); break;            
+        }
+    }
+
+    static void /*__attribute__ ((noinline)) __attribute__((optimize("O0")))*/ on_init(device_state_t &cell)
+    {
+        if(DO_CHECKSUM){
+            //auto resident=make_bag_wrapper(cell.resident);
+
+            uint32_t i=0;
+            uint32_t n=cell.resident.n;
+            //for(const auto & b : resident){
+            while(i<n){
+                const auto &b=cell.resident.elements[i];
+                if(b.checksum!=calc_checksum(b)){
+                    printf("CheckSumInit : nn=%x, n=%x, id=%x, %x, %x\n", n, i, b.id, b.checksum, calc_checksum(b));
+                }
+                ++i;
+            }
         }
     }
 
@@ -253,6 +286,7 @@ struct BasicDPDEngineV5RawHandlers
 
             cell.outputs_todo=resident.size();
             cell.phase=Outputting;
+            cell.output_reps_todo=cell.output_reps;
             cell.rts=cell.outputs_todo>0 ? RTS_FLAG_output : 0;
             return true;
         }
@@ -281,11 +315,23 @@ struct BasicDPDEngineV5RawHandlers
             dpd_maths_core_half_step_raw::update_pos(cell.dt, cell.box, b);
 
             ++b.t;
+
+            if(DO_CHECKSUM){
+                b.checksum = calc_checksum(b);
+            }
         
             // Check it is still in the right cell
             int32_t true_loc[3];
             vec3_floor_nn(true_loc, b.x);
             if( !vec3_equal(true_loc, cell.location) ){
+                if(DO_CHECKSUM){
+                    for(int i=0; i<3; i++){
+                        tinsel_require(0<=true_loc[i] && true_loc[i]<cell.box[i],"BeadOutOfBox");
+                        int diff=abs(true_loc[i]-cell.location[i]);
+                        tinsel_require( (-1 <= diff && diff<=+1) || (diff==cell.box[i]-1), "BeadJumpedTwoCells");
+                    }
+                }
+
                 // Movement is fairly unlikely
                 migrate_outgoing.push_back(b);
 
@@ -318,10 +364,25 @@ struct BasicDPDEngineV5RawHandlers
     {
         auto resident=make_bag_wrapper(cell.resident);
 
+        if(DO_CHECKSUM){
+            if(incoming.checksum != calc_checksum(incoming)){
+                printf("CheckSumMigrateRecv\n");
+            }
+        }
+
         int32_t incoming_loc[3];
         vec3_floor_nn(incoming_loc, incoming.x);
         if(vec3_equal(incoming_loc , cell.location)){
             resident.push_back(incoming);
+        }else{
+            for(int i=0; i<3; i++){
+                if(incoming_loc[i] < 0){
+                    printf("<m\n");
+                }
+                if(incoming_loc[i] >= cell.box[i]){
+                    printf(">m\n");
+                }
+            }
         }
     }
 
@@ -368,7 +429,6 @@ struct BasicDPDEngineV5RawHandlers
 
         auto resident=make_bag_wrapper(cell.resident);
         auto cached_bonds=make_bag_wrapper(cell.cached_bonds);
-        auto force_outgoing=make_bag_wrapper(cell.force_outgoing);
         
         float neighbour_x[3];
         vec3_copy(neighbour_x, incoming.x);
@@ -454,7 +514,7 @@ struct BasicDPDEngineV5RawHandlers
                         //std::cerr<<"Force!`\n";
                         assert(bead.id == resident[bead_i].id);
                         calc_angle_force_for_middle_bead(cell, bead, cell.cached_bond_indices[bead_i], cached_bond_index);
-                        assert(force_outgoing.size()>0);
+                        assert(make_bag_wrapper(cell.force_outgoing).empty());
                         cell.rts |= RTS_FLAG_force;
                         //std::cerr<<"DoenFr\n";
                     }
@@ -548,10 +608,18 @@ struct BasicDPDEngineV5RawHandlers
     {
         assert(cell.phase == Outputting);
         assert(cell.interval_offset==cell.interval_size && cell.outputs_todo>0);
+        assert(cell.output_reps_todo>0);
         
         cell.outputs_todo--;
         copy_bead_resident(&outgoing, &cell.resident.elements[cell.outputs_todo]);
 
+        if(cell.outputs_todo==0){
+            cell.output_reps_todo -= 1;
+            if(cell.output_reps_todo > 0){
+                cell.outputs_todo=cell.resident.n;
+            }
+        }
+        
         cell.rts=cell.outputs_todo==0 ? 0 : RTS_FLAG_output;
     }
 

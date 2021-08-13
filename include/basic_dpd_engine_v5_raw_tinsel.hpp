@@ -57,6 +57,11 @@ public:
         }
 
         inline void init() {
+            //printf("N %x\n", s->state.resident.elements[i].id);
+            //for(int i=0; i<s->state.resident.n; i++){
+            //    printf("In %x\n", s->state.resident.elements[i].id);
+            //}
+            Handlers::on_init(s->state);
             update_rts();
         }
 
@@ -85,6 +90,7 @@ public:
 
             }else if(rts&OutputFlags::RTS_FLAG_output){
                 Handlers::on_send_output(s->state, (raw_bead_resident_t&)msg->bead_resident);
+                //printf("Out %x\n", ((raw_bead_resident_t&)msg->bead_resident).id);
                 msg->type=OutputFlags::RTS_INDEX_output;
 
             }else{
@@ -126,25 +132,40 @@ public:
 #ifndef TINSEL
     std::shared_ptr<typename Impl::HostLink> m_hostlink;
     std::shared_ptr<typename Impl::template PGraph<Device, State, None, Message>> m_graph;
+    int m_meshLenX;
+    int m_meshLenY;
 
     BasicDPDEngineV5RawTinsel()
     {
         std::cerr<<"Construct\n";
+        m_meshLenX=Impl::BoxMeshXLen;
+        m_meshLenY=Impl::BoxMeshYLen;
+    }
+
+    void ensure_hostlink()
+    {
+        if(!m_hostlink){
+            std::cerr<<"Opening hostlink\n";
+            typename Impl::HostLinkParams params;
+            params.numBoxesX=m_meshLenX;
+            params.numBoxesY=m_meshLenY;
+            std::cerr<<"  boxx="<<params.numBoxesX<<", boxy="<<params.numBoxesY<<"\n";
+            m_hostlink = std::make_shared<typename Impl::HostLink>(params);
+        }
     }
 
     void Attach(WorldState *state) override
     {
-        if(!m_hostlink){
-            std::cerr<<"Opening hostlink\n";
-            m_hostlink = std::make_shared<typename Impl::HostLink>();
-        }
+        ensure_hostlink();
+        
         BasicDPDEngineV5Raw::Attach(state);
 
         std::cerr<<"Building graph\n";
 
-        m_graph=std::make_shared<typename Impl::template PGraph<Device, State, None, Message>>();
+        m_graph=std::make_shared<typename Impl::template PGraph<Device, State, None, Message>>(m_meshLenX, m_meshLenY);
         auto &graph=*m_graph;
         
+        graph.mapVerticesToDRAM=true;
 
         for(unsigned i=0; i<m_devices.size(); i++){
             auto id=graph.newDevice();
@@ -176,18 +197,19 @@ public:
 
     }
 
-    std::vector<raw_bead_resident_t> step_all(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map) override
+    void step_all(
+        std::vector<device_state_t> &states,
+        std::unordered_map<device_state_t*, std::vector<device_state_t*>> &/*neighbour_map*/,
+        unsigned interval_size,
+        unsigned interval_count,
+        std::function<bool(raw_bead_resident_t &output)> callback
+    ) override
     {
-        if(!m_hostlink){
-            std::cerr<<"Opening hostlink\n";
-            m_hostlink = std::make_shared<typename Impl::HostLink>();
-        }
-
-        auto &graph=*m_graph;
+        ensure_hostlink();
 
         unsigned nBeads=m_state->beads.size();
-        std::vector<raw_bead_resident_t> outputs;
-        outputs.reserve(nBeads);
+
+        auto &graph=*m_graph;
 
         for(unsigned i=0; i<states.size(); i++){
             graph.devices[i]->state.state = states[i];
@@ -212,28 +234,39 @@ public:
 
         
         //std::cerr<<"Waiting for output\n";
+        unsigned seen=0;
         double tStart=now();
         double tPrint=tStart+4;
-        while(outputs.size() < nBeads){
+        while(1){
             while(m_hostlink->pollStdOut(stderr));
 
             typename Impl::template PMessage<Message> msg;
             if(m_hostlink->canRecv()){
+                ++seen;
                 m_hostlink->recvMsg(&msg, sizeof(msg));
-                outputs.push_back(msg.payload.bead_resident);
+                if(!callback(msg.payload.bead_resident)){
+                    break;
+                }
+                if(seen==1){
+                    double tNow=now();
+                    uint64_t nSteps = m_devices[0].interval_size * (uint64_t)m_devices[0].intervals_todo;
+                    std::cerr<<"First bead, t="<<(tNow-tStart)<<", nBeads="<<nBeads<<", nSteps="<<nSteps<<", bead*step/sec="<< (nBeads*nSteps) / (tNow-tStart)<<"\n";
+                }
             }else{
                 double tNow=now();
                 if(tNow>tPrint){
-                    std::cerr<<"  got "<<outputs.size()<<" out of "<<nBeads<<"\n";
+                    std::cerr<<"  got "<<seen<<" out of "<<nBeads<<"\n";
                     tPrint=tStart+1.5*(tNow-tStart);
                 }
                 usleep(1);
             }
         }
 
-        m_hostlink.reset();
+        for(int i=0; i<1000; i++){
+            (m_hostlink->pollStdOut(stderr));
+        }
 
-        return outputs;
+        m_hostlink.reset();
     }
 #endif
 

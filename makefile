@@ -3,7 +3,7 @@ CPPFLAGS += -Wno-unused-variable -fmax-errors=2
 CPPFLAGS += -fopenmp
 #LDFLAGS += -fuse-ld=gold -pthread
 
-#CPPFLAGS += -O3 -march=native
+CPPFLAGS += -O3 -march=native
 #CPPFLAGS += -DNDEBUG=1
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
@@ -119,3 +119,5 @@ bin/test_hash : LDLIBS += -ltestu01
 bin/test_engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
 bin/benchmark_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+
+bin/benchmark_engine_intervals : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
