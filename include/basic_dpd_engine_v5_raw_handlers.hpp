@@ -19,13 +19,13 @@ inline void tinsel_require(bool cond, const char *msg)
 }
 struct BasicDPDEngineV5RawHandlers
 {
-    static constexpr size_t MAX_BONDS_PER_BEAD = 3;
-    static constexpr size_t MAX_BEADS_PER_CELL = 16;
+    static constexpr size_t MAX_BONDS_PER_BEAD = 4;
+    static constexpr size_t MAX_BEADS_PER_CELL = 32;
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
-    static constexpr size_t MAX_BEAD_TYPES=8;
+    static constexpr size_t MAX_BEAD_TYPES=12;
 
     static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
 
@@ -98,7 +98,7 @@ struct BasicDPDEngineV5RawHandlers
         // Extras
         float f[3];
 
-        uint8_t bond_partners[MAX_BONDS_PER_BEAD+1]; // -1 means no bond
+        uint8_t bond_partners[MAX_BONDS_PER_BEAD]; // -1 means no bond
         static_assert(sizeof(bond_partners)==4); // Keep aligned
 
         struct raw_angle_bond_info_t
@@ -375,12 +375,14 @@ struct BasicDPDEngineV5RawHandlers
         if(vec3_equal(incoming_loc , cell.location)){
             resident.push_back(incoming);
         }else{
-            for(int i=0; i<3; i++){
-                if(incoming_loc[i] < 0){
-                    printf("<m\n");
-                }
-                if(incoming_loc[i] >= cell.box[i]){
-                    printf(">m\n");
+            if(DO_CHECKSUM){
+                for(int i=0; i<3; i++){
+                    if(incoming_loc[i] < 0){
+                        printf("<m\n");
+                    }
+                    if(incoming_loc[i] >= cell.box[i]){
+                        printf(">m\n");
+                    }
                 }
             }
         }
@@ -474,7 +476,9 @@ struct BasicDPDEngineV5RawHandlers
                 }
             }
 
-            float conStrength=cell.conservative[MAX_BEAD_TYPES*get_bead_type(bead.id)+get_bead_type(incoming.id)];
+            auto bead_type1=get_bead_type(bead.id);
+            auto bead_type2=get_bead_type(incoming.id);
+            float conStrength=cell.conservative[MAX_BEAD_TYPES*bead_type1+bead_type2];
 
             float f[3];
             dpd_maths_core_half_step_raw::calc_force<float,float[3],float[3]>(
@@ -514,7 +518,6 @@ struct BasicDPDEngineV5RawHandlers
                         //std::cerr<<"Force!`\n";
                         assert(bead.id == resident[bead_i].id);
                         calc_angle_force_for_middle_bead(cell, bead, cell.cached_bond_indices[bead_i], cached_bond_index);
-                        assert(make_bag_wrapper(cell.force_outgoing).empty());
                         cell.rts |= RTS_FLAG_force;
                         //std::cerr<<"DoenFr\n";
                     }

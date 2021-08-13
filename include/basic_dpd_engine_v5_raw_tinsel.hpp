@@ -165,7 +165,7 @@ public:
         m_graph=std::make_shared<typename Impl::template PGraph<Device, State, None, Message>>(m_meshLenX, m_meshLenY);
         auto &graph=*m_graph;
         
-        graph.mapVerticesToDRAM=true;
+        graph.mapVerticesToDRAM=false;
 
         for(unsigned i=0; i<m_devices.size(); i++){
             auto id=graph.newDevice();

@@ -172,7 +172,11 @@ private:
         // Move the beads, and then assign to cells based on x(t+dt)
         for(auto &b : m_state->beads){
             update_bead_pos(&b);
-            m_cells.at( world_pos_to_cell_index(b.x) ).push_back(&b);
+            auto &cell = m_cells.at( world_pos_to_cell_index(b.x) );
+            cell.push_back(&b);
+            if(cell.size() >= 16){
+                std::cerr<<"  b="<<b.x<<", cell size="<<cell.size()<<"\n";
+            }
         }
 
         // Calculate all the non-bonded forces
@@ -389,8 +393,8 @@ private:
 
     void update_angle_bond(const Polymer &p, const PolymerType &pt, const BondPair &bp)
     {
-        unsigned head_bond_index=p.bead_ids[bp.bond_offset_head];
-        unsigned tail_bond_index=p.bead_ids[bp.bond_offset_tail];
+        unsigned head_bond_index=bp.bond_offset_head;
+        unsigned tail_bond_index=bp.bond_offset_tail;
         const Bond &head_bond=pt.bonds.at(head_bond_index);
         const Bond &tail_bond=pt.bonds.at(tail_bond_index);
 

@@ -4,3 +4,5 @@ obj
 *.vtk.*
 *.o
 *.s
+*.state
+*.vtk

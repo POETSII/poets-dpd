@@ -43,7 +43,7 @@ std::ostream &write_bead(std::ostream &dst, const Bead &b, const WorldState &s)
 void read_bead(std::istream &src, int line_no, WorldState &s)
 {
     Bead res;
-    auto p=read_prefixed_line_and_split_on_space(src, "B", 12, line_no);
+    auto p=read_prefixed_line_and_split_on_space(src, "B", 14, line_no);
     
     res.bead_id=p.unsigned_at(1);
     res.polymer_id=p.unsigned_at(2);
@@ -57,6 +57,8 @@ void read_bead(std::istream &src, int line_no, WorldState &s)
         poly.polymer_type=res.polymer_type;
         poly.bead_ids.assign(poly_type.bead_types.size(), -1);
     }
+
+    res.is_monomer=poly_type.bead_types.size()==1;
 
     res.bead_type=poly_type.bead_types.at(res.polymer_offset);
     
@@ -74,6 +76,8 @@ void read_bead(std::istream &src, int line_no, WorldState &s)
     for(unsigned i=0; i<3; i++){
         res.f[i]=p.double_at(i+11);
     }
+
+    s.beads[res.bead_id]=res;
 }
 
 std::ostream &write_polymer_type(std::ostream &dst, const PolymerType &m, const WorldState &)
@@ -108,6 +112,7 @@ void read_polymer_type(std::istream &src, int &line_no, WorldState &state)
             throw std::runtime_error("Duplicate polymer.");
         }
 
+        res.polymer_id=polymer_id;
         res.name=p.string_at(2);
         res.bead_types.resize(p.unsigned_at(3));
         res.bonds.resize(p.unsigned_at(4));
@@ -122,8 +127,8 @@ void read_polymer_type(std::istream &src, int &line_no, WorldState &state)
             //dst<<"Bond "<<b.bead_offset_a<<" "<<b.bead_offset_b<<" "<<b.kappa<<" "<<b.r0<<"\n";
             res.bonds[i].bead_offset_head=p.unsigned_at(1);
             res.bonds[i].bead_offset_tail=p.unsigned_at(2);
-            res.bonds[i].kappa=p.unsigned_at(2);
-            res.bonds[i].r0=p.unsigned_at(3);
+            res.bonds[i].kappa=p.unsigned_at(3);
+            res.bonds[i].r0=p.double_at(4);
 
             if(res.bonds[i].bead_offset_head >= res.bead_types.size()){
                 throw std::runtime_error("Invalid bead offset "+std::to_string(res.bonds[i].bead_offset_head) + " at line "+std::to_string(line_no));
@@ -137,8 +142,8 @@ void read_polymer_type(std::istream &src, int &line_no, WorldState &state)
             // dst<<"BondPair "<<bp.bond_offset_a<<" "<<bp.bond_offset_b<<" "<<bp.kappa<<" "<<bp.theta0<<"\n";
             res.bond_pairs[i].bond_offset_head=p.unsigned_at(1);
             res.bond_pairs[i].bond_offset_tail=p.unsigned_at(2);
-            res.bond_pairs[i].kappa=p.unsigned_at(2);
-            res.bond_pairs[i].theta0=p.unsigned_at(3);
+            res.bond_pairs[i].kappa=p.unsigned_at(3);
+            res.bond_pairs[i].theta0=p.double_at(4);
 
             if(res.bond_pairs[i].bond_offset_head >= res.bonds.size()){
                 throw std::runtime_error("Invalid bond offset a "+std::to_string(res.bond_pairs[i].bond_offset_head) + " at line "+std::to_string(line_no));
@@ -202,7 +207,7 @@ WorldState read_world_state(std::istream &src, int &line_no)
 {
     WorldState res;
 
-    auto p=read_prefixed_line_and_split_on_space(src, "WorldState", 5, line_no);
+    auto p=read_prefixed_line_and_split_on_space(src, "WorldState", 6, line_no);
     int world_state_line_no=line_no;
     try{
         if(p.string_at(1)!="v0"){
@@ -239,13 +244,13 @@ WorldState read_world_state(std::istream &src, int &line_no)
         for(unsigned i=0; i<numBeadTypes; i++){
             p=read_prefixed_line_and_split_on_space(src, "ConservativeStrength", numBeadTypes+2, line_no);
             for(unsigned j=0; j<numBeadTypes; j++){
-                res.interactions[i*numBeadTypes+j].conservative=p.double_at(2+i);
+                res.interactions[i*numBeadTypes+j].conservative=p.double_at(2+j);
             }
         }
         for(unsigned i=0; i<numBeadTypes; i++){
             p=read_prefixed_line_and_split_on_space(src, "DissipativeStrength", numBeadTypes+2, line_no);
             for(unsigned j=0; j<numBeadTypes; j++){
-                res.interactions[i*numBeadTypes+j].dissipative=p.double_at(2+i);
+                res.interactions[i*numBeadTypes+j].dissipative=p.double_at(2+j);
             }
         }
 
@@ -260,7 +265,7 @@ WorldState read_world_state(std::istream &src, int &line_no)
         }
 
     }catch(...){
-        std::throw_with_nested(std::runtime_error("Exception while parsing polymerType at line '"+std::to_string(world_state_line_no)));
+        std::throw_with_nested(std::runtime_error("Exception while parsing WorldState at line '"+std::to_string(world_state_line_no)));
     }
 
     return res;

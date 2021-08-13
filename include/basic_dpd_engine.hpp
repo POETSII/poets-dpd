@@ -50,7 +50,7 @@ class BasicDPDEngine
     : public DPDEngine
 {
 public:
-    static constexpr int MAX_BONDS_PER_BEAD=3;
+    static constexpr int MAX_BONDS_PER_BEAD=4;
     static constexpr int MAX_ANGLE_BONDS_PER_BEAD=1;
 private:
 
@@ -156,7 +156,7 @@ private:
     {
         vec3f_t f;
 
-        uint8_t bond_partners[MAX_BONDS_PER_BEAD+1]; // -1 means no bond
+        uint8_t bond_partners[MAX_BONDS_PER_BEAD]; // -1 means no bond
         static_assert(sizeof(bond_partners)==4); // Keep aligned
 
         angle_bond_info_t angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];

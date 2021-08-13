@@ -113,6 +113,10 @@ void calc_force(
 #endif
 
     vec3_mul(force_home, dx , scaled_force);
+
+    for(int i=0; i<3; i++){
+        assert(abs(force_home[i])<100);
+    }
 }
 
 template<bool AlwaysStraight, class TScalar, class TVector, class TForce>
@@ -164,12 +168,18 @@ void calc_angle_force(
         vec3_sub(headForce, dx12);
         vec3_mul(headForce, forceMag);
         assert(isfinite(headForce));
+        for(int i=0; i<3; i++){
+            assert(abs(headForce[i])<100);
+        }
 
         //tailForce = (dx01- (dx12*b1b2Overb2Sq)) * forceMag;
         vec3_mul(tailForce, dx12, b1b2Overb2Sq );
         vec3_sub(tailForce, dx01, tailForce);
         vec3_mul(tailForce, forceMag);
         assert(isfinite(tailForce));
+        for(int i=0; i<3; i++){
+            assert(abs(tailForce[i])<100);
+        }
 
         //middleForce = -( headForce + tailForce );
         vec3_add(middleForce, headForce, tailForce);

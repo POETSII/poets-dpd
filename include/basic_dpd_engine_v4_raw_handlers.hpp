@@ -9,13 +9,13 @@
 
 struct BasicDPDEnginev4RawConfig
 {
-    static constexpr size_t MAX_BONDS_PER_BEAD = 3;
-    static constexpr size_t MAX_BEADS_PER_CELL = 8;
+    static constexpr size_t MAX_BONDS_PER_BEAD = 4;
+    static constexpr size_t MAX_BEADS_PER_CELL = 32;
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
-    static constexpr size_t MAX_BEAD_TYPES=8;
+    static constexpr size_t MAX_BEAD_TYPES=12;
 };
 
 
@@ -94,7 +94,7 @@ struct BasicDPDEnginev4RawHandlers
         // Extras
         float f[3];
 
-        uint8_t bond_partners[MAX_BONDS_PER_BEAD+1]; // -1 means no bond
+        uint8_t bond_partners[MAX_BONDS_PER_BEAD]; // -1 means no bond
         static_assert(sizeof(bond_partners)==4); // Keep aligned
 
         struct raw_angle_bond_info_t

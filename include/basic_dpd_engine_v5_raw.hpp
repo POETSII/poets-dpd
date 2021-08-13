@@ -21,11 +21,11 @@ class BasicDPDEngineV5Raw
 {
 public:
 
-    static constexpr size_t MAX_BEADS_PER_CELL = 8;
+    static constexpr size_t MAX_BEADS_PER_CELL = 32;
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
-    static constexpr size_t MAX_BEAD_TYPES=8;
+    static constexpr size_t MAX_BEAD_TYPES=12;
 
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
 
@@ -48,6 +48,10 @@ public:
     std::string CanSupport(const WorldState *s) const override
     {
         if(s->bead_types.size()>1){
+            if(s->bead_types.size() > MAX_BEAD_TYPES){
+                return "Too many bead types.";
+            }
+
             double diss=s->interactions.at(1).dissipative;
             for(unsigned i=0; i<s->bead_types.size(); i++){
                 for(unsigned j=0; j<s->bead_types.size(); j++){
