@@ -8,36 +8,45 @@
 
 std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
 {
-    const auto &beads=s.beads;
-    unsigned n=beads.size();
+    auto filter=[&](const Bead &b)
+    {
+        return b.bead_type!=0;
+    };
+
+    std::vector<const Bead *> beads;
+    for(const auto &b : s.beads){
+        if(filter(b)){
+            beads.push_back(&b);
+        }
+    }
 
     dst<<"# vtk DataFile Version 2.0\n";
 	dst<<"data\n";
 	dst<<"ASCII\n";
 	dst<<"DATASET POLYDATA\n";
-	dst<<"POINTS "<<n<<" double\n";
-    for(unsigned i=0; i<n; i++){
-        const auto &b=beads[i];
+	dst<<"POINTS "<<beads.size()<<" double\n";
+    for(unsigned i=0; i<beads.size(); i++){
+        const auto &b=*beads[i];
         dst<<b.x[0]<<" "<<b.x[1]<<" "<<b.x[2]<<"\n";
     }
 
-    dst<<"POINT_DATA "<<n<<"\n";
+    dst<<"POINT_DATA "<<beads.size()<<"\n";
 
     dst<<"SCALARS bead_type double\n";
     dst<<"LOOKUP_TABLE default\n";
-    for(unsigned i=0; i<n; i++){
-        dst<<(int)beads[i].bead_type<<"\n";
+    for(unsigned i=0; i<beads.size(); i++){
+        dst<<(int)(beads[i]->bead_type)<<"\n";
     }
     
     dst<<"VECTORS v double\n";
-    for(unsigned i=0; i<n; i++){
-        const auto &b=beads[i];
+    for(unsigned i=0; i<beads.size(); i++){
+        const auto &b=*beads[i];
         dst<<b.v[0]<<" "<<b.v[1]<<" "<<b.v[2]<<"\n";
     }
 
     dst<<"VECTORS f double\n";
-    for(unsigned i=0; i<n; i++){
-        const auto &b=beads[i];
+    for(unsigned i=0; i<beads.size(); i++){
+        const auto &b=*beads[i];
         dst<<b.f[0]<<" "<<b.f[1]<<" "<<b.f[2]<<"\n";
     }
 

@@ -69,6 +69,9 @@ void read_bead(std::istream &src, int line_no, WorldState &s)
 
     for(unsigned i=0; i<3; i++){
         res.x[i]=p.double_at(i+5) - s.origin[i];
+        if(res.x[i]==s.box[i]){
+            res.x[i]=0; // It may have been rounded up due to output rounding.
+        }
     }
     for(unsigned i=0; i<3; i++){
         res.v[i]=p.double_at(i+8);

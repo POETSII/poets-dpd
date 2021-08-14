@@ -124,6 +124,10 @@ void validate(const WorldState &s)
     for(const auto & b : s.beads){
         for(unsigned i=0; i<3; i++){
             REQUIRE( 0 <= b.x[i] );
+            double bx=b.x[i], sb=s.box[i];
+            if(bx >= sb){
+                std::cerr<<"  bead "<<i<<", x="<<b.x<<", dims="<<s.box<<"\n";
+            }
             REQUIRE(b.x[i] < s.box[i]);
 
             REQUIRE( -max_v <= b.v[i] && b.v[i] <= max_v);

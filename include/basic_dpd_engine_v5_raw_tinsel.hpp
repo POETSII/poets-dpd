@@ -164,8 +164,13 @@ public:
 
         m_graph=std::make_shared<typename Impl::template PGraph<Device, State, None, Message>>(m_meshLenX, m_meshLenY);
         auto &graph=*m_graph;
+
+        unsigned volume=state->box[0]*state->box[1]*state->box[2];
         
-        graph.mapVerticesToDRAM=false;
+        if(volume > 40*40*40){
+            // TOD: Link to the number of boxes
+            graph.mapVerticesToDRAM=true;
+        }
 
         for(unsigned i=0; i<m_devices.size(); i++){
             auto id=graph.newDevice();
