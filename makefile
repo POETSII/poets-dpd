@@ -3,8 +3,7 @@ CPPFLAGS += -Wno-unused-variable -fmax-errors=2
 CPPFLAGS += -fopenmp
 #LDFLAGS += -fuse-ld=gold -pthread
 
-CPPFLAGS += -Og -march=native
-#CPPFLAGS += -DNDEBUG=1
+CPPFLAGS += -Og -march=native -DNDEBUG=1
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
 TINSEL_ROOT = tinsel

@@ -1,10 +1,10 @@
 
-#include "dpd_engine.hpp"
-#include "dpd_state_builder.hpp"
+#include "dpd/core/dpd_engine.hpp"
+#include "dpd/core/dpd_state_builder.hpp"
 
-#include "dpd_state_io.hpp"
-#include "dpd_state_to_vtk.hpp"
-#include "dpd_state_validator.hpp"
+#include "dpd/core/dpd_state_io.hpp"
+#include "dpd/core/dpd_state_to_vtk.hpp"
+#include "dpd/core/dpd_state_validator.hpp"
 
 #include <random>
 #include <fstream>

@@ -1,16 +1,16 @@
-#include "tests/test_ordered_mesh.hpp"
-#include "tests/test_bonded_bead_angle.hpp"
-#include "tests/test_bonded_bead_triple.hpp"
-#include "tests/test_bonded_bead_pair.hpp"
-#include "tests/test_colliding_bead_pair_diss.hpp"
-#include "tests/test_colliding_bead_pair.hpp"
-#include "tests/test_isolated_moving_bead.hpp"
-#include "tests/test_multiple_moving_beads.hpp"
-#include "naive_dpd_engine.hpp"
-#include "naive_dpd_engine_half_step.hpp"
+#include "dpd/tests/test_ordered_mesh.hpp"
+#include "dpd/tests/test_bonded_bead_angle.hpp"
+#include "dpd/tests/test_bonded_bead_triple.hpp"
+#include "dpd/tests/test_bonded_bead_pair.hpp"
+#include "dpd/tests/test_colliding_bead_pair_diss.hpp"
+#include "dpd/tests/test_colliding_bead_pair.hpp"
+#include "dpd/tests/test_isolated_moving_bead.hpp"
+#include "dpd/tests/test_multiple_moving_beads.hpp"
+#include "dpd/engines/naive/naive_dpd_engine.hpp"
+#include "dpd/engines/naive/naive_dpd_engine_half_step.hpp"
 
 
-#include "tests/test_differential.hpp"
+#include "dpd/tests/test_differential.hpp"
 
 #include <random>
 

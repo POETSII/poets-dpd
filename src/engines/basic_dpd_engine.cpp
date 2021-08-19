@@ -1,4 +1,4 @@
-#include "basic_dpd_engine.hpp"
+#include "dpd/engines/basic/basic_dpd_engine.hpp"
 
 bool basic_dpd_engine_registered = DPDEngineFactory::RegisterFactory(
     "BasicDPDEngine",

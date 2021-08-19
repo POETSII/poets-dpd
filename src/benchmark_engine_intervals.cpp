@@ -1,6 +1,6 @@
 
-#include "dpd_engine.hpp"
-#include "dpd_state_builder.hpp"
+#include "dpd/core/dpd_engine.hpp"
+#include "dpd/core/dpd_state_builder.hpp"
 
 #include <random>
 
