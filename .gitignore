@@ -7,3 +7,9 @@ obj
 /eb-ref/*.vtk
 *.vtk
 *.png
+*.s
+*.state
+*.vtk
+
+working
+working2
