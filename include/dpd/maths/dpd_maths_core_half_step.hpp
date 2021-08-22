@@ -5,6 +5,10 @@
 
 #include "dpd/core/hash.hpp"
 
+#ifndef TINSEL
+#include <iostream>
+#endif
+
 namespace dpd_maths_core_half_step
 {
 
@@ -26,6 +30,9 @@ namespace dpd_maths_core_half_step
             x[i] += (x[i]<0 ? dims[i] : 0);
             x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
         }
+#ifndef TINSEL
+        //std::cerr<<"  alt: x="<<x<<", b.x'="<<b.x<<", v="<<b.v<<"\n";
+#endif
         b.x = x;
         b.v = b.v + b.f * half(dt);
         b.f.clear();
@@ -95,7 +102,9 @@ void calc_force(
 
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
+#ifndef TINSEL
     //std::cerr<<"  "<<home.get_hash_code()<<" -> "<<other.get_hash_code()<<" : "<<conForce<<", "<<dissForce<<", "<<randForce<<", "<<hookeanForce<<"\n";
+#endif
 
     force_home = dx * scaled_force;
 

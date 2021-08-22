@@ -295,7 +295,7 @@ public:
         std::vector<device_state_t> &states,
         std::unordered_map<device_state_t*, std::vector<device_state_t*>> &neighbour_map,
         unsigned interval_size,
-        unsigned /*interval_count*/,
+        unsigned interval_count,
         std::function<bool(raw_bead_resident_t &output)> callback
     )
     {

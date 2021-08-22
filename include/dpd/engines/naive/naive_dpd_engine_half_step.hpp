@@ -38,6 +38,9 @@
 class NaiveDPDEngineHalfStep
     : public DPDEngine
 {
+    friend class NaiveDPDEngineHalfStepTBB;
+    friend class NaiveDPDEngineHalfStepTBBV2;
+    
 public:
     virtual void Attach(WorldState *state)
     {
@@ -139,7 +142,7 @@ private:
         return {pos,delta};
     }
 
-    vec3r_t calc_distance_from_to(const vec3r_t &base, const vec3r_t &other)
+    vec3r_t calc_distance_from_to(const vec3r_t &base, const vec3r_t &other) const
     {
         vec3r_t res;
         for(unsigned i=0; i<3; i++){
@@ -152,7 +155,7 @@ private:
         return res;
     }
 
-    void step()
+    virtual void step()
     {
         m_t_hash=next_t_hash(m_state->seed);
 
@@ -231,7 +234,8 @@ private:
         return false;
     }
 
-    void update_cell_forces(std::vector<Bead*> &home, const std::vector<Bead*> &other, const vec3r_t &other_delta)
+    template<class TBeadPtrVec>
+    void update_cell_forces(TBeadPtrVec &home, const TBeadPtrVec &other, const vec3r_t &other_delta) const
     {
         for(Bead *hb : home){
             for(const Bead *ob : other)
@@ -269,10 +273,10 @@ private:
         }
     }
 
-    void update_angle_bond(const Polymer &p, const PolymerType &pt, const BondPair &bp)
+    void update_angle_bond(const Polymer &p, const PolymerType &pt, const BondPair &bp) const
     {
-        unsigned head_bond_index=p.bead_ids[bp.bond_offset_head];
-        unsigned tail_bond_index=p.bead_ids[bp.bond_offset_tail];
+        unsigned head_bond_index=bp.bond_offset_head;
+        unsigned tail_bond_index=bp.bond_offset_tail;
         const Bond &head_bond=pt.bonds.at(head_bond_index);
         const Bond &tail_bond=pt.bonds.at(tail_bond_index);
 

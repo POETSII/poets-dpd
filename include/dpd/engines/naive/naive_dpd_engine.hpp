@@ -515,6 +515,11 @@ private:
             // Hack to get precise less than relationship on upper box.
             xa[i] = std::min( xa[i] , std::nexttoward(m_state->box[i], -DBL_MAX) );
         }
+
+#ifndef TINSEL
+        //std::cerr<<"  ref: x="<<xa<<", x'="<<b->x<<", v="<<b->v<<"\n";
+#endif
+
         b->x = xa;
         //std::cerr<<"Orig="<<orig<<", adj="<<adj<<", final="<<b->x<<"\n";
     }

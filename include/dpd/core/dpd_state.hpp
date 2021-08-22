@@ -11,12 +11,44 @@
 // Here we generally assume that 32-bit is enough for indices and ids
 // If Julian wants more than 4B beads, then... we need more money.
 
+// This is a completely standardised hash-code, so that we get repeatable results across implementations.
+/*  bbbb 1ppp pppp pppp  pppp pppp pppp pppp  : monomer, up to 2^27 instances
+    bbbb 0ooo oooo pppp  pppp pppp pppp pppp  : polymer, up to 2^20 instances, and 127 beads per polymer
+    b is the bead type index
+*/
+inline uint32_t bead_hash_construct(uint32_t bead_type, bool is_monomer, uint32_t polymer_id, uint32_t polymer_offset)
+{
+    assert( is_monomer ? (polymer_offset==0 && polymer_id<(1u<<27))
+                                    : (polymer_offset<128 && polymer_id<(1u<<20)));
+    uint32_t base=(uint32_t(polymer_offset)<<20) | polymer_id;
+    base |= uint32_t(is_monomer)<<27;
+    base |= bead_type << 28;
+    return base;
+}
+
+inline bool bead_hash_is_monomer(uint32_t hash)
+{ return hash&(1<<27); }
+
+inline uint32_t bead_hash_get_bead_type(uint32_t hash)
+{ return hash>>28; }
+
+inline uint32_t bead_hash_get_polymer_offset(uint32_t hash)
+{ return bead_hash_is_monomer(hash) ? 0 : ((hash>>20)&0x7F); }
+
+inline uint32_t bead_hash_get_polymer_id(uint32_t hash)
+{ return bead_hash_is_monomer(hash) ? (hash&0x7FFFFFF) : (hash&0xFFFFF); }
+
+inline bool bead_hash_in_same_polymer(uint32_t h1, uint32_t h2)
+{
+    assert(h1!=h2);
+    if( !(h1&h2&(1<<27)) ){
+        return false;
+    }
+    return (h1&0xFFFFF) == (h2&0xFFFFF);
+}
+
 struct Bead
 {
-    // I know this results in sub-optimal packing.
-    // Blame physics for a non-binary power number of spatial
-    // dimensions. Time doesn't count!
-
     // A unique bead id within the world. Bead ids must be contiguous, starting at zero.
     uint32_t bead_id = -1;
 
@@ -43,11 +75,7 @@ struct Bead
     */
     uint32_t get_hash_code() const
     {
-        assert( is_monomer ? (polymer_offset==0 && polymer_id<(1u<<27))
-                                      : (polymer_offset<128 && polymer_id<(1u<<20)));
-        uint32_t base=(uint32_t(polymer_offset)<<20) | polymer_id;
-        base |= uint32_t(is_monomer)<<27;
-        return base;
+        return bead_hash_construct(bead_type, is_monomer, polymer_id, polymer_offset);
     }
 };
 

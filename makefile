@@ -1,9 +1,11 @@
 CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall -O0
 CPPFLAGS += -Wno-unused-variable -fmax-errors=2
 CPPFLAGS += -fopenmp
-#LDFLAGS += -fuse-ld=gold -pthread
+LDFLAGS += -pthread
+#LDFLAGS += -fuse-ld=gold
 
-CPPFLAGS += -Og -march=native -DNDEBUG=1
+CPPFLAGS += -DNDEBUG=1 
+CPPFLAGS += -Og -march=native -ffast-math
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
 TINSEL_ROOT = tinsel
@@ -13,7 +15,7 @@ CPPFLAGS += -I $(TINSEL_ROOT)/hostlink
 CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 
 LDFLAGS += -L $(TINSEL_ROOT)/hostlink
-LDLIBS += -l:hostlink.a  -lmetis
+LDLIBS += -l:hostlink.a  -lmetis -ltbb
 
 
 TEST_BIN := bin/test_naive_engine \
@@ -27,7 +29,7 @@ TEST_BIN := bin/test_naive_engine \
 ENGINES := $(filter-out %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp)))
 ENGINES_RISCV := $(filter %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp)))
 
-ENGINES := $(filter-out basic_dpd_engine_v6_raw_tinsel_swsim,$(ENGINES))
+ENGINES := $(filter-out basic_dpd_engine_v6_raw_tinsel_swsim basic_dpd_engine_v8_raw,$(ENGINES))
 
 all : $(TEST_BIN)
 
