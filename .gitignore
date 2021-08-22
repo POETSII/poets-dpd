@@ -4,3 +4,6 @@ obj
 *.vtk.*
 *.o
 *.s
+/eb-ref/*.vtk
+*.vtk
+*.png
