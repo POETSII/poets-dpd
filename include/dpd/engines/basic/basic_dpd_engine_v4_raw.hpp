@@ -72,6 +72,7 @@ public:
 
             m_box.extract(dst.box);
             dst.dt=m_state->dt;
+            dst.t=m_state->t;
             dst.inv_root_dt=recip_pow_half(m_state->dt);
             dst.bond_r0=m_bond_r0;
             dst.bond_kappa=m_bond_kappa;
@@ -118,6 +119,10 @@ public:
                 // Correct for the last mom update that wasn't done
                 dpd_maths_core_half_step_raw::update_mom<float,raw_bead_resident_t>((float)m_state->dt, src);
 
+                #ifndef NDEBUG
+                src.checksum=calc_checksum(src);
+                #endif
+
                 bead_resident_t tmp;
                 Handlers::copy_bead_resident(&tmp, &src);
                 dst.beads.push_back(tmp);
@@ -125,8 +130,7 @@ public:
         }
 
         for(unsigned i=0; i<nSteps; i++){
-            m_state->t += m_state->dt;
-            next_t_hash(m_state->seed);
+            m_state->t += 1;
         }
 
         export_beads();

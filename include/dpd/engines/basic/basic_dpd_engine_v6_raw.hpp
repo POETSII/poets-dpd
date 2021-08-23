@@ -76,9 +76,9 @@ public:
     std::unordered_map<device_state_t*,std::vector<device_state_t*>> m_begin_fanout_map;
     std::unordered_map<uint32_t,uint32_t> m_bead_hash_to_original_id;
 
-    void set_bead_id(raw_bead_resident_t &b, bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
+    void set_bead_hash(raw_bead_resident_t &b, bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
     {
-        b.id=make_bead_id(is_monomer, polymer_id, polymer_offset, bead_type);
+        b.id=bead_hash_construct(bead_type, is_monomer, polymer_id, polymer_offset);
     }
 
     void Attach(WorldState *state) override
@@ -87,6 +87,7 @@ public:
         m_location_to_device.clear();
         m_neighbour_map.clear();
         m_begin_fanout_map.clear();
+        m_bead_hash_to_original_id.clear();
 
         BasicDPDEngine::Attach(state);
 
@@ -145,7 +146,8 @@ public:
             device.share_todo=0;
             device.t_seed=m_state->seed;
             // Need to walk it forwards by one step
-            device.t_hash=next_t_hash(device.t_seed);
+            device.t_hash=get_t_hash(device.t, device.t_seed);
+            device.t=m_state->t;
             make_bag_wrapper(device.resident).clear();
             make_bag_wrapper(device.force_outgoing).clear();
             make_bag_wrapper(device.migrate_outgoing).clear();
@@ -197,8 +199,7 @@ public:
         }
 
         for(unsigned i=0; i<nSteps; i++){
-            m_state->t += m_state->dt;
-            next_t_hash(m_state->seed);
+            m_state->t += 1;
         }
     }
 

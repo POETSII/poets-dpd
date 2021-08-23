@@ -46,6 +46,7 @@ private:
     {
         int32_t box[3];
         float dt;
+        uint32_t t;
 
         int32_t location[3];
 
@@ -207,6 +208,9 @@ private:
 
         for(auto &b : resident){
             dpd_maths_core_half_step::update_mom(cell.dt, b);
+            #ifndef NDEBUG
+            b.checksum=calc_checksum(b);
+            #endif
         }
     }
     
@@ -214,7 +218,7 @@ private:
     void step() override
     {
         double dt=m_state->dt;
-        m_t_hash = next_t_hash(m_state->seed);
+        m_t_hash = get_t_hash(m_state->t, m_state->seed);
 
         // Create shadow device states
         std::vector<device_state_t> states;
@@ -225,6 +229,7 @@ private:
             const cell_t &src=m_cells[i];
 
             dst.dt=dt;
+            dst.t=m_state->t;
             m_box.extract(dst.box);
             src.location.extract(dst.location);
 
@@ -308,7 +313,7 @@ private:
             dst.beads.assign(resident.begin(), resident.end());
         }
 
-        m_state->t += m_state->dt;
+        m_state->t += 1;
     }
 
 

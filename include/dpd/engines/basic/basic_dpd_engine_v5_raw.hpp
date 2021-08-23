@@ -72,7 +72,7 @@ public:
 
     void set_bead_id(raw_bead_resident_t &b, bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
     {
-        b.id=make_bead_id(is_monomer, polymer_id, polymer_offset, bead_type);
+        b.id=bead_hash_construct(bead_type, is_monomer, polymer_id, polymer_offset);
     }
 
     void Attach(WorldState *state) override
@@ -80,6 +80,7 @@ public:
         m_devices.clear();
         m_location_to_device.clear();
         m_neighbour_map.clear();
+        m_bead_hash_to_original_id.clear();
 
         BasicDPDEngine::Attach(state);
 
@@ -103,6 +104,7 @@ public:
                     }
                 }
                 dst.sqrt_dissipative=pow_half(m_state->interactions[0].dissipative);
+                dst.t=m_state->t;
                 dst.t_hash = m_t_hash;
                 dst.t_seed = m_state->seed;
                 src.location.extract(dst.location);
@@ -165,6 +167,8 @@ public:
         unsigned interval_size,
         std::function<bool()> interval_callback
     ) {
+        assert(interval_count*interval_size>0);
+
         import_beads();
 
         for(auto &device : m_devices){
@@ -224,8 +228,7 @@ public:
             }
 
             for(unsigned i=0; i<interval_size; i++){
-                m_state->t += m_state->dt;
-                next_t_hash(m_state->seed);
+                m_state->t += 1;
             }
             done += interval_size;
             interval_count -= 1;
@@ -253,7 +256,7 @@ public:
             while(1){
                 if(slice_i==slices.size()){
                     slices.push_back(output_slice(next_slice_t, m_bead_hash_to_original_id));
-                    fprintf(stderr, "Begin slice %u at time %u\n", slice_i, slices.back().time);
+                    //fprintf(stderr, "Begin slice %u at time %u\n", slice_i, slices.back().time);
                     next_slice_t += interval_size;
                 }
                 output_slice &s = slices.at(slice_i);
@@ -263,7 +266,7 @@ public:
                     bool prev_comp=s.complete();
                     s.add(output);
                     if(prev_comp!=s.complete()){
-                        fprintf(stderr, "Finished slice for time %u\n", s.time);
+                        //fprintf(stderr, "Finished slice for time %u\n", s.time);
                     }
                     break;
                 }

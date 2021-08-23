@@ -113,7 +113,7 @@ public:
 
     unsigned get_advance_count(WorldState &s) override
     {
-        require_close(s.dt * m_steps_done, s.t, "t is not dt*nSteps.");
+        require_close(m_steps_done, s.t, "t is not dt*nSteps.");
 
         require_close( s.beads[0].v, -s.beads[1].v, "Beads should be moving in opposite directions at same speed.");
 
@@ -137,7 +137,7 @@ public:
         std::cerr<<"  b0: x="<<s.beads[1].x<<", v="<<s.beads[1].v<<", f="<<s.beads[1].f<<"\n";
         */
 
-        if(s.t > 10){
+        if(s.t * s.dt > 10){
             m_sum_dist += dist;
             m_count_dist += 1;
         }
@@ -145,7 +145,7 @@ public:
         m_prev_prev_dist=m_prev_dist;
         m_prev_dist=dist;
 
-        if(s.t < 20){
+        if(s.t * s.dt < 20){
             m_steps_done += m_step_dist;
             return m_step_dist++;
         }else{

@@ -101,7 +101,7 @@ public:
 
     unsigned get_advance_count(WorldState &s) override
     {
-        require_close(s.dt * m_steps_done, s.t, "t is not dt*nSteps.");
+        require_close(m_steps_done, s.t, "t is not dt*nSteps.");
 
         double dist=distance(s, s.beads[0].x, s.beads[1].x).l2_norm();
 
@@ -120,10 +120,9 @@ public:
                 require_close( normalise(m_dx), normalise(tmp), 1e-3*sqrt(s.t/s.dt), "Bead 0 should always be on the same line.");
             }
             
-            if( std::abs(s.t-s.dt) < 1e-9){
+            if( s.t == 2){
                 require_close( normalise(m_dx), normalise(s.beads[0].v), "Bead 0 should move along +dx at time-step 1." );
                 require_close( normalise(-m_dx), normalise(s.beads[1].v), "Bead 1 should move along -dx at time-step 1." );
-            }else if(std::abs(s.t-2*s.dt) < 1e-9){
             }
 
             if(m_prev_dist < 1 && dist < 1){

@@ -225,7 +225,7 @@ private:
 
     void step()
     {
-        m_t_hash=next_t_hash(m_state->seed);
+        m_t_hash=get_t_hash(m_state->t, m_state->seed);
 
         for(const auto &group : m_conflict_groups)
         {

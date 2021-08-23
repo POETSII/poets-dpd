@@ -81,6 +81,7 @@ public:
         m_devices.clear();
         m_location_to_device.clear();
         m_neighbour_map.clear();
+        m_bead_hash_to_original_id.clear();
 
         BasicDPDEngine::Attach(state);
 
@@ -225,8 +226,7 @@ public:
             }
 
             for(unsigned i=0; i<interval_size; i++){
-                m_state->t += m_state->dt;
-                next_t_hash(m_state->seed);
+                m_state->t += 1;
             }
             done += interval_size;
             interval_count -= 1;

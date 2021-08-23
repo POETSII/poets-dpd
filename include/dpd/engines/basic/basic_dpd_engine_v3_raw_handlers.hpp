@@ -185,6 +185,7 @@ struct BasicDPDEngineV3RawHandlers
         float bond_kappa = nanf("");
         float conservative[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
         float sqrt_dissipative;
+        uint32_t t;
         uint64_t t_hash;
         uint64_t t_seed;
 
@@ -251,7 +252,8 @@ struct BasicDPDEngineV3RawHandlers
             }
         }
 
-        cell.t_hash = next_t_hash(cell.t_seed);
+        cell.t_hash = get_t_hash(cell.t, cell.t_seed);
+        cell.t += 1;
 
         cell.phase=Migrating;
         cell.rts=migrate_outgoing.empty() ? 0 : RTS_FLAG_migrate;

@@ -131,7 +131,10 @@ struct BasicDPDEngineV7RawHandlers
                     vec3_sub(dx, bead.x, neighbour_x);
                 }
                 float dr_sqr=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
-                if(dr_sqr >=1 || dr_sqr < float(1e-5)){ // The min threshold avoid large forces, and also skips self-interaction
+                if(dr_sqr >=1 || dr_sqr < MIN_DISTANCE_CUTOFF_SQR){ // The min threshold avoid large forces, and also skips self-interaction
+                    continue;
+                }
+                if(bead.id==incoming.id){
                     continue;
                 }
 

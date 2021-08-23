@@ -55,7 +55,7 @@ class NaiveDPDEngineHalfStepTBB
     {
         using range1d_t = tbb::blocked_range<int>;
 
-        m_t_hash=next_t_hash(m_state->seed);
+        m_t_hash=get_t_hash(m_state->t, m_state->seed);
 
         double dt=m_state->dt;
 
@@ -134,7 +134,7 @@ class NaiveDPDEngineHalfStepTBB
             }
         });
 
-        m_state->t += m_state->dt;
+        m_state->t += 1;
     }
 };
 

@@ -1,4 +1,4 @@
-#include "hash.hpp"
+#include "dpd/core/hash.hpp"
 
 #include <string>
 #include <memory>
@@ -14,7 +14,8 @@ struct enum_fixed_pair_step_t
 {
     uint32_t a;
     uint32_t b;
-    uint64_t t;
+    uint64_t t=0;
+    uint64_t seed=12345678;
 
     std::string name() const
     {
@@ -23,7 +24,8 @@ struct enum_fixed_pair_step_t
 
     uint32_t operator()()
     {
-        auto t_hash=next_t_hash(t);
+        auto t_hash=get_t_hash(t, seed);
+        t++;
         return hash_rng_sym(t_hash, a, b);
     }
 };
@@ -32,17 +34,20 @@ struct enum_fixed_a_t_inc_b
 {
     uint32_t a;
     uint32_t b;
+    uint32_t t;
     uint64_t t_hash;
+    uint64_t seed=12345678;
 
-    enum_fixed_a_t_inc_b(uint32_t _a, uint32_t _b, uint64_t t)
+    enum_fixed_a_t_inc_b(uint32_t _a, uint32_t _b, uint64_t _t)
         : a(_a)
         , b(_b)
+        , t(_t)
     {
-        t_hash = next_t_hash(t);
+        t_hash = get_t_hash(t, seed);
     }
 
     std::string name() const
-    { return "FixedATIncB[a="+std::to_string(a)+";t="+std::to_string(t_hash)+"]";
+    { return "FixedATIncB[a="+std::to_string(a)+";t="+std::to_string(t)+"]";
     }
 
     uint32_t operator()()
@@ -56,18 +61,21 @@ struct enum_fixed_t_inc_a_b
 {
     uint32_t a;
     uint32_t b;
+    unsigned t;
     uint64_t t_hash;
+    uint64_t seed=12345678;
 
-    enum_fixed_t_inc_a_b(uint32_t _a, uint32_t _b, uint64_t t)
+    enum_fixed_t_inc_a_b(uint32_t _a, uint32_t _b, uint64_t _t)
         : a(_a)
         , b(_b)
+        , t(_t)
     {
-        t_hash = next_t_hash(t);
+        t_hash = get_t_hash(t, seed);
     }
 
 
     std::string name() const
-    { return "FixedTIncAB[t="+std::to_string(t_hash)+"]";
+    { return "FixedTIncAB[t="+std::to_string(t)+"]";
     }
 
     uint32_t operator()()
@@ -85,6 +93,7 @@ struct enum_wrap
     uint32_t b;
     uint64_t t_hash;
     uint64_t t;
+    uint64_t seed=12345678;
 
     enum_wrap(uint32_t _n)
         : n(_n)
@@ -92,7 +101,7 @@ struct enum_wrap
         , b(0)
         , t(123456789)
     {
-        t_hash=next_t_hash(t);
+        t_hash=get_t_hash(t, seed);
     }
 
     std::string name() const
@@ -107,7 +116,8 @@ struct enum_wrap
             ++a;
             if(a==n){
                 a=1;
-                t_hash=next_t_hash(t);
+                t++;
+                t_hash=get_t_hash(t, seed);
             }
         }
         assert(b<a);
@@ -123,6 +133,7 @@ struct enum_wrap_rev
     uint32_t b;
     uint64_t t_hash;
     uint64_t t;
+    uint64_t seed=12345678;
 
     enum_wrap_rev(uint32_t _n)
         : n(_n)
@@ -130,7 +141,7 @@ struct enum_wrap_rev
         , b(0)
         , t(123456789)
     {
-        t_hash=next_t_hash(t);
+        t_hash=get_t_hash(t, seed);
     }
 
     std::string name() const
@@ -161,7 +172,8 @@ struct enum_wrap_rev
             ++a;
             if(a==n){
                 a=1;
-                t_hash=next_t_hash(t);
+                t++;
+                t_hash=get_t_hash(t, seed);
             }
         }
         assert(b<a);

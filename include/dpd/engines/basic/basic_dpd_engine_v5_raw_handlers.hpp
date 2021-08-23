@@ -51,25 +51,24 @@ struct BasicDPDEngineV5RawHandlers
     };
 
     static uint32_t get_bead_type(uint32_t bead_id)
-    { return bead_id & 0xF; }
+    { return bead_hash_get_bead_type(bead_id); }
 
     static bool is_monomer(uint32_t bead_id) 
-    { return bead_id>>31; }
+    { return bead_hash_is_monomer(bead_id); }
 
     static uint32_t get_polymer_id(uint32_t bead_id)
-    { return (bead_id>>4) & (is_monomer(bead_id) ? 0x07FF'FFFFul : 0x000F'FFFFul); }
+    { return bead_hash_get_polymer_id(bead_id); }
 
     static uint32_t get_polymer_offset(uint32_t bead_id)
-    { return is_monomer(bead_id) ? 0 : (bead_id>>24)&0x7F; }
+    { return bead_hash_get_polymer_offset(bead_id); }
 
     static uint32_t make_hash_from_offset(uint32_t bead_id, unsigned offset)
     {
-        assert(!is_monomer(bead_id));
-        return ((bead_id>>4)&0x000F'FFFFul) | (offset<<20);
+        return bead_hash_make_reduced_hash_from_polymer_offset(bead_id, offset);
     }
 
     static uint32_t get_hash_code(uint32_t bead_id)
-    { return bead_id>>4; }
+    { return bead_id; }
 
 
     struct raw_bead_view_t
@@ -183,6 +182,7 @@ struct BasicDPDEngineV5RawHandlers
         float bond_kappa;
         float conservative[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
         float sqrt_dissipative;
+        uint32_t t;
         uint64_t t_hash;
         uint64_t t_seed;
         uint32_t interval_size;
@@ -340,7 +340,8 @@ struct BasicDPDEngineV5RawHandlers
             }
         }
 
-        cell.t_hash = next_t_hash(cell.t_seed);
+        cell.t_hash = get_t_hash(cell.t, cell.t_seed);
+        cell.t += 1;
 
         cell.phase=Migrating;
         cell.rts=migrate_outgoing.empty() ? 0 : RTS_FLAG_migrate;
@@ -457,7 +458,10 @@ struct BasicDPDEngineV5RawHandlers
             float dx[3];
             vec3_sub(dx, bead.x, neighbour_x);
             float dr_sqr=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
-            if(dr_sqr >=1 || dr_sqr < float(1e-5)){ // The min threshold avoid large forces, and also skips self-interaction
+            if(dr_sqr >=1 || dr_sqr < MIN_DISTANCE_CUTOFF_SQR){ // The min threshold avoid large forces
+                continue;
+            }
+            if(bead.id==incoming.id){
                 continue;
             }
             float dr=pow_half(dr_sqr);

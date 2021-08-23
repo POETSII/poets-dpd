@@ -128,7 +128,6 @@ public:
 
     unsigned get_advance_count(WorldState &s) override
     {
-        require_close(s.dt * m_steps_done, s.t, "t is not dt*nSteps.");
 
         auto dx01=distance(s, s.beads[0].x, s.beads[1].x);
         auto dx12=distance(s, s.beads[1].x, s.beads[2].x);
@@ -148,7 +147,7 @@ public:
         //std::cerr<<"  b2: x="<<s.beads[2].x<<", v="<<s.beads[2].v<<", f="<<s.beads[2].f<<"\n";
         
 
-        if(s.t > 10){
+        if(s.t * s.dt > 10){
             m_sum_dist += dist12 + dist01;
             double a=angle(dx01, dx12);
             m_sum_angle += a;
@@ -162,7 +161,7 @@ public:
             s.beads[i].v = s.beads[i].v * 0.99;
         }
 
-        if(s.t < 100){
+        if(s.t * s.dt < 100){
             m_steps_done += 1;
             return 1;
         }else{

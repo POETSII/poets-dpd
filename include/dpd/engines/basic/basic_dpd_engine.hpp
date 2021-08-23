@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdint>
 #include <math.h>
+#include <iostream>
 
 
 // Calculate checksum except for the last 4 bytes (assumed to be the checksum field).
@@ -64,18 +65,7 @@ private:
     friend class BasicDPDEngineV7Raw;
     friend class BasicDPDEngineV8Raw;
 
-    static uint32_t make_bead_id(bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
-    {
-        uint32_t bead_id;
-        if(is_monomer){
-            assert(polymer_offset==0);
-            bead_id = 0x8000'0000 | (polymer_id<<4) | bead_type;
-        }else{
-            bead_id = (polymer_offset<<24) | (polymer_id<<4) | bead_type;
-        }
-        return bead_id;
-    }
-    struct bead_id_t
+    struct bead_hash_t
     {
         /*  1ppp pppp pppp pppp  pppp pppp pppp bbbb
             0ooo oooo pppp pppp  pppp pppp pppp bbbb
@@ -88,51 +78,42 @@ private:
             0000 0ooo oooo pppp  pppp pppp pppp pppp
             This is generally cheaper than masking
         */
-        uint32_t bead_id;
+        uint32_t bead_hash;
 
         void operator=(uint32_t x)
         {
-            bead_id=x;
-        }
-
-        void set_bead_id(bool _is_monomer, uint32_t polymer_id, uint32_t polymer_offset, uint32_t bead_type)
-        {
-            bead_id=make_bead_id(_is_monomer, polymer_id, polymer_offset, bead_type);
-            assert(is_monomer() == _is_monomer);
-            assert(polymer_id == get_polymer_id());
-            assert(is_monomer() ? polymer_offset==0 : polymer_offset == get_polymer_offset());
-            assert(bead_type==get_bead_type());
+            bead_hash=x;
         }
 
         uint32_t get_bead_type() const
-        { return bead_id & 0xF; }
+        { return bead_hash_get_bead_type(bead_hash); }
 
         bool is_monomer() const
-        { return bead_id>>31; }
+        { return bead_hash_is_monomer(bead_hash); }
 
         uint32_t get_polymer_id() const
-        { return (bead_id>>4) & (is_monomer() ? 0x07FF'FFFFul : 0x000F'FFFFul); }
+        { return bead_hash_get_polymer_id(bead_hash); }
 
         uint32_t get_polymer_offset() const
-        { return is_monomer() ? 0 : (bead_id>>24)&0x7F; }
+        { return bead_hash_get_polymer_offset(bead_hash); }
 
-        uint32_t make_hash_from_offset(unsigned offset)
+        // This cannot work out what the bead type is, so will return the 0xf for the bead type
+        uint32_t make_reduced_hash_from_offset(unsigned offset)
         {
-            assert(!is_monomer());
-            return ((bead_id>>4)&0x000F'FFFFul) | (offset<<20);
+            return bead_hash_make_reduced_hash_from_polymer_offset(bead_hash, offset);
         }
 
         uint32_t get_hash_code() const
         {
-            return bead_id>>4;
+            return bead_hash;
         }
 
     };
-    static_assert(sizeof(bead_id_t)==4);
+    static_assert(sizeof(bead_hash_t)==4);
 
     struct bead_view_t
     {
-        bead_id_t id;
+        bead_hash_t id;
         vec3f_t x;
         vec3f_t v;
 
@@ -183,7 +164,7 @@ private:
 
     void get_bond_info(
         const bead_resident_t &home,
-        const bead_id_t &other_id,
+        const bead_hash_t &other_id,
         int &angle_partner_count,
         float &kappa,
         float &r0
@@ -223,20 +204,22 @@ private:
 public:
     std::string CanSupport(const WorldState *state) const override
     {
-        float bond_kappa=nanf("");
+        float bond_kappa=-1;
         float bond_r0=nanf("");
 
         for(const auto &pt : state->polymer_types){
             for(const auto &b : pt.bonds){
-                if(isnan(bond_kappa)){
+                if(bond_kappa<0){
                     bond_kappa=b.kappa;
                     bond_r0=b.r0;
                 }else{
                     if(! (float(b.kappa) == bond_kappa) ){
+                        std::cerr<<" b.kappa="<<b.kappa<<", "<<bond_kappa<<"\n";
                         return "All bonds must have same kappa.";
                     }
                     if( !(float(b.r0) == bond_r0) ){
-                        return "All bonds must have same kappa.";
+                        std::cerr<<" b.r0="<<b.kappa<<", "<<bond_r0<<"\n";
+                        return "All bonds must have same r0.";
                     }
                 }
             }
@@ -329,7 +312,7 @@ protected:
         const PolymerType &pt = m_state->polymer_types.at(b.polymer_type);
         bool is_monomer=pt.bead_types.size()==1;
 
-        bb.id=make_bead_id(is_monomer, b.polymer_id, b.polymer_offset, b.bead_type);
+        bb.id=bead_hash_construct(b.get_bead_type(), b.is_monomer, b.polymer_id, b.polymer_offset);
         vec3_copy(bb.x, b.x);
         vec3_copy(bb.v, b.v);
         vec3_copy(bb.f, b.f);
@@ -393,14 +376,14 @@ protected:
             m_box[i]=m_state->box[i];
         }
 
-        m_bond_kappa=nanf("");
+        m_bond_kappa=-1;
 
         // Validate all bonds against assumptions
         for(const auto &pt : m_state->polymer_types){
             std::vector<int> nbonds(pt.bead_types.size(), 0);
             for(const auto &bond : pt.bonds){
                 // This could both be changed, with a bit more state and work at run-time.
-                if(isnan(m_bond_kappa)){
+                if(m_bond_kappa < 0){
                     m_bond_kappa=bond.kappa;
                     m_bond_r0=bond.r0;
                 }else{
@@ -482,6 +465,12 @@ protected:
                 bb.x=vec3f_t(b.x);
                 bb.v=vec3f_t(b.v);
                 bb.f=vec3f_t(b.f);
+
+                for(unsigned i=0; i<3; i++){
+                    if(bb.x[i]==m_box[i]){  // We can get rounding up to box bondary, but it must be kept in bounds
+                        bb.x[i]=0;
+                    }
+                }
                 
                 unsigned true_index=cell_location_to_cell_index(floor(b.x));
                 if(true_index != cell_index){
@@ -525,7 +514,7 @@ protected:
     {
         double dt=m_state->dt;
 
-        m_t_hash = next_t_hash(m_state->seed);
+        m_t_hash = get_t_hash(m_state->t, m_state->seed);
 
         // Move the beads, and then assign to cells based on x(t+dt)
         std::vector<bead_resident_t> moved; // Temporarily hold those that moved
@@ -627,7 +616,7 @@ protected:
             }
         }
 
-        m_state->t += m_state->dt;
+        m_state->t += 1;
     }
 
     // Note that b_x has already been adjusted for wrapping
@@ -678,7 +667,7 @@ protected:
         auto find_cached_pos=[&](uint32_t target_hash) -> const cached_bond_t *
         {
             for(unsigned i=0; i<cache.size(); i++){
-                if(cache[i].bead_hash==target_hash){
+                if( bead_hash_equals(cache[i].bead_hash ,target_hash)){
                     return &cache[i];
                 }
             }
@@ -690,10 +679,10 @@ protected:
             if(bead.angle_bonds[i].partner_head==0xFF){
                 break;
             }
-            auto head_hash=bead.id.make_hash_from_offset(bead.angle_bonds[i].partner_head);
-            auto tail_hash=bead.id.make_hash_from_offset(bead.angle_bonds[i].partner_tail);
-            const auto *head=find_cached_pos(head_hash);
-            const auto *tail=find_cached_pos(tail_hash);
+            auto head_reduced_hash=bead.id.make_reduced_hash_from_offset(bead.angle_bonds[i].partner_head);
+            auto tail_reduced_hash=bead.id.make_reduced_hash_from_offset(bead.angle_bonds[i].partner_tail);
+            const auto *head=find_cached_pos(head_reduced_hash);
+            const auto *tail=find_cached_pos(tail_reduced_hash);
             
             // The cache copies should already have wrapping applied
             auto first=bead.x - head->x;
@@ -717,8 +706,8 @@ protected:
 
             bead.f += middleForce;
 
-            outgoing.push_back( { head_hash, headForce } );
-            outgoing.push_back( { tail_hash, tailForce } );
+            outgoing.push_back( { head_reduced_hash, headForce } );
+            outgoing.push_back( { tail_reduced_hash, tailForce } );
         }
     }
 
@@ -727,7 +716,7 @@ protected:
         for(auto &b : cell.beads){
             auto bpo = b.id.get_hash_code();
             for(const auto &f : forces){
-                if(bpo == f.target_hash){
+                if( bead_hash_equals( bpo , f.target_hash) ){
                     //std::cerr<<"  bpo="<<bpo<<", fdpd="<<b.f<<", fangle="<<f.f<<", f="<<b.f+f.f<<"\n";
                     b.f += f.f;
                 }

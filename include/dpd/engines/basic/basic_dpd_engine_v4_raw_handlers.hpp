@@ -1,6 +1,7 @@
 #ifndef basic_dpd_engine_v4_raw_handlers_hpp
 #define basic_dpd_engine_v4_raw_handlers_hpp
 
+#include "dpd/core/dpd_state.hpp"
 #include "dpd/storage/bag_wrapper.hpp"
 #include "dpd/maths/dpd_maths_core_half_step_raw.hpp"
 
@@ -47,25 +48,24 @@ struct BasicDPDEnginev4RawHandlers
     };
 
     static uint32_t get_bead_type(uint32_t bead_id)
-    { return bead_id & 0xF; }
+    { return bead_hash_get_bead_type(bead_id); }
 
     static bool is_monomer(uint32_t bead_id) 
-    { return bead_id>>31; }
+    { return bead_hash_is_monomer(bead_id); }
 
     static uint32_t get_polymer_id(uint32_t bead_id)
-    { return (bead_id>>4) & (is_monomer(bead_id) ? 0x07FF'FFFFul : 0x000F'FFFFul); }
+    { return bead_hash_get_polymer_id(bead_id); }
 
     static uint32_t get_polymer_offset(uint32_t bead_id)
-    { return is_monomer(bead_id) ? 0 : (bead_id>>24)&0x7F; }
+    { return bead_hash_get_polymer_offset(bead_id); }
 
     static uint32_t make_hash_from_offset(uint32_t bead_id, unsigned offset)
     {
-        assert(!is_monomer(bead_id));
-        return ((bead_id>>4)&0x000F'FFFFul) | (offset<<20);
+        return bead_hash_make_reduced_hash_from_polymer_offset(bead_id, offset);
     }
 
     static uint32_t get_hash_code(uint32_t bead_id)
-    { return bead_id>>4; }
+    { return bead_id; }
 
 
     struct raw_bead_view_t
@@ -173,6 +173,7 @@ struct BasicDPDEnginev4RawHandlers
         float bond_kappa = nanf("");
         float conservative[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
         float sqrt_dissipative;
+        uint32_t t;
         uint64_t t_hash;
         uint64_t t_seed;
 
@@ -212,7 +213,11 @@ struct BasicDPDEnginev4RawHandlers
 
         // Should probably be co-located with the beads for caching
         static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
-        uint8_t cached_bond_indices[MAX_BEADS_PER_CELL]; // 0xff if not seen, otherwise the first bond that was seen
+        uint8_t cached_bond_indices[MAX_BEADS_PER_CELL]; // 0xff if not seen, <0xfe is the first bond that was seen, 0xfe means both beads seen
+    
+        #ifndef NDEBUG
+        uint8_t debug_hookean_bonds_seen[MAX_BEADS_PER_CELL];
+        #endif
     };
 
     static uint32_t calc_rts(const device_state_t &cell)
@@ -243,6 +248,24 @@ struct BasicDPDEnginev4RawHandlers
         assert(make_bag_wrapper(cell.force_outgoing).empty());
         assert(make_bag_wrapper(cell.migrate_outgoing).empty());
         assert(cell.share_todo==0);
+        #ifndef NDEBUG
+        if(cell.phase==SharingAndForcing){
+            for(unsigned i=0; i<resident.size(); i++){
+                const auto &b = resident[i];
+                if(b.angle_bonds[0].partner_head!=0xFF){
+                    assert(cell.cached_bond_indices[i]==0xFE); // Check angle was processed
+                }
+                int nhookean=0;
+                for(int j=0;j<MAX_BONDS_PER_BEAD;j++){
+                    if(b.bond_partners[j]==0xFF){
+                        break;
+                    }
+                    nhookean++;
+                }
+                assert(cell.debug_hookean_bonds_seen[i]==nhookean); // Check all bonds processed
+            }
+        }
+        #endif
 
         assert(migrate_outgoing.empty());
 
@@ -259,6 +282,10 @@ struct BasicDPDEnginev4RawHandlers
 
             // Actual position update, clears force
             dpd_maths_core_half_step_raw::update_pos(cell.dt, cell.box, b);
+
+            #ifndef NDEBUG
+            b.checksum=calc_checksum(b);
+            #endif
         
             // Check it is still in the right cell
             int32_t true_loc[3];
@@ -272,7 +299,8 @@ struct BasicDPDEnginev4RawHandlers
             }
         }
 
-        cell.t_hash = next_t_hash(cell.t_seed);
+        cell.t_hash = get_t_hash(cell.t, cell.t_seed);
+        cell.t += 1;
 
         cell.phase=Migrating;
         cell.rts=migrate_outgoing.empty() ? 0 : RTS_FLAG_migrate;
@@ -323,6 +351,9 @@ struct BasicDPDEnginev4RawHandlers
 
         for(unsigned i=0; i<resident.size(); i++){ 
             cell.cached_bond_indices[i]=0xff;
+            #ifndef NDEBUG
+            cell.debug_hookean_bonds_seen[i]=0;
+            #endif
         }
 
         cell.phase=SharingAndForcing;
@@ -378,7 +409,7 @@ struct BasicDPDEnginev4RawHandlers
             float dx[3];
             vec3_sub(dx, bead.x, neighbour_x);
             float dr_sqr=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
-            if(dr_sqr >=1 || dr_sqr < float(1e-5)){ // The min threshold avoid large forces, and also skips self-interaction
+            if(dr_sqr >=1 || dr_sqr < MIN_DISTANCE_CUTOFF_SQR){ // The min threshold avoid large forces, and also skips self-interaction
                 continue;
             }
             float dr=pow_half(dr_sqr);
@@ -396,6 +427,12 @@ struct BasicDPDEnginev4RawHandlers
                     }
                 }
             }
+
+            #ifndef NDEBUG
+            if(kappa>0){
+                cell.debug_hookean_bonds_seen[bead_i]+=1;
+            }
+            #endif
 
             float conStrength=cell.conservative[MAX_BEAD_TYPES*get_bead_type(bead.id)+get_bead_type(incoming.id)];
 
@@ -433,6 +470,10 @@ struct BasicDPDEnginev4RawHandlers
                         //std::cerr<<"  S\n";
                         cell.cached_bond_indices[bead_i] = cached_bond_index;
                     }else{
+                        #ifndef NDEBUG
+                        assert(cell.cached_bond_indices[bead_i] != 0xFE); // assert angle not already done
+                        #endif
+
                         // Once both partners have arrived, we calculate force and push onto outgoing_forces
                         //std::cerr<<"Force!`\n";
                         assert(bead.id == resident[bead_i].id);
@@ -440,6 +481,9 @@ struct BasicDPDEnginev4RawHandlers
                         assert(force_outgoing.size()>0);
                         cell.rts |= RTS_FLAG_force;
                         //std::cerr<<"DoenFr\n";
+                        #ifndef NDEBUG
+                        cell.cached_bond_indices[bead_i] = 0xFE; // Mark angle as done
+                        #endif
                     }
                 }
             }

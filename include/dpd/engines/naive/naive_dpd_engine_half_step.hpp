@@ -157,7 +157,7 @@ private:
 
     virtual void step()
     {
-        m_t_hash=next_t_hash(m_state->seed);
+        m_t_hash=get_t_hash(m_state->t, m_state->seed);
 
         double dt=m_state->dt;
 
@@ -206,7 +206,7 @@ private:
             dpd_maths_core_half_step::update_mom(dt, b);
         }
 
-        m_state->t += m_state->dt;
+        m_state->t += 1;
     }
 
     bool is_bonded(

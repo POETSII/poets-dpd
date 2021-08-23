@@ -5,7 +5,7 @@ LDFLAGS += -pthread
 #LDFLAGS += -fuse-ld=gold
 
 CPPFLAGS += -DNDEBUG=1 
-CPPFLAGS += -Og -march=native -ffast-math
+CPPFLAGS += -O3 -march=native -ffast-math
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
 TINSEL_ROOT = tinsel
@@ -14,8 +14,7 @@ CPPFLAGS += -I $(TINSEL_ROOT)/include
 CPPFLAGS += -I $(TINSEL_ROOT)/hostlink
 CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 
-LDFLAGS += -L $(TINSEL_ROOT)/hostlink
-LDLIBS += -l:hostlink.a  -lmetis -ltbb
+LDLIBS +=  -lmetis -ltbb
 
 
 TEST_BIN := bin/test_naive_engine \
@@ -27,7 +26,15 @@ TEST_BIN := bin/test_naive_engine \
 
 
 ENGINES := $(filter-out %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp)))
+
+ifeq ($(DISABLE_RISCV),)
 ENGINES_RISCV := $(filter %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp)))
+LDFLAGS += -L $(TINSEL_ROOT)/hostlink
+LDLIBS += -l:hostlink.a
+else
+ENGINES_RISCV := 
+ENGINES := $(filter-out %tinsel_hw,$(ENGINES))
+endif
 
 ENGINES := $(filter-out basic_dpd_engine_v6_raw_tinsel_swsim basic_dpd_engine_v8_raw,$(ENGINES))
 
@@ -66,7 +73,7 @@ src/%.riscv : src/%.cpp
 #############################################################
 ## RISCV build stuff
 
-RV_TOOLS_DIR = /local/orchestrator-common//orchestrator_dependencies_7/riscv32-compile-driver/bin
+RV_TOOLS_DIR =../orchestrator_dependencies_7/riscv32-compile-driver/bin
 
 # From tinsel/globals.mk
 RV_ARCH     = rv32imf

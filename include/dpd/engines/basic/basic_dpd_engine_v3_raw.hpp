@@ -116,8 +116,7 @@ public:
         }
 
         for(unsigned i=0; i<nSteps; i++){
-            m_state->t += m_state->dt;
-            next_t_hash(m_state->seed);
+            m_state->t += 1;
         }
 
         export_beads();

@@ -53,16 +53,24 @@ std::pair<bool,std::string> test_differential(
             double maxDiff= 0.0001;
 
             double xdiff=0;
+            int xdiff_index=-1;
             double vdiff=0;
             double fdiff=0;
             for(unsigned i=0; i<state1.beads.size(); i++){
                 vec3r_t dx=state1.beads[i].x-state2.beads[i].x;
                 for(int j=0; j<3; j++){
-                    if(dx[j] >= state1.box[j]){
+                    if(dx[j] > state1.box[j]/2){
                         dx[j] -= state1.box[j];
                     }
+                    if(dx[j] < -state1.box[j]/2){
+                        dx[j] += state1.box[j];
+                    }
                 }
-                xdiff=std::max(xdiff, (dx).l2_norm() );
+                double xdiffnow=(dx).l2_norm();
+                if(xdiffnow > xdiff){
+                    xdiff=xdiffnow;
+                    xdiff_index=i;
+                }
                 vdiff=std::max(vdiff, (state1.beads[i].v-state2.beads[i].v).l2_norm() );
                 fdiff=std::max(fdiff, (state1.beads[i].f-state2.beads[i].f).l2_norm() );
             }
@@ -80,6 +88,10 @@ std::pair<bool,std::string> test_differential(
 
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);
+
+                std::cerr<<"  xdiff_max at bead "<<xdiff_index<<", diff="<<xdiff<<"\n";
+                std::cerr<<"      ref="<<state1.beads[xdiff_index].x<<"\n";
+                std::cerr<<"      got="<<state2.beads[xdiff_index].x<<"\n";
 
                 return {false, "Position divergence."};
             }

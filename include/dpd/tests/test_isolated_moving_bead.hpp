@@ -102,10 +102,7 @@ public:
     unsigned get_advance_count(WorldState &s) override
     {
         vec3r_t pos=s.beads.at(0).x;
-        if( abs(s.t - s.dt * m_steps_done ) > 1e-10 ){
-            throw TestFailedException("t is not dt*nSteps.");
-        }
-        vec3r_t full_x=m_v * s.t;
+        vec3r_t full_x=m_v * s.t * s.dt;
         vec3r_t red_x=full_x.reduce_to_box(s.box);
         //std::cerr<<"Pos = "<<s.beads.at(0).x<<"\n";
         double err= (red_x - pos ).l2_norm();
@@ -115,7 +112,7 @@ public:
             throw TestFailedException(acc.str());
         }
 
-        if(s.t < 10){
+        if(s.t*s.dt < 10){
             m_steps_done += m_step_dist;
             return m_step_dist++;
         }else{

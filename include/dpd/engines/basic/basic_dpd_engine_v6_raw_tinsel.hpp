@@ -149,7 +149,7 @@ public:
     void ensure_hostlink()
     {
         if(!m_hostlink){
-            std::cerr<<"Opening hostlink\n";
+            //std::cerr<<"Opening hostlink\n";
             HostLinkParams params;
             params.numBoxesX=Impl::NumBoxesX;
             params.numBoxesY=Impl::NumBoxesY;

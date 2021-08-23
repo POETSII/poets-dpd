@@ -139,11 +139,11 @@ public:
     void ensure_hostlink()
     {
         if(!m_hostlink){
-            std::cerr<<"Opening hostlink\n";
+            //std::cerr<<"Opening hostlink\n";
             typename Impl::HostLinkParams params;
             params.numBoxesX=m_meshLenX;
             params.numBoxesY=m_meshLenY;
-            std::cerr<<"  boxx="<<params.numBoxesX<<", boxy="<<params.numBoxesY<<"\n";
+            //std::cerr<<"  boxx="<<params.numBoxesX<<", boxy="<<params.numBoxesY<<"\n";
             m_hostlink = std::make_shared<typename Impl::HostLink>(params);
         }
     }
@@ -249,7 +249,7 @@ public:
                 if(seen==1){
                     double tNow=now();
                     uint64_t nSteps = m_devices[0].interval_size * (uint64_t)m_devices[0].intervals_todo;
-                    std::cerr<<"First bead, t="<<(tNow-tStart)<<", nBeads="<<nBeads<<", nSteps="<<nSteps<<", bead*step/sec="<< (nBeads*nSteps) / (tNow-tStart)<<"\n";
+                    //std::cerr<<"First bead, t="<<(tNow-tStart)<<", nBeads="<<nBeads<<", nSteps="<<nSteps<<", bead*step/sec="<< (nBeads*nSteps) / (tNow-tStart)<<"\n";
                 }
             }else{
                 double tNow=now();

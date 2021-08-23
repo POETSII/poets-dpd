@@ -106,7 +106,7 @@ public:
 
     unsigned get_advance_count(WorldState &s) override
     {
-        require_close(s.dt * m_steps_done, s.t, "t is not dt*nSteps.");
+        require_close(m_steps_done, s.t, "t is not dt*nSteps.");
 
         double dist=distance(s, s.beads[0].x, s.beads[1].x).l2_norm();
 
@@ -114,17 +114,16 @@ public:
             //std::cerr<<"dx="<<m_dx<<"\n;";
             require_close( m_x0+m_dx,  s.beads[0].x, "Bead 0 should not move.");
             require_close( m_x0-m_dx,  s.beads[1].x, "Bead 1 should not move.");
-        }else if(s.t>s.dt){
+        }else if(s.t>1){
             // Get distance from origin to bead
             vec3r_t tmp=distance(s, m_x0, s.beads[0].x);
             // Low tolerance, as they drift quite quickly in single precision
             //std::cerr<<"  line="<<tmp<<", norm="<<normalise(tmp)<<", ref="<<normalise(m_dx)<<", diff="<< (normalise(m_dx)-normalise(tmp)).l2_norm() <<"\n";
-            require_close( normalise(m_dx), normalise(tmp), 1e-3*sqrt(s.t/s.dt), "Bead 0 should always be on the same line.");
+            require_close( normalise(m_dx), normalise(tmp), 1e-3*sqrt(s.t), "Bead 0 should always be on the same line.");
 
-            if( std::abs(s.t-s.dt) < 1e-9){
+            if(s.t == 2){
                 require_close( normalise(m_dx), normalise(s.beads[0].v), "Bead 0 should move along +dx at time-step 1." );
                 require_close( normalise(-m_dx), normalise(s.beads[1].v), "Bead 1 should move along -dx at time-step 1." );
-            }else if(std::abs(s.t-2*s.dt) < 1e-9){
             }
 
             if(m_prev_dist < dist && m_prev_dist < m_prev_prev_dist ) {

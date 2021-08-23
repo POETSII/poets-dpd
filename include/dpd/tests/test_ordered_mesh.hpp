@@ -94,14 +94,14 @@ public:
 
         double density=s.beads.size() / double(m_dims[0]*m_dims[1]*m_dims[2]);
 
-        if(0 && std::abs(round(s.t)-s.t) < 1e-9 ){
+        if(0 && s.t>1 ){
             std::cerr<<"t="<<s.t<<", KbT="<<temperature<<", density="<<density<<"\n";
             std::cerr<<"  v[0]="<<s.beads[0].v<<", mean_v="<<sum_v*(1.0/s.beads.size())<<", mean_f="<<sum_f*(1.0/s.beads.size())<<"\n";
         }
 
         // TODO : What should the temperature actually be. It doesnt seem to be 1...
         
-        if(s.t < 10){
+        if(s.t * s.dt < 10){
             return 1;
         }else{
             return 0;

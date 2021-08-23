@@ -99,24 +99,20 @@ public:
 
     unsigned get_advance_count(WorldState &s) override
     {
-        
-        if( abs(s.t - s.dt * m_steps_done ) > 1e-10 ){
-            throw TestFailedException("t is not dt*nSteps.");
-        }
         for(unsigned i=0; i<m_x0.size(); i++){
             vec3r_t pos=s.beads.at(i).x;
-            vec3r_t full_x=m_v * s.t + m_x0[i];
+            vec3r_t full_x=m_v * s.t * s.dt + m_x0[i];
             vec3r_t red_x=full_x.reduce_to_box(s.box);
             //std::cerr<<"Pos = "<<s.beads.at(0).x<<"\n";
             double err= (red_x - pos ).l2_norm();
             if(err > sqrt(m_steps_done) * 1e-4){
                 std::stringstream acc;
-                acc<<"Bead is in the wrong position at t="<<s.t<<". Expected "<<red_x<<", got "<<pos<<", err="<<err<<", tol="<<sqrt(m_steps_done) * 1e-4;
+                acc<<"Bead is in the wrong position at t="<<s.t*s.dt<<". Expected "<<red_x<<", got "<<pos<<", err="<<err<<", tol="<<sqrt(m_steps_done) * 1e-4;
                 throw TestFailedException(acc.str());
             }
         }
 
-        if(s.t < 10){
+        if(s.t*s.dt < 10){
             m_steps_done += m_step_dist;
             return m_step_dist++;
         }else{

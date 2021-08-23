@@ -47,6 +47,22 @@ inline bool bead_hash_in_same_polymer(uint32_t h1, uint32_t h2)
     return (h1&0xFFFFF) == (h2&0xFFFFF);
 }
 
+// This cannot work out what the bead type is, so will return the 0 for the bead type
+inline uint32_t bead_hash_make_reduced_hash_from_polymer_offset(uint32_t origin_hash, unsigned polymer_offset)
+{
+    assert(!bead_hash_is_monomer(origin_hash));
+    assert(polymer_offset < 128);
+    return (origin_hash & 0xFFFFF) | (polymer_offset<<20); 
+}
+
+inline bool bead_hash_equals(uint32_t h1, uint32_t h2)
+{
+    return (h1&0x0FFFFFFFul)==(h2&0x0FFFFFFFul);
+}
+
+static const float MIN_DISTANCE_CUTOFF = 0.000000001;
+static const float MIN_DISTANCE_CUTOFF_SQR = MIN_DISTANCE_CUTOFF;
+
 struct Bead
 {
     // A unique bead id within the world. Bead ids must be contiguous, starting at zero.
@@ -129,7 +145,7 @@ struct WorldState
     vec3r_t origin = {0, 0, 0}; // This is only for import/export. All coordinates are in [0,box)
     vec3r_t box = {4, 4, 4};  // Size of the box
     double lambda = 0.5;
-    double t = 1.0;
+    long t =0;
     double dt = 0.05;
     uint64_t seed = 1;
     std::vector<InteractionStrength> interactions; // Array of bead_types.size()*bead_types.size(). Strictly symmetric

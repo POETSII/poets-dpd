@@ -54,11 +54,8 @@ class TestIsolatedStaticBead
         vec3r_t pos=s.beads.at(0).x;
         if(pos != vec3r_t()){
             throw TestFailedException("Bead moved away from zero.");
-        }
-        if( abs(s.t - s.dt * m_steps_done ) > 1e-10 ){
-            throw TestFailedException("t is not dt*nSteps.");
-        }
-        if(s.t < 1){
+        }   
+        if(s.t * s.dt < 1){
             m_steps_done += m_step_dist;
             return m_step_dist++;
         }else{

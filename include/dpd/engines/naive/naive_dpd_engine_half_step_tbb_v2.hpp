@@ -146,7 +146,7 @@ class NaiveDPDEngineHalfStepTBBV2
 
     void step() override
     {
-        m_t_hash=next_t_hash(m_state->seed);
+        m_t_hash=get_t_hash(m_state->t, m_state->seed);
 
         float dt=m_state->dt;
         vec3f_t box(m_state->box);
@@ -227,7 +227,7 @@ class NaiveDPDEngineHalfStepTBBV2
             }
         });
 
-        m_state->t += m_state->dt;
+        m_state->t += 1;
     }
 
     bool is_bonded(

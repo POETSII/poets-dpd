@@ -124,6 +124,9 @@ private:
     {
         for(auto &b : cell.beads){
             dpd_maths_core_half_step::update_mom(m_dt, b);
+            #ifndef NDEBUG
+            b.checksum=calc_checksum(b);
+            #endif
         }
     }
 
@@ -132,7 +135,7 @@ private:
     void step() override
     {
         double dt=m_state->dt;
-        m_t_hash = next_t_hash(m_state->seed);
+        m_t_hash = get_t_hash(m_state->t, m_state->seed);
 
         //////////////////////////////////////////////////////////////
         // Move the beads, and then assign to cells based on x(t+dt)
@@ -181,7 +184,7 @@ private:
             on_barrier_post_share(cell);
         }
 
-        m_state->t += m_state->dt;
+        m_state->t += 1;
     }
 
 

@@ -161,7 +161,7 @@ private:
 
     void step()
     {
-        m_t_hash = next_t_hash(m_state->seed);
+        m_t_hash = get_t_hash(m_state->t, m_state->seed);
 
         // Clear all cell information
         m_cells.resize(calc_num_cells());
@@ -198,7 +198,7 @@ private:
             update_bead_mom(&b);
         }
 
-        m_state->t += m_state->dt;
+        m_state->t += 1;
     }
 
     void step_cell(vec3i_t pos)
@@ -514,6 +514,7 @@ private:
             assert( 0 <= xa[i] && xa[i] <= m_state->box[i] );
             // Hack to get precise less than relationship on upper box.
             xa[i] = std::min( xa[i] , std::nexttoward(m_state->box[i], -DBL_MAX) );
+            assert(xa[i] < m_state->box[i]);
         }
 
 #ifndef TINSEL
