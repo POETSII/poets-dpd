@@ -6,6 +6,8 @@
 #include "dpd/core/dpd_state_to_vtk.hpp"
 #include "dpd/core/dpd_state_validator.hpp"
 
+#include "dpd/core/logging.hpp"
+
 #include <random>
 #include <fstream>
 
@@ -16,6 +18,8 @@ void usage()
     for(auto s : DPDEngineFactory::ListFactories()){
         fprintf(stderr, "    %s\n", s.c_str());
     }
+    fprintf(stderr,"  env:\n");
+    fprintf(stderr,"     PDPD_LOG=log-path : do full force logging to given file.\n");
     exit(1);
 }
 
@@ -36,6 +40,96 @@ double now()
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + 1e-9*ts.tv_nsec;
 }
+
+class FileLogger
+    : public ForceLogging
+{
+public:
+    FileLogger(const std::string &name)
+        : m_dst(name)
+        , m_t(0)
+    {
+        if(!m_dst.is_open()){
+            fprintf(stderr, "Couldnt open force logging file %s\n", name.c_str());
+        }
+    }
+
+    void print(double val)
+    {
+        if(std::round(val)==val && 0<=val && val < ldexp(1, 32)){
+            m_dst<<(uint32_t)val;
+        }else{
+            m_dst<<val;
+        }
+    }
+
+    virtual void SetTime(long t)
+    { m_t=t; }
+
+    virtual void LogProperty(const char *name, int dims, const double *x)
+    {
+        m_dst<<"Prop,"<<m_t<<",,,,"<<name;
+        for(int i=0; i<dims; i++){
+            m_dst<<",";
+            print(x[i]);
+        }
+        for(int i=dims;i<3;i++){
+            m_dst<<",";
+        }
+        m_dst<<"\n";
+    }
+
+    virtual void LogBeadProperty(long bead_id, const char *name, int dims, const double *x)
+    {
+        m_dst<<"Prop,"<<m_t<<","<<bead_id+1<<",,,"<<name;
+        for(int i=0; i<dims; i++){
+            m_dst<<",";
+            print(x[i]);
+        }
+        for(int i=dims;i<3;i++){
+            m_dst<<",";
+        }
+        m_dst<<"\n";
+    }
+
+    virtual void LogBeadPairProperty(long bead_id0,long bead_id1, const char *name, ForceLoggingFlags flags, int dims, const double *x)
+    {
+        bool flip=flags!=Asymmetric && (bead_id0 > bead_id1);
+        if(flip){
+            std::swap(bead_id0, bead_id1);
+        }
+        m_dst<<"Prop,"<<m_t<<","<<bead_id0+1<<","<<bead_id1+1<<",,"<<name;
+        for(int i=0; i<dims; i++){
+            if(flip && (flags==SymmetricFlipped)){
+                m_dst<<",";
+                print(-x[i]);
+            }else{
+                m_dst<<",";
+                print(x[i]);
+            }
+        }
+        for(int i=dims;i<3;i++){
+            m_dst<<",";
+        }
+        m_dst<<"\n";
+    }
+
+    virtual void LogBeadTripleProperty(long bead_id0, long bead_id1, long bead_id2, const char *name, int dims, const double *x)
+    {
+        m_dst<<"Prop,"<<m_t<<","<<bead_id0+1<<","<<bead_id1+1<<","<<bead_id2+1<<","<<name;
+        for(int i=0; i<dims; i++){
+            m_dst<<",";
+            print(x[i]);
+        }
+        for(int i=dims;i<3;i++){
+            m_dst<<",";
+        }
+        m_dst<<"\n";
+    }
+private:
+    std::ofstream m_dst;
+    long m_t;
+};
 
 int main(int argc, const char *argv[])
 {
@@ -59,6 +153,13 @@ int main(int argc, const char *argv[])
             baseName=argv[3];
         }else{
             usage();
+        }
+
+        std::string log_dst;
+        if(getenv("PDPD_LOG")){
+            log_dst=getenv("PDPD_LOG");
+            ForceLogging::set_logger(new FileLogger(log_dst));
+            fprintf(stderr, "Logging to %s\n", log_dst.c_str());
         }
 
         int interval_count=1000;
@@ -127,6 +228,11 @@ int main(int argc, const char *argv[])
             ++slice_i;
             return true;
         });
+
+        if(ForceLogging::logger()){
+            delete ForceLogging::logger();
+            ForceLogging::logger()=0;
+        }
 
     }catch(const std::exception &e){
         print_exception(e);

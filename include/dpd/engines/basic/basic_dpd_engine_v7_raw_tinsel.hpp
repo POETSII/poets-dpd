@@ -154,7 +154,7 @@ public:
         
         BasicDPDEngineV7Raw::Attach(state);
 
-        std::cerr<<"Building graph\n";
+        //std::cerr<<"Building graph\n";
 
         m_graph=std::make_shared<typename Impl::template PGraph<Device, State, None, Message>>(m_meshLenX, m_meshLenY);
         auto &graph=*m_graph;

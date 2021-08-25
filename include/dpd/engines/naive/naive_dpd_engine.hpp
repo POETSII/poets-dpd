@@ -6,12 +6,15 @@
 #include "dpd/maths/dpd_maths_core.hpp"
 
 #include "dpd/core/vec3.hpp"
+#include "dpd/core/dpd_state_validator.hpp"
 
 #include <cassert>
 #include <cmath>
 #include <array>
 #include <cfloat>
 #include <iostream>
+
+#include "dpd/core/logging.hpp"
 
 
 /*
@@ -74,6 +77,8 @@ private:
 
     void check_constraints_and_setup()
     {
+        validate(*m_state);
+
         auto require=[](bool cond, const char *msg)
         {
             if(!cond){
@@ -163,11 +168,38 @@ private:
     {
         m_t_hash = get_t_hash(m_state->t, m_state->seed);
 
+        if(ForceLogging::logger()){
+            ForceLogging::logger()->SetTime(m_state->t);
+            ForceLogging::logger()->LogProperty("dt", 1, &m_state->dt);
+            double seed_low=m_state->seed &0xFFFFFFFFul;
+            double seed_high=m_state->seed>>32;
+            ForceLogging::logger()->LogProperty("seed_lo", 1, &seed_low);
+            ForceLogging::logger()->LogProperty("seed_high", 1, &seed_high);
+            double t_hash_low=m_t_hash&0xFFFFFFFFul;
+            double t_hash_high=m_t_hash>>32;
+            ForceLogging::logger()->LogProperty("t_hash_lo", 1, &t_hash_low);
+            ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
+            for(auto &b : m_state->beads){
+                double h=b.get_hash_code();
+                ForceLogging::logger()->LogBeadProperty(b.bead_id, "b_hash", 1, &h);
+                double x[3]={b.x[0],b.x[1],b.x[2]};
+                ForceLogging::logger()->LogBeadProperty(b.bead_id,"x",3,x);
+                double v[3]={b.v[0],b.v[1],b.v[2]};
+                ForceLogging::logger()->LogBeadProperty(b.bead_id,"v",3,v);
+                double f[3]={b.f[0],b.f[1],b.f[2]};
+                ForceLogging::logger()->LogBeadProperty(b.bead_id,"f",3,f);
+            }
+        }
+
+        
+
         // Clear all cell information
         m_cells.resize(calc_num_cells());
         for(auto &c : m_cells){
             c.clear();
         }
+
+        m_forces.assign(m_state->beads.size(), vec3r_t{0,0,0});
 
         // Move the beads, and then assign to cells based on x(t+dt)
         for(auto &b : m_state->beads){
@@ -176,6 +208,11 @@ private:
             cell.push_back(&b);
             if(cell.size() >= 16){
                 std::cerr<<"  b="<<b.x<<", cell size="<<cell.size()<<"\n";
+            }
+
+            if(ForceLogging::logger()){
+                double x[3]={b.x[0],b.x[1],b.x[2]};
+                ForceLogging::logger()->LogBeadProperty(b.bead_id,"x_next",3,x);
             }
         }
 
@@ -195,7 +232,17 @@ private:
         }
 
         for(auto &b : m_state->beads){
+            double ff[3]={m_forces[b.bead_id][0], m_forces[b.bead_id][1], m_forces[b.bead_id][2]};
+            if(ForceLogging::logger()){
+                ForceLogging::logger()->LogBeadProperty(b.bead_id,"f_now",3,ff);
+            }
             update_bead_mom(&b);
+            if(ForceLogging::logger()){
+                double v[3]={b.v[0],b.v[1],b.v[2]};
+                ForceLogging::logger()->LogBeadProperty(b.bead_id,"v_next",3,v);
+                double f[3]={b.f[0],b.f[1],b.f[2]};
+                ForceLogging::logger()->LogBeadProperty(b.bead_id,"f_next",3,f);
+            }
         }
 
         m_state->t += 1;
@@ -280,7 +327,7 @@ private:
             vec3r_t f;
             if(dr < 1 && dr>=0.000000001){
                 dpd_maths_core::calc_force(
-                    (m_state->lambda * m_state->dt), (recip_pow_half(m_state->dt)),
+                    (m_state->lambda * m_state->dt), pow_half( dpd_maths_core::kT * 24 / m_state->dt),
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].dissipative; },
                     m_t_hash,
@@ -325,7 +372,9 @@ private:
 
         double dissForce = -gammap*rdotv;
         double u = RandSym(hb->get_hash_code(), ob->get_hash_code());
-		double randForce = pow_half(gammap) * (recip_pow_half(m_state->dt)) * u;
+        double scaled_inv_root_dt=pow_half( dpd_maths_core::kT * 24 / m_state->dt);
+        double randScale=pow_half(gammap) * scaled_inv_root_dt;
+		double randForce = randScale * u;
 
         double scaled_force = (conForce + dissForce + randForce) * inv_dr;
 
@@ -338,7 +387,27 @@ private:
         vec3r_t f=dx * scaled_force;
         //std::cerr<<"ref :   dr="<<dr<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<"\n";
         m_forces.at(hb->bead_id) += f;
-        //std::cerr<<"  r="<<dr<<", force="<<scaled_force*dr<<", f="<<m_forces.at(hb->bead_id)<<"\n";
+        /*if(hb->bead_id+1==2){
+            std::cerr<<"  hb="<<hb->bead_id+1<<", ob="<<ob->bead_id+1<<", f_acc="<<m_forces.at(hb->bead_id)<<", f="<<f<<"\n";
+        }*/
+
+        if(ForceLogging::logger() && hb->bead_id < ob->bead_id){
+            double ddx[3]={dx[0],dx[1],dx[2]};
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dx",ForceLoggingFlags::SymmetricFlipped, 3,ddx);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dr",ForceLoggingFlags::SymmetricFlipped, 1,&dr);
+            double ddd[3]={other_delta[0],other_delta[1],other_delta[2]};
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"other_delta",ForceLoggingFlags::Asymmetric, 3,ddd);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-invrootdt",ForceLoggingFlags::Symmetric, 1, &scaled_inv_root_dt);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-gammap",ForceLoggingFlags::Symmetric, 1, &gammap);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng",ForceLoggingFlags::Symmetric, 1, &u);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-con",ForceLoggingFlags::Symmetric ,1, &conForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-diss",ForceLoggingFlags::Symmetric , 1,&dissForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng-scale",ForceLoggingFlags::Symmetric ,1, &randScale);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rand",ForceLoggingFlags::Symmetric ,1, &randForce);
+            double ff[3]={f[0],f[1],f[2]};
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-force",ForceLoggingFlags::SymmetricFlipped, 3,ff);
+            
+        }
     
         //std::cerr<<"Ref: t_hash="<<m_t_hash<<", h="<<hb->polymer_id<<", dx="<<rdx<<", dr="<<rdxr<<", f="<<f<<"\n";
     }
@@ -384,11 +453,16 @@ private:
 
             // Division by r is just to get (dx/r)
             f=dx * (force/r);
-            //std::cerr<<" bond: r="<<r<<", force="<<force<<", fbond="<<f<<"\n";
+            //std::cerr<<" bond: r="<<r<<", force="<<force<<", fbond="<<f<<", dx="<<dx*(1/r)<<",  xh="<<head.x<<", xt="<<tail.x<<"\n";
         }
         
-        m_forces[head_bead_index] += f;
-        m_forces[tail_bead_index] -= f;
+        m_forces[head.bead_id] += f;
+        m_forces[tail.bead_id] -= f;
+
+        if(ForceLogging::logger()){
+            double ff[3]={f[0],f[1],f[2]};
+            ForceLogging::logger()->LogBeadPairProperty(p.bead_ids[b.bead_offset_head], p.bead_ids[b.bead_offset_tail], "hookean-f", ForceLoggingFlags::Asymmetric, 3, ff);
+        }
     }
 
     void update_angle_bond(const Polymer &p, const PolymerType &pt, const BondPair &bp)
@@ -480,9 +554,9 @@ private:
 
         //std::cerr<<"  bpo="<<head_bead.get_hash_code()<<", fdpd="<<m_forces[head_bead_index]<<", fangle="<<headForce<<", f="<<m_forces[head_bead_index]+headForce<<"\n";
 
-        m_forces[head_bead_index] += headForce;
-        m_forces[tail_bead_index] += tailForce;
-        m_forces[middle_bead_index] += middleForce;
+        m_forces[head_bead.bead_id] += headForce;
+        m_forces[tail_bead.bead_id] += tailForce;
+        m_forces[middle_bead.bead_id] += middleForce;
 
         
     }

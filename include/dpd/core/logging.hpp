@@ -11,14 +11,26 @@ enum ForceLoggingFlags
 class ForceLogging
 {
 public:
-    void SetTime(long t);
-    void LogBeadProperty(long bead_id, const char *name, int dims, const double *x);
-    void LogBeadPairProperty(long bead_id0,long bead_id1, const char *name, ForceLoggingFlags flags, int dims, const double *x);
-    void LogBeadTripleProperty(long bead_id0, long bead_id1, long bead_id2, const char *name, int dims, const double *x);
+    virtual ~ForceLogging()
+    {}
 
-    static ForceLogging *logger = 0;
-private:
-    long m_t;
+    virtual void SetTime(long t)=0;
+    virtual void LogProperty(const char *name, int dims, const double *x)=0;
+    virtual void LogBeadProperty(long bead_id, const char *name, int dims, const double *x)=0;
+    virtual void LogBeadPairProperty(long bead_id0,long bead_id1, const char *name, ForceLoggingFlags flags, int dims, const double *x)=0;
+    virtual void LogBeadTripleProperty(long bead_id0, long bead_id1, long bead_id2, const char *name, int dims, const double *x)=0;
+
+    static ForceLogging *&logger()
+    {
+        static ForceLogging *_logger=0;
+        return _logger;
+    }
+
+    static void set_logger(ForceLogging *s)
+    {
+        assert(!logger());
+        logger()=s;
+    }
 };
 
 #endif

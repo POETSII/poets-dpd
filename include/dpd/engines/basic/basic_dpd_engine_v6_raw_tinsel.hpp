@@ -166,7 +166,7 @@ public:
     {
         ensure_hostlink();
 
-        std::cerr<<"Building graph\n";
+        //std::cerr<<"Building graph\n";
         typename Impl::template PGraph<Device, State, None, Message> graph;
 
         for(unsigned i=0; i<states.size(); i++){
