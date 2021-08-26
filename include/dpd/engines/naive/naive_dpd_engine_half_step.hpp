@@ -64,7 +64,7 @@ private:
     vec3r_t m_lengths; // dimensions in all directions Must be an integer, though encoded as real
     std::vector<std::vector<Bead*>> m_cells;
 
-    double m_inv_root_dt;
+    double m_scaled_inv_root_dt;
 
     uint64_t m_t_hash;
 
@@ -85,7 +85,7 @@ private:
         }
 
         m_numBeadTypes=m_state->bead_types.size();
-        m_inv_root_dt=recip_pow_half(m_state->dt);
+        m_scaled_inv_root_dt=pow_half(24*dpd_maths_core_half_step::kT / m_state->dt);
     }
 
     unsigned calc_num_cells() const
@@ -246,7 +246,7 @@ private:
 
                 vec3r_t dx = vec3r_t(hb->x) - vec3r_t(ob->x) - other_delta; 
                 double dr2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
-                if(dr2 >= 1 || dr2<0.00001){
+                if(dr2 >= 1 || dr2<MIN_DISTANCE_CUTOFF_SQR){
                     continue;
                 }
 
@@ -258,7 +258,7 @@ private:
                 vec3r_t f;
                 
                 dpd_maths_core_half_step::calc_force(
-                    (recip_pow_half(m_state->dt)),
+                    m_scaled_inv_root_dt,
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
                     [&](unsigned a, unsigned b){ return pow_half(m_state->interactions[a*m_numBeadTypes+b].dissipative); },
                     m_t_hash,

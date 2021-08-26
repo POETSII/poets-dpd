@@ -44,11 +44,11 @@ public:
             });
         };
 
-        add({0.2,0,0}, 70, 0.6);
+        add({0.2,0,0}, 150, 0.6);
 
-        add({0.1,0.1,0}, 30, 0.55);
+        add({0.1,0.1,0},110, 0.55);
 
-        add({0.1,0.1,-0.1}, 100, 0.65);
+        add({0.1,0.1,-0.1}, 120, 0.65);
     }
 
     TestBondedBeadTriple(const std::string &name, const vec3r_t &x0, const vec3r_t &dx, double kappa=1, double r0=0.5)

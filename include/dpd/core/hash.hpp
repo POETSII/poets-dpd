@@ -43,7 +43,7 @@ inline uint64_t riscv_mix64_m3(uint64_t x)
 inline uint64_t get_t_hash(uint32_t t, uint64_t seed)
 {
     uint64_t base=seed + riscv_mix64_m2(t);
-    return riscv_mix64_m2(base) | 0x000000010000000ull;
+    return riscv_mix64_m2(base);
 }
 
 /*  This is a function which generates roughly random values
@@ -62,12 +62,11 @@ inline uint32_t hash_rng_sym_good(uint64_t t_hash, uint32_t a, uint32_t b)
 
 inline uint32_t hash_rng_sym(uint64_t t_hash, uint32_t a, uint32_t b)
 {
-    // TODO : This is terrible. Find the original version.
     if(a>b){
         std::swap(a,b);
     }
     // m3 is safer from randomness testing perspective, but m2 is ok in practise for many beads.
-    return riscv_mix64_m2( (a|(uint64_t(b)<<32)) ^ t_hash);
+    return riscv_mix64_m2( (a|(uint64_t(b)<<32)) ^ t_hash); // Return LSBS
 }
 
 inline uint32_t hash_rng_sym_crappy(uint64_t t_hash, uint32_t a, uint32_t b)

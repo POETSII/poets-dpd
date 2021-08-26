@@ -7,9 +7,14 @@
 
 #include "dpd/core/dpd_maths_primitives.hpp"
 
+#ifndef TINSEL
+#include <iostream>
+#endif
+
 namespace dpd_maths_core
 {
 
+    static constexpr double kT = 1.0;
 
 struct bead_concept_t
 {
@@ -95,7 +100,7 @@ template<
 >
 void calc_force(
     TScalar lambda_dt,
-    TScalar inv_sqrt_dt,
+    TScalar scaled_inv_sqrt_dt, // sqrt(24 * kT / dt)
     const TConservativeMap &conservative,
     const TDissipativeMap &dissipative,
 
@@ -124,6 +129,8 @@ void calc_force(
     vec3r_t ob_v = other.v + other.f * lambda_dt;
     vec3r_t dv = hb_v - ob_v;
 
+    //std::cerr<<"  dv="<<dv<<"\n";
+
     TScalar wr = (1 - dr);
     TScalar wr2 = wr*wr;
         
@@ -134,7 +141,7 @@ void calc_force(
 
     TScalar dissForce = -gammap*rdotv;
     TScalar u = default_hash(t_hash, home.get_hash_code(), other.get_hash_code());
-    TScalar randForce = pow_half(gammap) * inv_sqrt_dt * u;
+    TScalar randForce = pow_half(gammap) * scaled_inv_sqrt_dt * u;
 
     TScalar scaled_force = (conForce + dissForce + randForce) * inv_dr;
 
@@ -156,6 +163,8 @@ void calc_hookean_force(
 
     // Division by r is just to get (dx/r)
     force_head=dx * (force * inv_r);
+    //std::cerr<<"  dx="<<dx<<", dr="<<r<<", r0="<<r0<<"\n";
+    //std::cerr<<"  fhead="<<force_head<<"\n";
 }
 
 template<class TScalar, class TVector, class TForce>

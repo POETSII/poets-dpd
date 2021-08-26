@@ -17,7 +17,7 @@ public:
     {}
 };
 
-void validate(const WorldState &s)
+inline void validate(const WorldState &s, double max_r=1)
 {
     auto require=[](bool cond, const char *msg)
     {
@@ -111,7 +111,7 @@ void validate(const WorldState &s)
                 }
             }
             double r=distance.l2_norm();
-            REQUIRE( r < 1);
+            REQUIRE( r < max_r);
         }
     }
 

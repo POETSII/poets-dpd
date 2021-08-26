@@ -12,6 +12,7 @@
 namespace dpd_maths_core_half_step
 {
 
+    constexpr static double kT=  dpd_maths_core::kT;
     using dpd_maths_core::default_hash;
 
     // After this method b.f is dead
@@ -56,7 +57,7 @@ template<
     class TBead1, class TBead2, class TForce
 >
 void calc_force(
-    TScalar inv_sqrt_dt,
+    TScalar scale_inv_sqrt_dt,  // sqrt(24 * kT / dt)
     const TConservativeMap &conservative,
     const TDissipativeMap &sqrt_dissipative,
 
@@ -84,6 +85,8 @@ void calc_force(
 
     auto dv = home.v - other.v;
 
+    //std::cerr<<"  dv="<<dv<<"\n";
+
     TScalar wr = (TScalar(1) - dr);
         
     TScalar conForce = conStrength*wr;
@@ -95,10 +98,14 @@ void calc_force(
 
     TScalar dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
     TScalar u = dpd_maths_core::default_hash(t_hash, home.get_hash_code(), other.get_hash_code());
-    TScalar randForce = sqrt_gammap * inv_sqrt_dt * u;
+    TScalar randForce = sqrt_gammap * scale_inv_sqrt_dt * u;
 
     TScalar dr0=r0-dr;
     TScalar hookeanForce=kappa*dr0;
+
+#ifndef TINSEL
+    //std::cerr<<"  fhook="<<dx*hookeanForce<<", dx="<<dx<<",  xh="<<home.x<<", xt="<<other.x<<"\n";
+    #endif
 
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 

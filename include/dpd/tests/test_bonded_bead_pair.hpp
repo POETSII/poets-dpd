@@ -46,17 +46,17 @@ public:
             });
         };
 
-        add({0.2,0,0}, 10, 0.5);
-        add({0.2,0,0}, 10, 0.4);
-        add({0.2,0,0}, 10, 0.3);
+        add({0.2,0,0}, 30, 0.5);
+        add({0.2,0,0}, 30, 0.4);
+        add({0.2,0,0}, 60, 0.3);
 
-        add({0.2,0.1,0}, 20, 0.5);
-        add({0.2,0.1,0}, 20, 0.4);
-        add({0.2,0.1,0}, 20, 0.3);
+        add({0.2,0.1,0}, 60, 0.5);
+        add({0.2,0.1,0}, 60, 0.4);
+        add({0.2,0.1,0}, 70, 0.3);
 
-        add({-0.1,0.1,0.1}, 20, 0.5);
-        add({-0.1,0.1,0.1}, 20, 0.4);
-        add({-0.1,0.1,0.1}, 20, 0.3);
+        add({-0.1,0.1,0.1}, 80, 0.5);
+        add({-0.1,0.1,0.1}, 50, 0.4);
+        add({-0.1,0.1,0.1}, 80, 0.3);
     }
 
     TestBondedBeadPair(const std::string &name, const vec3r_t &x0, const vec3r_t &dx, double kappa=1, double r0=0.5)
@@ -77,7 +77,7 @@ public:
         WorldStateBuilder b( {4,4,4} );
         WorldState &s=b.data();
         s.t=0;
-        s.dt=1.0/10;
+        s.dt=0.01;
 
         b.add_bead_type("A");
         b.add_bead_type("B");
@@ -137,7 +137,7 @@ public:
         std::cerr<<"  b0: x="<<s.beads[1].x<<", v="<<s.beads[1].v<<", f="<<s.beads[1].f<<"\n";
         */
 
-        if(s.t * s.dt > 10){
+        if(s.t * s.dt > 30){
             m_sum_dist += dist;
             m_count_dist += 1;
         }
@@ -146,8 +146,12 @@ public:
         m_prev_dist=dist;
 
         if(s.t * s.dt < 20){
+            unsigned dist=m_step_dist;
             m_steps_done += m_step_dist;
-            return m_step_dist++;
+            if(m_step_dist<4){
+                m_step_dist++;
+            }
+            return dist;
         }else{
             //std::cerr<<"# t="<<s.t<<", dist="<<dist<<", equib="<<m_r_equilibrium<<", mean="<<m_sum_dist/m_count_dist<<"\n";
             double mean_dist=m_sum_dist / m_count_dist;

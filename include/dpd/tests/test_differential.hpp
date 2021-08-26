@@ -45,9 +45,16 @@ std::pair<bool,std::string> test_differential(
             }
 
             engine1.Run(todo);
-            validate(state1);
-
             engine2.Run(todo);
+
+            validate(state1);
+            validate(state2);
+
+            if(state1.t != state2.t){
+                std::cerr<<"Ref is at time  "<<state1.t<<", dut is at time "<<state2.t<<".\n";
+            }
+
+            //std::cerr<<"t="<<state1.t<<"\n";
             
 
             double maxDiff= 0.0001;
@@ -57,6 +64,7 @@ std::pair<bool,std::string> test_differential(
             double vdiff=0;
             double fdiff=0;
             for(unsigned i=0; i<state1.beads.size(); i++){
+                //std::cerr<<" ref="<<state1.beads[i].x<<", "<<state2.beads[i].x<<"\n";
                 vec3r_t dx=state1.beads[i].x-state2.beads[i].x;
                 for(int j=0; j<3; j++){
                     if(dx[j] > state1.box[j]/2){

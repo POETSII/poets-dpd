@@ -119,6 +119,11 @@ public:
             vec3r_t tmp=distance(s, m_x0, s.beads[0].x);
             // Low tolerance, as they drift quite quickly in single precision
             //std::cerr<<"  line="<<tmp<<", norm="<<normalise(tmp)<<", ref="<<normalise(m_dx)<<", diff="<< (normalise(m_dx)-normalise(tmp)).l2_norm() <<"\n";
+            for(int i=0; i<3; i++){
+                if( (tmp[i]<0) != (m_dx[i]<0) ){
+                    tmp=-tmp;
+                }
+            }
             require_close( normalise(m_dx), normalise(tmp), 1e-3*sqrt(s.t), "Bead 0 should always be on the same line.");
 
             if(s.t == 2){
