@@ -102,7 +102,7 @@ public:
 
         inline void recv(Message* msg, None* /*edge*/) {
             if(msg->type==OutputFlags::RTS_INDEX_share){
-                Handlers::on_recv_share(s->state, msg->bead_view);
+                Handlers::on_recv_share<false>(s->state, msg->bead_view);
 
             }else if(msg->type==OutputFlags::RTS_INDEX_force){
                 Handlers::on_recv_force(s->state, msg->force_input);

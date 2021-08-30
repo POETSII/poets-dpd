@@ -29,7 +29,7 @@ public:
 
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
 
-    using Handlers = BasicDPDEngineV7RawHandlers;
+    using Handlers = BasicDPDEngineV7RawHandlers<false>;
 
     using OutputFlags = Handlers::OutputFlags;
     using raw_bead_view_t = Handlers::raw_bead_view_t;

@@ -70,6 +70,7 @@ private:
         }
     }
 
+    template<bool EnableLogging>
     void on_recv_share(cell_t &cell, std::vector<bead_view_t> &incoming)
     {
         // Stay on one neighbour so we can tell if it must be cached
@@ -90,7 +91,7 @@ private:
             for(auto &bead : cell.beads){
                 // This implicitly interacts each bead with itself, which is handled with a
                 // distance check in calc_force.
-                cache_neighbour |= calc_force( bead, neighbour_bead, neighbour_x);
+                cache_neighbour |= calc_force<EnableLogging>( bead, neighbour_bead, neighbour_x);
             }
 
             if(cache_neighbour){
@@ -99,10 +100,11 @@ private:
         }
     }
 
+    template<bool EnableLogging>
     void on_send_force(cell_t &cell, std::vector<force_input_t> &outgoing)
     {
         for(auto &b : cell.beads){
-            update_bead_angle(cell.cached_bonds, b, outgoing);
+            update_bead_angle<EnableLogging>(cell.cached_bonds, b, outgoing);
         }
     }
 
@@ -112,7 +114,7 @@ private:
             if(!b.id.is_monomer()){
                 auto bpo = b.id.get_hash_code();
                 for(const auto &f : outgoing){
-                    if(bpo == f.target_hash){
+                    if( bead_hash_equals(bpo , f.target_hash)){
                         b.f += f.f;
                     }
                 }
@@ -130,12 +132,47 @@ private:
         }
     }
 
-    
-
     void step() override
+    {
+        if(ForceLogging::logger()){
+            step_impl<true>();
+        }else{
+            step_impl<false>();
+        }
+    }
+
+    
+    template<bool EnableLogging>
+    void step_impl()
     {
         double dt=m_state->dt;
         m_t_hash = get_t_hash(m_state->t, m_state->seed);
+
+        if(EnableLogging && ForceLogging::logger()){
+            ForceLogging::bead_hash_to_id() = [&](uint32_t hash) -> uint32_t { return m_state->bead_hash_to_id(hash); };
+
+            ForceLogging::logger()->SetTime(m_state->t);
+            ForceLogging::logger()->LogProperty("dt", 1, &m_state->dt);
+            double seed_low=m_state->seed &0xFFFFFFFFul;
+            double seed_high=m_state->seed>>32;
+            ForceLogging::logger()->LogProperty("seed_lo", 1, &seed_low);
+            ForceLogging::logger()->LogProperty("seed_high", 1, &seed_high);
+            double t_hash_low=m_t_hash&0xFFFFFFFFul;
+            double t_hash_high=m_t_hash>>32;
+            ForceLogging::logger()->LogProperty("t_hash_lo", 1, &t_hash_low);
+            ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
+            for(auto &c : m_cells){
+                for(auto &b : c.beads){
+                    double h=b.get_hash_code();
+                    auto bead_id=m_state->polymers.at(b.id.get_polymer_id()).bead_ids.at(b.id.get_polymer_offset());
+                    ForceLogging::logger()->LogBeadProperty(bead_id, "b_hash", 1, &h);
+                    double x[3]={b.x[0],b.x[1],b.x[2]};
+                    ForceLogging::logger()->LogBeadProperty(bead_id,"x",3,x);
+                    double f[3]={b.f[0],b.f[1],b.f[2]};
+                    ForceLogging::logger()->LogBeadProperty(bead_id,"f",3,f);
+                }
+            }
+        }
 
         //////////////////////////////////////////////////////////////
         // Move the beads, and then assign to cells based on x(t+dt)
@@ -163,7 +200,7 @@ private:
             std::vector<bead_view_t> transfer;
             on_send_share(cell, transfer);
             for(unsigned neighbour_index : cell.neighbours){
-                on_recv_share(m_cells[neighbour_index], transfer);
+                on_recv_share<EnableLogging>(m_cells[neighbour_index], transfer);
             }
         }
 
@@ -172,7 +209,7 @@ private:
         // This must be done pre hardware idle, as any forces need to be send out
         for(cell_t &cell : m_cells){
             std::vector<force_input_t> transfer;
-            on_send_force(cell, transfer);
+            on_send_force<EnableLogging>(cell, transfer);
             for(unsigned neighbour_index : cell.neighbours){
                 on_recv_force(m_cells[neighbour_index], transfer);
             }
@@ -185,6 +222,20 @@ private:
         }
 
         m_state->t += 1;
+
+        if(EnableLogging && ForceLogging::logger()){
+            for(auto &c : m_cells){
+                for(auto &b : c.beads){
+                    double h=b.get_hash_code();
+                    auto bead_id=m_state->polymers.at(b.id.get_polymer_id()).bead_ids.at(b.id.get_polymer_offset());
+                    double x[3]={b.x[0],b.x[1],b.x[2]};
+                    ForceLogging::logger()->LogBeadProperty(bead_id,"x_next",3,x);
+                    double f[3]={b.f[0],b.f[1],b.f[2]};
+                    ForceLogging::logger()->LogBeadProperty(bead_id,"f_next",3,f);
+                }
+            }
+            ForceLogging::bead_hash_to_id() = {};
+        }
     }
 
 

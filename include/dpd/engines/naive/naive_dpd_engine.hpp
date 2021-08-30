@@ -301,7 +301,8 @@ private:
         //const double scale=ldexp(2.0,-32) / sqrt(1/3.0); // gives stddev of 1 (same as groot-warren paper)
         const double scale=ldexp(1.0, -32); // Gives range of [-0.5,0.5]  (same as Osprey-DPD)
         double u = rs * scale; 
-        /*
+        
+        #if 0
         static double u_sum_sqr=0, u_sum=0;
         static unsigned u_count=0;
         u_sum_sqr += u*u;
@@ -310,7 +311,8 @@ private:
         if((u_count % 10000)==0){
             std::cerr<<"ucount="<<u_count<<", mean="<<u_sum/u_count<<", std="<<sqrt(u_sum_sqr/u_count)<<"\n";
         }
-        */
+        #endif
+        
         return u;
     }
 
@@ -391,21 +393,19 @@ private:
             std::cerr<<"  hb="<<hb->bead_id+1<<", ob="<<ob->bead_id+1<<", f_acc="<<m_forces.at(hb->bead_id)<<", f="<<f<<"\n";
         }*/
 
-        if(ForceLogging::logger() && hb->bead_id < ob->bead_id){
+        if(ForceLogging::logger()){
             double ddx[3]={dx[0],dx[1],dx[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dx",ForceLoggingFlags::SymmetricFlipped, 3,ddx);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dr",ForceLoggingFlags::SymmetricFlipped, 1,&dr);
-            double ddd[3]={other_delta[0],other_delta[1],other_delta[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"other_delta",ForceLoggingFlags::Asymmetric, 3,ddd);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-invrootdt",ForceLoggingFlags::Symmetric, 1, &scaled_inv_root_dt);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-gammap",ForceLoggingFlags::Symmetric, 1, &gammap);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng",ForceLoggingFlags::Symmetric, 1, &u);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-con",ForceLoggingFlags::Symmetric ,1, &conForce);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-diss",ForceLoggingFlags::Symmetric , 1,&dissForce);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng-scale",ForceLoggingFlags::Symmetric ,1, &randScale);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rand",ForceLoggingFlags::Symmetric ,1, &randForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dx", 3,ddx);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dr", 1,&dr);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-invrootdt", 1, &scaled_inv_root_dt);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-gammap", 1, &gammap);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng", 1, &u);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-con", 1, &conForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-diss", 1,&dissForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng-scale",1, &randScale);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rand",1, &randForce);
             double ff[3]={f[0],f[1],f[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-force",ForceLoggingFlags::SymmetricFlipped, 3,ff);
+            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"f_next_dpd", 3,ff);
             
         }
     
@@ -458,10 +458,15 @@ private:
         
         m_forces[head.bead_id] += f;
         m_forces[tail.bead_id] -= f;
-
+        
         if(ForceLogging::logger()){
+            
             double ff[3]={f[0],f[1],f[2]};
-            ForceLogging::logger()->LogBeadPairProperty(p.bead_ids[b.bead_offset_head], p.bead_ids[b.bead_offset_tail], "hookean-f", ForceLoggingFlags::Asymmetric, 3, ff);
+            ForceLogging::logger()->LogBeadPairProperty(p.bead_ids[b.bead_offset_head], p.bead_ids[b.bead_offset_tail], "f_next_hookean", 3, ff);
+            for(int i=0;i<3; i++){
+                ff[i]=-ff[i];
+            }
+            ForceLogging::logger()->LogBeadPairProperty(p.bead_ids[b.bead_offset_tail], p.bead_ids[b.bead_offset_head], "f_next_hookean", 3, ff);
         }
     }
 
@@ -557,6 +562,12 @@ private:
         m_forces[head_bead.bead_id] += headForce;
         m_forces[tail_bead.bead_id] += tailForce;
         m_forces[middle_bead.bead_id] += middleForce;
+
+        if(ForceLogging::logger()){
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.bead_id, middle_bead.bead_id, tail_bead.bead_id, "f_next_angle_head", headForce);
+            ForceLogging::logger()->LogBeadTripleProperty(middle_bead.bead_id, head_bead.bead_id, tail_bead.bead_id, "f_next_angle_mid", middleForce);
+            ForceLogging::logger()->LogBeadTripleProperty(tail_bead.bead_id, head_bead.bead_id, middle_bead.bead_id, "f_next_angle_tail", tailForce);
+        }
 
         
     }

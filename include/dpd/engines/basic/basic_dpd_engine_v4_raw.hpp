@@ -59,6 +59,7 @@ public:
 
     virtual void Run(unsigned nSteps) override
     {
+        ForceLogging::bead_hash_to_id()=[&](uint32_t hash)->uint32_t { return m_state->bead_hash_to_id(hash); };
 
         import_beads();
 
@@ -73,7 +74,7 @@ public:
             m_box.extract(dst.box);
             dst.dt=m_state->dt;
             dst.t=m_state->t;
-            dst.inv_root_dt=recip_pow_half(m_state->dt);
+            dst.inv_root_dt=pow_half(24 * dpd_maths_core_half_step::kT / m_state->dt);
             dst.bond_r0=m_bond_r0;
             dst.bond_kappa=m_bond_kappa;
             for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -105,6 +106,7 @@ public:
 
         for(unsigned i=0; i<nSteps; i++){
             step(states, neighbour_map);
+            m_state->t += 1;
         }
 
         //////////////////////////////////////////////
@@ -129,15 +131,28 @@ public:
             }
         }
 
-        for(unsigned i=0; i<nSteps; i++){
-            m_state->t += 1;
-        }
-
         export_beads();
+
+        ForceLogging::bead_hash_to_id()={};
     }
 
     void step(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map)
     {
+        if(ForceLogging::logger()){
+            step_impl<true>(states, neighbour_map);
+        }else{
+            step_impl<false>(states, neighbour_map);
+        }
+    }
+
+
+    template<bool EnableLogging>
+    void step_impl(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map)
+    {
+        if(EnableLogging && ForceLogging::logger()){
+            ForceLogging::logger()->SetTime(m_state->t);
+        }
+
         //////////////////////////////////////////////////////////////
         // Move the beads, and then assign to cells based on x(t+dt)
         for(auto &c : states){
@@ -183,7 +198,7 @@ public:
                         raw_bead_view_t transfer;
                         Handlers::on_send_share(cell, transfer);
                         for(auto ni : neighbour_map[&cell]){
-                            Handlers::on_recv_share(*ni, transfer);
+                            Handlers::on_recv_share<EnableLogging>(*ni, transfer);
                         }
                         idle=false;
                     }else{
@@ -191,6 +206,20 @@ public:
                     }
                 }
             }
+        }
+
+        if(EnableLogging && ForceLogging::logger()){
+            for(auto &c : m_cells){
+                for(auto &b : c.beads){
+                    double h=b.get_hash_code();
+                    auto bead_id=m_state->polymers.at(b.id.get_polymer_id()).bead_ids.at(b.id.get_polymer_offset());
+                    double x[3]={b.x[0],b.x[1],b.x[2]};
+                    ForceLogging::logger()->LogBeadProperty(bead_id,"x_next",3,x);
+                    double f[3]={b.f[0],b.f[1],b.f[2]};
+                    ForceLogging::logger()->LogBeadProperty(bead_id,"f_next",3,f);
+                }
+            }
+            ForceLogging::bead_hash_to_id() = {};
         }
     }
 

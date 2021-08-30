@@ -1,5 +1,5 @@
 CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall -O0
-CPPFLAGS += -Wno-unused-variable -fmax-errors=2 -Wno-unused-parameter
+CPPFLAGS += -Wno-unused-variable -fmax-errors=2 -Wno-unused-parameter -Wno-unused-variable
 CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 #LDFLAGS += -fuse-ld=gold
@@ -36,7 +36,9 @@ ENGINES_RISCV :=
 ENGINES := $(filter-out %tinsel_hw,$(ENGINES))
 endif
 
-ENGINES := $(filter-out basic_dpd_engine_v6_raw_tinsel_swsim basic_dpd_engine_v8_raw,$(ENGINES))
+ENGINES := $(filter-out basic_dpd_engine_v6% ,$(ENGINES))
+ENGINES := $(filter-out basic_dpd_engine_v7% ,$(ENGINES))
+ENGINES := $(filter-out basic_dpd_engine_v8% ,$(ENGINES))
 
 all : $(TEST_BIN)
 
@@ -61,7 +63,7 @@ src/%.S : src/%.cpp
 	mkdir -p obj
 	$(CXX) -S $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-RISCV_TOOLS = ../orchestrator_dependencies_7/riscv32-compile-driver/bin
+RISCV_TOOLS = /local/orchestrator-common/orchestrator_dependencies_7/riscv32-compile-driver/bin
 
 src/%.riscv.o : src/%.cpp
 	$(RISCV_CXX) -c -x c++ -I include -DTINSEL -Wdouble-promotion -DNDEBUG=1 -Os  -ffast-math -march=rv32imf -static -nostdlib -fwhole-program -g $< -o $@
@@ -73,7 +75,7 @@ src/%.riscv : src/%.cpp
 #############################################################
 ## RISCV build stuff
 
-RV_TOOLS_DIR =../orchestrator_dependencies_7/riscv32-compile-driver/bin
+RV_TOOLS_DIR =/local/orchestrator-common/orchestrator_dependencies_7/riscv32-compile-driver/bin
 
 # From tinsel/globals.mk
 RV_ARCH     = rv32imf
@@ -91,7 +93,8 @@ RV_CFLAGS := $(RV_CFLAGS) -O3 -I  $(TINSEL_ROOT)/include
 RV_LDFLAGS = -melf32lriscv -G 0 
 
 RV_CFLAGS := $(RV_CFLAGS) -I include
-RV_CFLAGS := $(RV_CFLAGS) -std=c++17 -DNDEBUG=1 -fwhole-program -Wdouble-promotion -g -ffast-math
+RV_CFLAGS := $(RV_CFLAGS) -std=c++17 -DNDEBUG=1 -fwhole-program -Wdouble-promotion -g -ffast-math -Wno-unused-variable \
+	 -Wno-unused-parameter
 
 obj/engines/link.riscv.ld :
 	TINSEL_ROOT=$(TINSEL_ROOT) \
@@ -131,3 +134,5 @@ bin/benchmark_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 bin/benchmark_engine_intervals : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
 bin/run_world : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+
+bin/engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)

@@ -92,21 +92,12 @@ public:
         m_dst<<"\n";
     }
 
-    virtual void LogBeadPairProperty(long bead_id0,long bead_id1, const char *name, ForceLoggingFlags flags, int dims, const double *x)
+    virtual void LogBeadPairProperty(long bead_id0,long bead_id1, const char *name, int dims, const double *x)
     {
-        bool flip=flags!=Asymmetric && (bead_id0 > bead_id1);
-        if(flip){
-            std::swap(bead_id0, bead_id1);
-        }
         m_dst<<"Prop,"<<m_t<<","<<bead_id0+1<<","<<bead_id1+1<<",,"<<name;
         for(int i=0; i<dims; i++){
-            if(flip && (flags==SymmetricFlipped)){
-                m_dst<<",";
-                print(-x[i]);
-            }else{
-                m_dst<<",";
-                print(x[i]);
-            }
+            m_dst<<",";
+            print(x[i]);
         }
         for(int i=dims;i<3;i++){
             m_dst<<",";

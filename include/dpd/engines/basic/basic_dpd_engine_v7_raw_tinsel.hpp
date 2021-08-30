@@ -16,7 +16,7 @@ class BasicDPDEngineV7RawTinsel
     : public BasicDPDEngineV7Raw
 {
 public:
-    using Handlers = BasicDPDEngineV7RawHandlers;
+    using Handlers = BasicDPDEngineV7RawHandlers<false>;
 
     using None = typename Impl::None;
 
@@ -45,7 +45,7 @@ public:
 
         void update_rts()
         {
-            auto rts=BasicDPDEngineV7RawHandlers::calc_rts(s->state);
+            auto rts=Handlers::calc_rts(s->state);
             if(rts&OutputFlags::RTS_FLAG_output){
                 *readyToSend = Impl::HostPin;
             }else if(rts){

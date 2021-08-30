@@ -7,6 +7,8 @@
 #include <iterator>
 #include <cstring>
 
+#error "This may work, but needs updates due to the changes to EnableLogging"
+
 struct BasicDPDEngineV6RawHandlers
 {
     static constexpr size_t MAX_BONDS_PER_BEAD = 3;
@@ -597,7 +599,7 @@ struct BasicDPDEngineV6RawHandlers
         auto resident=make_bag_wrapper(cell.resident);
 
         for(auto &b : resident){
-            if( get_hash_code(b.id) == incoming.target_hash){
+            if( bead_hash_equals(get_hash_code(b.id) , incoming.target_hash)){
                 vec3_add(b.f, incoming.f);
             }
         }

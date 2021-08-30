@@ -257,7 +257,7 @@ private:
 
                 vec3r_t f;
                 
-                dpd_maths_core_half_step::calc_force(
+                dpd_maths_core_half_step::calc_force<false>(
                     m_scaled_inv_root_dt,
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
                     [&](unsigned a, unsigned b){ return pow_half(m_state->interactions[a*m_numBeadTypes+b].dissipative); },

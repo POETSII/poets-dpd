@@ -17,6 +17,7 @@ inline void tinsel_require(bool cond, const char *msg)
         #endif
     }
 }
+
 struct BasicDPDEngineV5RawHandlers
 {
     static constexpr size_t MAX_BONDS_PER_BEAD = 4;
@@ -260,7 +261,7 @@ struct BasicDPDEngineV5RawHandlers
             while(i<n){
                 const auto &b=cell.resident.elements[i];
                 if(b.checksum!=calc_checksum(b)){
-                    printf("CheckSumInit : nn=%x, n=%x, id=%x, %x, %x\n", n, i, b.id, b.checksum, calc_checksum(b));
+                    printf("CheckSumInit : nn=%x, n=%x, id=%x, %x, %x\n", (unsigned)n, (unsigned)i, (unsigned)b.id, (unsigned)b.checksum, (unsigned)calc_checksum(b));
                 }
                 ++i;
             }
@@ -426,6 +427,7 @@ struct BasicDPDEngineV5RawHandlers
         }
     }
 
+    template<bool EnableLogging>
     static void on_recv_share(device_state_t &cell, const raw_bead_view_t &incoming)
     {
         //std::cerr<<"  Recv: ("<<cell.location[0]<<","<<cell.location[1]<<","<<cell.location[2]<<"), p="<<&cell<<", nres="<<cell.resident.n<<", other="<<get_hash_code(incoming.id)<<"\n";
@@ -485,7 +487,7 @@ struct BasicDPDEngineV5RawHandlers
             float conStrength=cell.conservative[MAX_BEAD_TYPES*bead_type1+bead_type2];
 
             float f[3];
-            dpd_maths_core_half_step_raw::calc_force<float,float[3],float[3]>(
+            dpd_maths_core_half_step_raw::calc_force<EnableLogging,float,float[3],float[3]>(
                 cell.inv_root_dt,
                 cell.t_hash,
                 dx, dr,
@@ -605,7 +607,7 @@ struct BasicDPDEngineV5RawHandlers
         auto resident=make_bag_wrapper(cell.resident);
 
         for(auto &b : resident){
-            if( get_hash_code(b.id) == incoming.target_hash){
+            if( bead_hash_equals(get_hash_code(b.id) , incoming.target_hash)){
                 vec3_add(b.f, incoming.f);
             }
         }

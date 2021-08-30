@@ -20,6 +20,8 @@
 class NaiveDPDEngineHalfStepTBBV2
     : public NaiveDPDEngineHalfStep
 {
+    constexpr static bool EnableLogging = false;
+
     // This is a 32-byte structure, so we get two per cache line
     struct BeadView
     {
@@ -276,7 +278,7 @@ class NaiveDPDEngineHalfStepTBBV2
 
                 Bead &hbb=m_state->beads[hb.bead_id];
                 
-                dpd_maths_core_half_step::calc_force<float,vec3f_t>(
+                dpd_maths_core_half_step::calc_force<EnableLogging,float,vec3f_t>(
                     m_inv_sqrt_dt,
                     [&](unsigned a, unsigned b){ return m_interactions[a*m_numBeadTypes+b].con; },
                     [&](unsigned a, unsigned b){ return m_interactions[a*m_numBeadTypes+b].sqrt_diss; },

@@ -154,6 +154,11 @@ struct WorldState
 
     std::vector<Polymer> polymers;
     std::vector<Bead> beads;
+
+    uint32_t bead_hash_to_id(uint32_t hash)
+    {
+        return polymers.at(bead_hash_get_polymer_id(hash)).bead_ids.at(bead_hash_get_polymer_offset(hash));
+    }
 };
 
 #endif

@@ -29,6 +29,8 @@ public:
 
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
 
+    static constexpr bool EnableLogging = false;
+
     using Handlers = BasicDPDEngineV5RawHandlers;
 
     using OutputFlags = Handlers::OutputFlags;
@@ -95,7 +97,7 @@ public:
 
                 m_box.extract(dst.box);
                 dst.dt=m_state->dt;
-                dst.inv_root_dt=recip_pow_half(m_state->dt);
+                dst.inv_root_dt=pow_half(24 * dpd_maths_core_half_step::kT / m_state->dt);
                 dst.bond_r0=m_bond_r0;
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -327,7 +329,7 @@ public:
                     Handlers::on_recv_force(*message.dst, std::get<raw_force_input_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_view_t>(message.payload)){
                     assert(message.dst);
-                    Handlers::on_recv_share(*message.dst, std::get<raw_bead_view_t>(message.payload));
+                    Handlers::on_recv_share<EnableLogging>(*message.dst, std::get<raw_bead_view_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_resident_t>(message.payload)){
                     if(message.dst==0){
                         bool carry_on=callback(std::get<raw_bead_resident_t>(message.payload));

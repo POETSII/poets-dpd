@@ -17,6 +17,8 @@ class BasicDPDEngineV3
     : public BasicDPDEngine
 {
 private:
+    static constexpr bool EnableLogging = false;
+
     static constexpr size_t MAX_BEADS_PER_CELL = 32;
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
@@ -157,7 +159,7 @@ private:
         for(auto &bead : resident){
             // This implicitly interacts each bead with itself, which is handled with a
             // distance check in calc_force.
-            cache_neighbour |= calc_force( bead, incoming, neighbour_x);
+            cache_neighbour |= calc_force<EnableLogging>( bead, incoming, neighbour_x);
         }
 
         if(cache_neighbour){
@@ -173,7 +175,7 @@ private:
         assert(force_outgoing.empty());
 
         for(auto &b : resident){
-            update_bead_angle(cached_bonds, b, force_outgoing);
+            update_bead_angle<EnableLogging>(cached_bonds, b, force_outgoing);
         }
 
         cached_bonds.clear();
@@ -196,7 +198,7 @@ private:
         auto resident=make_bag_wrapper(cell.resident);
 
         for(auto &b : resident){
-            if(b.id.get_hash_code() == incoming.target_hash){
+            if(bead_hash_equals(b.id.get_hash_code() , incoming.target_hash)){
                 b.f += incoming.f;
             }
         }
