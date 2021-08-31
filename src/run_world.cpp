@@ -79,9 +79,9 @@ public:
         m_dst<<"\n";
     }
 
-    virtual void LogBeadProperty(long bead_id, const char *name, int dims, const double *x)
+    virtual void LogBeadProperty(BeadHash bead_id, const char *name, int dims, const double *x)
     {
-        m_dst<<"Prop,"<<m_t<<","<<bead_id+1<<",,,"<<name;
+        m_dst<<"Prop,"<<m_t<<","<<bead_id.reduced_hash().hash<<",,,"<<name;
         for(int i=0; i<dims; i++){
             m_dst<<",";
             print(x[i]);
@@ -92,9 +92,9 @@ public:
         m_dst<<"\n";
     }
 
-    virtual void LogBeadPairProperty(long bead_id0,long bead_id1, const char *name, int dims, const double *x)
+    virtual void LogBeadPairProperty(BeadHash bead_id0,BeadHash bead_id1, const char *name, int dims, const double *x)
     {
-        m_dst<<"Prop,"<<m_t<<","<<bead_id0+1<<","<<bead_id1+1<<",,"<<name;
+        m_dst<<"Prop,"<<m_t<<","<<bead_id0.reduced_hash().hash<<","<<bead_id1.reduced_hash().hash<<",,"<<name;
         for(int i=0; i<dims; i++){
             m_dst<<",";
             print(x[i]);
@@ -105,9 +105,9 @@ public:
         m_dst<<"\n";
     }
 
-    virtual void LogBeadTripleProperty(long bead_id0, long bead_id1, long bead_id2, const char *name, int dims, const double *x)
+    virtual void LogBeadTripleProperty(BeadHash bead_id0, BeadHash bead_id1, BeadHash bead_id2, const char *name, int dims, const double *x)
     {
-        m_dst<<"Prop,"<<m_t<<","<<bead_id0+1<<","<<bead_id1+1<<","<<bead_id2+1<<","<<name;
+        m_dst<<"Prop,"<<m_t<<","<<bead_id0.reduced_hash().hash<<","<<bead_id1.reduced_hash().hash<<","<<bead_id2.reduced_hash().hash<<","<<name;
         for(int i=0; i<dims; i++){
             m_dst<<",";
             print(x[i]);
@@ -175,6 +175,12 @@ int main(int argc, const char *argv[])
         validate(state);
 
         std::shared_ptr<DPDEngine> engine = DPDEngineFactory::create(engine_name);
+
+        std::string ok=engine->CanSupport(&state);
+        if(!ok.empty()){
+            fprintf(stderr, "Engine can't support world : %s\n", ok.c_str());
+            exit(1);
+        }
 
         int volume=state.box[0]*state.box[1]*state.box[2];
 

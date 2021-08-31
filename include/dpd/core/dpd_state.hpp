@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <cassert>
+#include <unordered_map>
 
 #include "vec3.hpp"
 
@@ -16,49 +17,83 @@
     bbbb 0ooo oooo pppp  pppp pppp pppp pppp  : polymer, up to 2^20 instances, and 127 beads per polymer
     b is the bead type index
 */
-inline uint32_t bead_hash_construct(uint32_t bead_type, bool is_monomer, uint32_t polymer_id, uint32_t polymer_offset)
+struct BeadHash
 {
-    assert( is_monomer ? (polymer_offset==0 && polymer_id<(1u<<27))
-                                    : (polymer_offset<128 && polymer_id<(1u<<20)));
-    uint32_t base=(uint32_t(polymer_offset)<<20) | polymer_id;
-    base |= uint32_t(is_monomer)<<27;
-    base |= bead_type << 28;
-    return base;
-}
+    uint32_t hash;
 
-inline bool bead_hash_is_monomer(uint32_t hash)
-{ return hash&(1<<27); }
+    BeadHash()
+        : hash(0)
+    {}
 
-inline uint32_t bead_hash_get_bead_type(uint32_t hash)
-{ return hash>>28; }
+    explicit BeadHash(uint32_t raw)
+        : hash(raw)
+    {}
 
-inline uint32_t bead_hash_get_polymer_offset(uint32_t hash)
-{ return bead_hash_is_monomer(hash) ? 0 : ((hash>>20)&0x7F); }
-
-inline uint32_t bead_hash_get_polymer_id(uint32_t hash)
-{ return bead_hash_is_monomer(hash) ? (hash&0x7FFFFFF) : (hash&0xFFFFF); }
-
-inline bool bead_hash_in_same_polymer(uint32_t h1, uint32_t h2)
-{
-    assert(h1!=h2);
-    if( !(h1&h2&(1<<27)) ){
-        return false;
+    static BeadHash construct(uint32_t bead_type, bool is_monomer, uint32_t polymer_id, uint32_t polymer_offset)
+    {
+        assert( is_monomer ? (polymer_offset==0 && polymer_id<(1u<<27))
+                                        : (polymer_offset<128 && polymer_id<(1u<<20)));
+        uint32_t base=(uint32_t(polymer_offset)<<20) | polymer_id;
+        base |= uint32_t(is_monomer)<<27;
+        base |= bead_type << 28;
+        return BeadHash(base);
     }
-    return (h1&0xFFFFF) == (h2&0xFFFFF);
-}
 
-// This cannot work out what the bead type is, so will return the 0 for the bead type
-inline uint32_t bead_hash_make_reduced_hash_from_polymer_offset(uint32_t origin_hash, unsigned polymer_offset)
-{
-    assert(!bead_hash_is_monomer(origin_hash));
-    assert(polymer_offset < 128);
-    return (origin_hash & 0xFFFFF) | (polymer_offset<<20); 
-}
+    bool is_monomer() const
+    { return hash&(1<<27); }
 
-inline bool bead_hash_equals(uint32_t h1, uint32_t h2)
+    inline uint32_t get_bead_type() const
+    { return hash>>28; }
+
+    inline uint32_t get_polymer_offset() const
+    { return is_monomer() ? 0 : ((hash>>20)&0x7F); }
+
+    inline uint32_t get_polymer_id() const
+    { return is_monomer() ? (hash&0x7FFFFFF) : (hash&0xFFFFF); }
+
+    inline bool in_same_polymer(const BeadHash &h2) const
+    {
+        assert(hash!=h2.hash);
+        if( !(hash&h2.hash&(1<<27)) ){
+            return false;
+        }
+        return (hash&0xFFFFF) == (h2.hash&0xFFFFF);
+    }
+
+    inline BeadHash reduced_hash() const
+    { return BeadHash{hash&uint32_t(0xFFFFFFFul)}; }
+
+    // This cannot work out what the bead type is, so will return the 0 for the bead type
+    inline BeadHash make_reduced_hash_from_polymer_offset(unsigned polymer_offset) const
+    {
+        assert(!is_monomer());
+        assert(polymer_offset < 128);
+        return BeadHash{ (hash & 0xFFFFF) | (polymer_offset<<20) }; 
+    }
+
+    inline bool reduced_equals(const BeadHash &h2) const
+    {
+        return (hash&0x0FFFFFFFul)==(h2.hash&0x0FFFFFFFul);
+    }
+
+    inline bool operator==(const BeadHash &o) const
+    { return hash==o.hash; }
+
+    inline bool operator!=(const BeadHash &o) const
+    { return hash!=o.hash; }
+};
+
+namespace std
 {
-    return (h1&0x0FFFFFFFul)==(h2&0x0FFFFFFFul);
-}
+    template<>
+    struct hash<BeadHash>
+    {
+        size_t operator()(BeadHash h) const
+        {
+            return h.hash;
+        }
+    };
+};
 
 static const float MIN_DISTANCE_CUTOFF = 0.000000001;
 static const float MIN_DISTANCE_CUTOFF_SQR = MIN_DISTANCE_CUTOFF;
@@ -89,9 +124,9 @@ struct Bead
     /*  0000 1ppp pppp pppp  pppp pppp pppp pppp  : monomer, up to 2^27 instances
         0000 0ooo oooo pppp  pppp pppp pppp pppp  : polymer, up to 2^20 instances, and 127 beads per polymer
     */
-    uint32_t get_hash_code() const
+    BeadHash get_hash_code() const
     {
-        return bead_hash_construct(bead_type, is_monomer, polymer_id, polymer_offset);
+        return BeadHash::construct(bead_type, is_monomer, polymer_id, polymer_offset);
     }
 };
 
@@ -155,9 +190,9 @@ struct WorldState
     std::vector<Polymer> polymers;
     std::vector<Bead> beads;
 
-    uint32_t bead_hash_to_id(uint32_t hash)
+    uint32_t bead_hash_to_id(const BeadHash &hash)
     {
-        return polymers.at(bead_hash_get_polymer_id(hash)).bead_ids.at(bead_hash_get_polymer_offset(hash));
+        return polymers.at(hash.get_polymer_id()).bead_ids.at(hash.get_polymer_offset());
     }
 };
 

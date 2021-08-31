@@ -95,7 +95,7 @@ private:
             }
 
             if(cache_neighbour){
-                cell.cached_bonds.push_back({neighbour_bead.id.get_hash_code(), neighbour_x});
+                cell.cached_bonds.push_back({neighbour_bead.id.hash, neighbour_x});
             }
         }
     }
@@ -112,9 +112,8 @@ private:
     {
         for(auto &b : cell.beads){
             if(!b.id.is_monomer()){
-                auto bpo = b.id.get_hash_code();
                 for(const auto &f : outgoing){
-                    if( bead_hash_equals(bpo , f.target_hash)){
+                    if( b.get_hash_code().reduced_equals(BeadHash{f.target_hash})){
                         b.f += f.f;
                     }
                 }
@@ -149,8 +148,6 @@ private:
         m_t_hash = get_t_hash(m_state->t, m_state->seed);
 
         if(EnableLogging && ForceLogging::logger()){
-            ForceLogging::bead_hash_to_id() = [&](uint32_t hash) -> uint32_t { return m_state->bead_hash_to_id(hash); };
-
             ForceLogging::logger()->SetTime(m_state->t);
             ForceLogging::logger()->LogProperty("dt", 1, &m_state->dt);
             double seed_low=m_state->seed &0xFFFFFFFFul;
@@ -163,13 +160,12 @@ private:
             ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
             for(auto &c : m_cells){
                 for(auto &b : c.beads){
-                    double h=b.get_hash_code();
-                    auto bead_id=m_state->polymers.at(b.id.get_polymer_id()).bead_ids.at(b.id.get_polymer_offset());
-                    ForceLogging::logger()->LogBeadProperty(bead_id, "b_hash", 1, &h);
+                    double h=b.get_hash_code().hash;
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(), "b_hash", 1, &h);
                     double x[3]={b.x[0],b.x[1],b.x[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"x",3,x);
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x",3,x);
                     double f[3]={b.f[0],b.f[1],b.f[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"f",3,f);
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f",3,f);
                 }
             }
         }
@@ -226,15 +222,12 @@ private:
         if(EnableLogging && ForceLogging::logger()){
             for(auto &c : m_cells){
                 for(auto &b : c.beads){
-                    double h=b.get_hash_code();
-                    auto bead_id=m_state->polymers.at(b.id.get_polymer_id()).bead_ids.at(b.id.get_polymer_offset());
                     double x[3]={b.x[0],b.x[1],b.x[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"x_next",3,x);
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x_next",3,x);
                     double f[3]={b.f[0],b.f[1],b.f[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"f_next",3,f);
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_next",3,f);
                 }
             }
-            ForceLogging::bead_hash_to_id() = {};
         }
     }
 

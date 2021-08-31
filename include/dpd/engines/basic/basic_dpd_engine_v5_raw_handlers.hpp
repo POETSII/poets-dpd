@@ -52,24 +52,24 @@ struct BasicDPDEngineV5RawHandlers
     };
 
     static uint32_t get_bead_type(uint32_t bead_id)
-    { return bead_hash_get_bead_type(bead_id); }
+    { return BeadHash{bead_id}.get_bead_type(); }
 
     static bool is_monomer(uint32_t bead_id) 
-    { return bead_hash_is_monomer(bead_id); }
+    { return BeadHash{bead_id}.is_monomer(); }
 
     static uint32_t get_polymer_id(uint32_t bead_id)
-    { return bead_hash_get_polymer_id(bead_id); }
+    { return BeadHash{bead_id}.get_polymer_id(); }
 
     static uint32_t get_polymer_offset(uint32_t bead_id)
-    { return bead_hash_get_polymer_offset(bead_id); }
+    { return BeadHash{bead_id}.get_polymer_offset(); }
 
-    static uint32_t make_hash_from_offset(uint32_t bead_id, unsigned offset)
+    static BeadHash make_hash_from_offset(uint32_t bead_id, unsigned offset)
     {
-        return bead_hash_make_reduced_hash_from_polymer_offset(bead_id, offset);
+        return BeadHash{bead_id}.make_reduced_hash_from_polymer_offset(offset);
     }
 
-    static uint32_t get_hash_code(uint32_t bead_id)
-    { return bead_id; }
+    static BeadHash get_hash_code(uint32_t bead_id)
+    { return BeadHash{bead_id}; }
 
 
     struct raw_bead_view_t
@@ -80,8 +80,8 @@ struct BasicDPDEngineV5RawHandlers
     };
     static_assert(sizeof(raw_bead_view_t)==28);
 
-    static uint32_t get_hash_code(const raw_bead_view_t &bead)
-    { return get_hash_code(bead.id); }
+    static BeadHash get_hash_code(const raw_bead_view_t &bead)
+    { return BeadHash{bead.id}; }
 
     static uint32_t get_bead_type(const raw_bead_view_t &bead)
     { return get_bead_type(bead.id); }
@@ -494,7 +494,7 @@ struct BasicDPDEngineV5RawHandlers
                 kappa, r0, 
                 conStrength,
                 cell.sqrt_dissipative,
-                get_hash_code(bead.id), get_hash_code(incoming.id),
+                BeadHash{bead.id}, BeadHash{incoming.id},
                 bead.v, incoming.v,
                 f
             );
@@ -505,7 +505,7 @@ struct BasicDPDEngineV5RawHandlers
                 //std::cerr<<"K: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
                 if(!cached){
                     raw_cached_bond_t tmp;
-                    tmp.bead_hash=get_hash_code(incoming.id);
+                    tmp.bead_hash=get_hash_code(incoming.id).hash;
                     vec3_copy(tmp.x, neighbour_x);
                     cached_bonds.push_back(tmp);
                     //std::cerr<<" caching, bead_i="<<bead_i<<", bead_id="<<get_hash_code(bead.id)<<" target="<<get_hash_code(incoming.id)<<"\n";
@@ -551,12 +551,9 @@ struct BasicDPDEngineV5RawHandlers
         const auto *head=&cached_bonds[cache_index_a];
         const auto *tail=&cached_bonds[cache_index_b];
 
-        if(head->bead_hash==tail_hash){
+        if( BeadHash{head->bead_hash}.reduced_equals(tail_hash)){
             std::swap(head, tail);
         }
-
-        assert(head->bead_hash==head_hash);
-        assert(tail->bead_hash==tail_hash);
         
         // The cache copies should already have wrapping applied
         float first[3], second[3];
@@ -580,11 +577,11 @@ struct BasicDPDEngineV5RawHandlers
         vec3_add(bead.f, middleForce);
 
         force_outgoing.alloc_back();
-        force_outgoing.back().target_hash=head_hash;
+        force_outgoing.back().target_hash=head_hash.hash;
         vec3_copy(force_outgoing.back().f, headForce);
 
         force_outgoing.alloc_back();
-        force_outgoing.back().target_hash=tail_hash;
+        force_outgoing.back().target_hash=tail_hash.hash;
         vec3_copy(force_outgoing.back().f, tailForce);
     }
 
@@ -607,7 +604,7 @@ struct BasicDPDEngineV5RawHandlers
         auto resident=make_bag_wrapper(cell.resident);
 
         for(auto &b : resident){
-            if( bead_hash_equals(get_hash_code(b.id) , incoming.target_hash)){
+            if( BeadHash{b.id}.reduced_equals( BeadHash{incoming.target_hash})){
                 vec3_add(b.f, incoming.f);
             }
         }

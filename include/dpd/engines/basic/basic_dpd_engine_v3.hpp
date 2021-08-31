@@ -163,7 +163,7 @@ private:
         }
 
         if(cache_neighbour){
-            cached_bonds.push_back({incoming.id.get_hash_code(), neighbour_x});
+            cached_bonds.push_back({incoming.id.hash, neighbour_x});
         }
     }
 
@@ -198,7 +198,7 @@ private:
         auto resident=make_bag_wrapper(cell.resident);
 
         for(auto &b : resident){
-            if(bead_hash_equals(b.id.get_hash_code() , incoming.target_hash)){
+            if( b.id.reduced_equals(BeadHash{incoming.target_hash})){
                 b.f += incoming.f;
             }
         }

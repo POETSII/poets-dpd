@@ -43,24 +43,12 @@ public:
     
     std::string CanSupport(const WorldState *s) const override
     {
-        if(s->bead_types.size()>1){
-            double diss=s->interactions.at(1).dissipative;
-            for(unsigned i=0; i<s->bead_types.size(); i++){
-                for(unsigned j=0; j<s->bead_types.size(); j++){
-                    if( s->interactions[i*s->bead_types.size()+j].dissipative!=diss){
-                        return "Dissipative strength must be uniform";
-                    }
-                }
-            }
-        }
 
         return BasicDPDEngine::CanSupport(s);
     }
 
     virtual void Run(unsigned nSteps) override
     {
-        ForceLogging::bead_hash_to_id()=[&](uint32_t hash)->uint32_t { return m_state->bead_hash_to_id(hash); };
-
         import_beads();
 
         // Create shadow device states
@@ -79,10 +67,10 @@ public:
             dst.bond_kappa=m_bond_kappa;
             for(unsigned i=0; i<m_state->bead_types.size(); i++){
                 for(unsigned j=0; j<m_state->bead_types.size(); j++){
-                    dst.conservative[i*MAX_BEAD_TYPES+j]=m_state->interactions[i*m_state->bead_types.size()+j].conservative;
+                    dst.interactions[i*MAX_BEAD_TYPES+j].conservative=m_state->interactions[i*m_state->bead_types.size()+j].conservative;
+                    dst.interactions[i*MAX_BEAD_TYPES+j].sqrt_dissipative=sqrt(m_state->interactions[i*m_state->bead_types.size()+j].dissipative);
                 }
             }
-            dst.sqrt_dissipative=pow_half(m_state->interactions[0].dissipative);
             dst.t_hash = m_t_hash;
             dst.t_seed = m_state->seed;
             src.location.extract(dst.location);
@@ -132,8 +120,6 @@ public:
         }
 
         export_beads();
-
-        ForceLogging::bead_hash_to_id()={};
     }
 
     void step(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map)
@@ -211,15 +197,13 @@ public:
         if(EnableLogging && ForceLogging::logger()){
             for(auto &c : m_cells){
                 for(auto &b : c.beads){
-                    double h=b.get_hash_code();
-                    auto bead_id=m_state->polymers.at(b.id.get_polymer_id()).bead_ids.at(b.id.get_polymer_offset());
+                    double h=b.get_hash_code().hash;
                     double x[3]={b.x[0],b.x[1],b.x[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"x_next",3,x);
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x_next",3,x);
                     double f[3]={b.f[0],b.f[1],b.f[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"f_next",3,f);
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_next",3,f);
                 }
             }
-            ForceLogging::bead_hash_to_id() = {};
         }
     }
 

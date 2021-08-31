@@ -180,14 +180,14 @@ private:
             ForceLogging::logger()->LogProperty("t_hash_lo", 1, &t_hash_low);
             ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
             for(auto &b : m_state->beads){
-                double h=b.get_hash_code();
-                ForceLogging::logger()->LogBeadProperty(b.bead_id, "b_hash", 1, &h);
+                double h=b.get_hash_code().hash;
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(), "b_hash", 1, &h);
                 double x[3]={b.x[0],b.x[1],b.x[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"x",3,x);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x",3,x);
                 double v[3]={b.v[0],b.v[1],b.v[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"v",3,v);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"v",3,v);
                 double f[3]={b.f[0],b.f[1],b.f[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"f",3,f);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f",3,f);
             }
         }
 
@@ -212,7 +212,7 @@ private:
 
             if(ForceLogging::logger()){
                 double x[3]={b.x[0],b.x[1],b.x[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"x_next",3,x);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x_next",3,x);
             }
         }
 
@@ -234,14 +234,14 @@ private:
         for(auto &b : m_state->beads){
             double ff[3]={m_forces[b.bead_id][0], m_forces[b.bead_id][1], m_forces[b.bead_id][2]};
             if(ForceLogging::logger()){
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"f_now",3,ff);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_now",3,ff);
             }
             update_bead_mom(&b);
             if(ForceLogging::logger()){
                 double v[3]={b.v[0],b.v[1],b.v[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"v_next",3,v);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"v_next",3,v);
                 double f[3]={b.f[0],b.f[1],b.f[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"f_next",3,f);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_next",3,f);
             }
         }
 
@@ -293,6 +293,9 @@ private:
         assert(x == uint32_t(res) );  // int32_t -> uint32_t is well-defined
         return res;
     }
+
+    double RandSym(const  BeadHash &s1, const BeadHash &s2) const
+    { return RandSym(s1.hash, s2.hash); }
 
     double RandSym(uint32_t s1, uint32_t s2) const
     {
@@ -395,17 +398,19 @@ private:
 
         if(ForceLogging::logger()){
             double ddx[3]={dx[0],dx[1],dx[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dx", 3,ddx);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dr", 1,&dr);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-invrootdt", 1, &scaled_inv_root_dt);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-gammap", 1, &gammap);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng", 1, &u);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-con", 1, &conForce);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-diss", 1,&dissForce);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng-scale",1, &randScale);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rand",1, &randForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dx", 3,ddx);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dr", 1,&dr);
+            double dd=interactions.dissipative;
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-diss-strength", 1, &dd);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-invrootdt", 1, &scaled_inv_root_dt);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-gammap", 1, &gammap);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-rng", 1, &u);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-con", 1, &conForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-diss", 1,&dissForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-rng-scale",1, &randScale);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-rand",1, &randForce);
             double ff[3]={f[0],f[1],f[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"f_next_dpd", 3,ff);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"f_next_dpd", 3,ff);
             
         }
     
@@ -462,11 +467,11 @@ private:
         if(ForceLogging::logger()){
             
             double ff[3]={f[0],f[1],f[2]};
-            ForceLogging::logger()->LogBeadPairProperty(p.bead_ids[b.bead_offset_head], p.bead_ids[b.bead_offset_tail], "f_next_hookean", 3, ff);
+            ForceLogging::logger()->LogBeadPairProperty(head.get_hash_code(), tail.get_hash_code(), "f_next_hookean", 3, ff);
             for(int i=0;i<3; i++){
                 ff[i]=-ff[i];
             }
-            ForceLogging::logger()->LogBeadPairProperty(p.bead_ids[b.bead_offset_tail], p.bead_ids[b.bead_offset_head], "f_next_hookean", 3, ff);
+            ForceLogging::logger()->LogBeadPairProperty(tail.get_hash_code(), head.get_hash_code(), "f_next_hookean", 3, ff);
         }
     }
 
@@ -564,9 +569,9 @@ private:
         m_forces[middle_bead.bead_id] += middleForce;
 
         if(ForceLogging::logger()){
-            ForceLogging::logger()->LogBeadTripleProperty(head_bead.bead_id, middle_bead.bead_id, tail_bead.bead_id, "f_next_angle_head", headForce);
-            ForceLogging::logger()->LogBeadTripleProperty(middle_bead.bead_id, head_bead.bead_id, tail_bead.bead_id, "f_next_angle_mid", middleForce);
-            ForceLogging::logger()->LogBeadTripleProperty(tail_bead.bead_id, head_bead.bead_id, middle_bead.bead_id, "f_next_angle_tail", tailForce);
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_head", headForce);
+            ForceLogging::logger()->LogBeadTripleProperty(middle_bead.get_hash_code(), head_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_mid", middleForce);
+            ForceLogging::logger()->LogBeadTripleProperty(tail_bead.get_hash_code(), head_bead.get_hash_code(), middle_bead.get_hash_code(), "f_next_angle_tail", tailForce);
         }
 
         

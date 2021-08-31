@@ -74,8 +74,8 @@ void calc_force(
 
     TScalar conStrength,
     TScalar sqrtDissStrength,
-    uint32_t home_hash,
-    uint32_t other_hash,
+    BeadHash home_hash,
+    BeadHash other_hash,
     const TVector &home_v,
     const TVector &other_v,
 
@@ -118,32 +118,32 @@ void calc_force(
     vec3_mul(force_home, dx , scaled_force);
 
     for(int i=0; i<3; i++){
-        assert(abs(force_home[i])<100);
+        assert(abs(force_home[i])<1000);
     }
 
     if(EnableLogging){
         if(ForceLogging::logger()){
-            uint32_t hb_bead_id=ForceLogging::bead_hash_to_id()(home_hash);
-            uint32_t ob_bead_id=ForceLogging::bead_hash_to_id()(other_hash);
-            
+           
             double ddx[3]={dx_orig[0],dx_orig[1],dx_orig[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"dx", 3,ddx);
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"dr", 1,&dr);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dx", 3,ddx);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dr", 1,&dr);
+            double dd=sqrtDissStrength*sqrtDissStrength;
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-diss-strength", 1, &dd);
             double tt=scale_inv_sqrt_dt;
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"dpd-invrootdt", 1, &tt);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-invrootdt", 1, &tt);
             double gammap=sqrt_gammap*sqrt_gammap;
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"dpd-gammap", 1, &gammap);
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"dpd-rng", 1, &u);
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"dpd-con",1, &conForce);
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"dpd-diss", 1,&dissForce);
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"dpd-rng-scale",1, &randScale);
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"dpd-rand",1, &randForce);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-gammap", 1, &gammap);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rng", 1, &u);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-con",1, &conForce);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-diss", 1,&dissForce);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rng-scale",1, &randScale);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rand",1, &randForce);
             double dpd_force=conForce + dissForce + randForce;
             double ff[3]={dx[0]*dpd_force,dx[1]*dpd_force,dx[2]*dpd_force};
-            ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"f_next_dpd", 3,ff);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"f_next_dpd", 3,ff);
             if(kappa!=0){
                 double fh[3]={dx[0]*hookeanForce,dx[1]*hookeanForce,dx[2]*hookeanForce};
-                ForceLogging::logger()->LogBeadPairProperty(hb_bead_id,ob_bead_id,"f_next_hookean", 3,fh);
+                ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"f_next_hookean", 3,fh);
             }
         }
     }

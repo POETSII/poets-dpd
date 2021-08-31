@@ -69,60 +69,16 @@ private:
     friend class BasicDPDEngineV7Raw;
     friend class BasicDPDEngineV8Raw;
 
-    struct bead_hash_t
-    {
-        /*  1ppp pppp pppp pppp  pppp pppp pppp bbbb
-            0ooo oooo pppp pppp  pppp pppp pppp bbbb
-            p = polymer id
-            o = polymer offset
-            b = bead type
-
-            A polymer id plus offset is just shifted right by 4
-            0000 1ppp pppp pppp  pppp pppp pppp pppp
-            0000 0ooo oooo pppp  pppp pppp pppp pppp
-            This is generally cheaper than masking
-        */
-        uint32_t bead_hash;
-
-        void operator=(uint32_t x)
-        {
-            bead_hash=x;
-        }
-
-        uint32_t get_bead_type() const
-        { return bead_hash_get_bead_type(bead_hash); }
-
-        bool is_monomer() const
-        { return bead_hash_is_monomer(bead_hash); }
-
-        uint32_t get_polymer_id() const
-        { return bead_hash_get_polymer_id(bead_hash); }
-
-        uint32_t get_polymer_offset() const
-        { return bead_hash_get_polymer_offset(bead_hash); }
-
-        // This cannot work out what the bead type is, so will return the 0xf for the bead type
-        uint32_t make_reduced_hash_from_offset(unsigned offset)
-        {
-            return bead_hash_make_reduced_hash_from_polymer_offset(bead_hash, offset);
-        }
-
-        uint32_t get_hash_code() const
-        {
-            return bead_hash;
-        }
-
-    };
-    static_assert(sizeof(bead_hash_t)==4);
+    static_assert(sizeof(BeadHash)==4);
 
     struct bead_view_t
     {
-        bead_hash_t id;
+        BeadHash id;
         vec3f_t x;
         vec3f_t v;
 
-        uint32_t get_hash_code() const
-        { return id.get_hash_code(); }
+        BeadHash get_hash_code() const
+        { return id; }
 
         uint32_t get_bead_type() const
         { return id.get_bead_type(); }
@@ -168,7 +124,7 @@ private:
 
     void get_bond_info(
         const bead_resident_t &home,
-        const bead_hash_t &other_id,
+        const BeadHash &other_id,
         int &angle_partner_count,
         float &kappa,
         float &r0
@@ -320,7 +276,7 @@ protected:
         const PolymerType &pt = m_state->polymer_types.at(b.polymer_type);
         bool is_monomer=pt.bead_types.size()==1;
 
-        bb.id=bead_hash_construct(b.get_bead_type(), b.is_monomer, b.polymer_id, b.polymer_offset);
+        bb.id=BeadHash::construct(b.get_bead_type(), b.is_monomer, b.polymer_id, b.polymer_offset);
         vec3_copy(bb.x, b.x);
         vec3_copy(bb.v, b.v);
         vec3_copy(bb.f, b.f);
@@ -533,8 +489,6 @@ protected:
         m_t_hash = get_t_hash(m_state->t, m_state->seed);
 
         if(EnableLogging && ForceLogging::logger()){
-            ForceLogging::bead_hash_to_id() = [&](uint32_t hash) -> uint32_t { return m_state->bead_hash_to_id(hash); };
-
             ForceLogging::logger()->SetTime(m_state->t);
             ForceLogging::logger()->LogProperty("dt", 1, &m_state->dt);
             double seed_low=m_state->seed &0xFFFFFFFFul;
@@ -547,13 +501,12 @@ protected:
             ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
             for(auto &c : m_cells){
                 for(auto &b : c.beads){
-                    double h=b.get_hash_code();
-                    auto bead_id=m_state->polymers.at(b.id.get_polymer_id()).bead_ids.at(b.id.get_polymer_offset());
-                    ForceLogging::logger()->LogBeadProperty(bead_id, "b_hash", 1, &h);
+                    double h=b.id.hash;
+                    ForceLogging::logger()->LogBeadProperty(b.id, "b_hash", 1, &h);
                     double x[3]={b.x[0],b.x[1],b.x[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"x",3,x);
+                    ForceLogging::logger()->LogBeadProperty(b.id,"x",3,x);
                     double f[3]={b.f[0],b.f[1],b.f[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"f",3,f);
+                    ForceLogging::logger()->LogBeadProperty(b.id,"f",3,f);
                 }
             }
         }
@@ -624,7 +577,7 @@ protected:
                     }
 
                     if(cache_neighbour){
-                        uint32_t hash_code=neighbour_bead.id.get_hash_code();
+                        uint32_t hash_code=neighbour_bead.id.hash;
                         cell.cached_bonds.push_back({hash_code, neighbour_x});
                     }
                 }
@@ -657,14 +610,12 @@ protected:
         if(EnableLogging && ForceLogging::logger()){
             for(auto &c : m_cells){
                 for(auto &b : c.beads){
-                    auto bead_id=m_state->polymers.at(b.id.get_polymer_id()).bead_ids.at(b.id.get_polymer_offset());
                     double x[3]={b.x[0],b.x[1],b.x[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"x_next",3,x);
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x_next",3,x);
                     double f[3]={b.f[0],b.f[1],b.f[2]};
-                    ForceLogging::logger()->LogBeadProperty(bead_id,"f_next",3,f);
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_next",3,f);
                 }
             }
-            ForceLogging::bead_hash_to_id() = {};
         }
     }
 
@@ -711,10 +662,10 @@ protected:
     template<bool EnableLogging, class TCache,class TOutgoing>
     void update_bead_angle(TCache &cache, bead_resident_t &bead, TOutgoing &outgoing)
     {
-        auto find_cached_pos=[&](uint32_t target_hash) -> const cached_bond_t *
+        auto find_cached_pos=[&](BeadHash target_hash) -> const cached_bond_t *
         {
             for(unsigned i=0; i<cache.size(); i++){
-                if( bead_hash_equals(cache[i].bead_hash ,target_hash)){
+                if( target_hash.reduced_equals( BeadHash{cache[i].bead_hash}) ){
                     return &cache[i];
                 }
             }
@@ -726,8 +677,8 @@ protected:
             if(bead.angle_bonds[i].partner_head==0xFF){
                 break;
             }
-            auto head_reduced_hash=bead.id.make_reduced_hash_from_offset(bead.angle_bonds[i].partner_head);
-            auto tail_reduced_hash=bead.id.make_reduced_hash_from_offset(bead.angle_bonds[i].partner_tail);
+            auto head_reduced_hash=bead.get_hash_code().make_reduced_hash_from_polymer_offset(bead.angle_bonds[i].partner_head);
+            auto tail_reduced_hash=bead.get_hash_code().make_reduced_hash_from_polymer_offset(bead.angle_bonds[i].partner_tail);
             const auto *head=find_cached_pos(head_reduced_hash);
             const auto *tail=find_cached_pos(tail_reduced_hash);
             
@@ -750,24 +701,23 @@ protected:
             );
 
             if(EnableLogging && ForceLogging::logger()){
-                ForceLogging::logger()->LogBeadHashTripleProperty(head->bead_hash, bead.get_hash_code(), tail->bead_hash, "f_next_angle_head", headForce);
-                ForceLogging::logger()->LogBeadHashTripleProperty(bead.get_hash_code(), head->bead_hash, tail->bead_hash, "f_next_angle_mid", middleForce);
-                ForceLogging::logger()->LogBeadHashTripleProperty(tail->bead_hash, head->bead_hash, bead.get_hash_code(), "f_next_angle_tail", tailForce);
+                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, bead.get_hash_code(), BeadHash{tail->bead_hash}, "f_next_angle_head", headForce);
+                ForceLogging::logger()->LogBeadTripleProperty(bead.get_hash_code(), BeadHash{head->bead_hash}, BeadHash{tail->bead_hash}, "f_next_angle_mid", middleForce);
+                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{tail->bead_hash}, BeadHash{head->bead_hash}, bead.get_hash_code(), "f_next_angle_tail", tailForce);
             }
 
             bead.f += middleForce;
 
-            outgoing.push_back( { head_reduced_hash, headForce } );
-            outgoing.push_back( { tail_reduced_hash, tailForce } );
+            outgoing.push_back( { head_reduced_hash.hash, headForce } );
+            outgoing.push_back( { tail_reduced_hash.hash, tailForce } );
         }
     }
 
     void on_recv_forces(cell_t &cell, const std::vector<force_input_t> &forces)
     {
         for(auto &b : cell.beads){
-            auto bpo = b.id.get_hash_code();
             for(const auto &f : forces){
-                if( bead_hash_equals( bpo , f.target_hash) ){
+                if( b.get_hash_code().reduced_equals( BeadHash{f.target_hash} ) ){
                     b.f += f.f;
                 }
             }

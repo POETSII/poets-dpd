@@ -69,11 +69,11 @@ public:
     std::vector<device_state_t> m_devices;
     std::unordered_map<vec3i_t,device_state_t*> m_location_to_device;
     std::unordered_map<device_state_t*,std::vector<device_state_t*>> m_neighbour_map;
-    std::unordered_map<uint32_t,uint32_t> m_bead_hash_to_original_id;
+    std::unordered_map<BeadHash,uint32_t> m_bead_hash_to_original_id;
 
     void set_bead_hash(raw_bead_resident_t &b, bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
     {
-        b.id=bead_hash_construct(bead_type, is_monomer, polymer_id, polymer_offset);
+        b.id=BeadHash::construct(bead_type, is_monomer, polymer_id, polymer_offset).hash;
     }
 
     void Attach(WorldState *state) override
@@ -128,12 +128,12 @@ public:
         unsigned time;
         unsigned num_seen;
         std::vector<raw_bead_resident_t> beads;
-        std::unordered_map<uint32_t,uint32_t> *bead_hash_to_id;
+        std::unordered_map<BeadHash,uint32_t> *bead_hash_to_id;
 
         output_slice(output_slice &&) = default;
         output_slice &operator=(output_slice &&) = default;
 
-        output_slice(unsigned _time, std::unordered_map<uint32_t,uint32_t> &_bead_hash_to_id)
+        output_slice(unsigned _time, std::unordered_map<BeadHash,uint32_t> &_bead_hash_to_id)
             : time(_time)
             , num_seen(0)
             , bead_hash_to_id(&_bead_hash_to_id)

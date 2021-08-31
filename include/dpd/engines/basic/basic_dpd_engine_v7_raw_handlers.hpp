@@ -145,9 +145,9 @@ struct BasicDPDEngineV7RawHandlers
 
                 float kappa=0.0f;
                 float r0=cell.bond_r0;
-                if(!(bead_hash_is_monomer(incoming.id) || bead_hash_is_monomer(bead.id))){
-                    if(bead_hash_get_polymer_id(bead.id) == bead_hash_get_polymer_id(incoming.id) ){
-                        auto other_polymer_offset=bead_hash_get_polymer_offset(incoming.id);
+                if(!(BeadHash{incoming.id}.is_monomer() || BeadHash{bead.id}.is_monomer())){
+                    if(BeadHash{bead.id}.get_polymer_id() == BeadHash{incoming.id}.get_polymer_id() ){
+                        auto other_polymer_offset=BeadHash{incoming.id}.get_polymer_offset();
                         for(unsigned i=0; i<MAX_BONDS_PER_BEAD; i++){
                             if(other_polymer_offset==bead.bond_partners[i]){
                                 kappa=cell.bond_kappa;
@@ -157,8 +157,8 @@ struct BasicDPDEngineV7RawHandlers
                     }
                 }
 
-                auto bead_type1=bead_hash_get_bead_type(bead.id);
-                auto bead_type2=bead_hash_get_bead_type(incoming.id);
+                auto bead_type1=BeadHash{bead.id}.get_bead_type();
+                auto bead_type2=BeadHash{incoming.id}.get_bead_type();
                 float conStrength=cell.conservative[MAX_BEAD_TYPES*bead_type1+bead_type2];
 
                 float f[3];
@@ -169,7 +169,7 @@ struct BasicDPDEngineV7RawHandlers
                     kappa, r0, 
                     conStrength,
                     cell.sqrt_dissipative,
-                    bead.id, incoming.id,
+                    BeadHash{bead.id}, BeadHash{incoming.id},
                     bead.v, incoming.v,
                     f
                 );
@@ -188,7 +188,7 @@ struct BasicDPDEngineV7RawHandlers
                     }
 
                     static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
-                    bool hit = bead_hash_get_polymer_offset(incoming.id) == bead.angle_bonds[0].partner_head || bead_hash_get_polymer_offset(incoming.id) == bead.angle_bonds[0].partner_tail;
+                    bool hit = BeadHash{incoming.id}.get_polymer_offset() == bead.angle_bonds[0].partner_head || BeadHash{incoming.id}.get_polymer_offset() == bead.angle_bonds[0].partner_tail;
                     if(hit){
                         //std::cerr<<"  CB: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
                         if(cell.cached_bond_indices[bead_i]==0xFF){

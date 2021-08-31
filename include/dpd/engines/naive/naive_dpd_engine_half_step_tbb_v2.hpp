@@ -25,22 +25,22 @@ class NaiveDPDEngineHalfStepTBBV2
     // This is a 32-byte structure, so we get two per cache line
     struct BeadView
     {
-        uint32_t hash;
+        BeadHash hash;
         uint32_t bead_id;
         vec3f_t x;
         vec3f_t v;
 
-        uint32_t get_hash_code() const
+        BeadHash get_hash_code() const
         { return hash; }
 
         unsigned get_bead_type() const
-        { return bead_hash_get_bead_type(hash); }
+        { return BeadHash(hash).get_bead_type(); }
 
         unsigned get_polymer_id() const
-        { return bead_hash_get_polymer_id(hash); }
+        { return BeadHash{hash}.get_polymer_id(); }
 
         unsigned get_polymer_offset() const
-        { return bead_hash_get_polymer_offset(hash); }
+        { return BeadHash{hash}.get_polymer_offset(); }
     };
     static_assert(sizeof(BeadView)==32);
 

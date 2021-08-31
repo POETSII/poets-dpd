@@ -65,6 +65,13 @@ inline float default_hash(uint64_t base, uint32_t s1, uint32_t s2)
     return u;
 }
 
+inline float default_hash(uint64_t base, const BeadHash &s1, const BeadHash &s2)
+{
+    return default_hash(base, s1.hash, s2.hash);
+}
+
+
+
 template<class TScalar, class TDims, class TBead>
 void update_pos(
     TScalar dt,
