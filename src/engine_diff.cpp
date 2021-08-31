@@ -115,6 +115,12 @@ int main(int argc, const char *argv[])
         WorldState state=s;
         std::vector<std::vector<Bead>> res;
 
+        std::string ok=engine->CanSupport(&state);
+        if(!ok.empty()){
+            fprintf(stderr, "Engine can't support world : %s\n", ok.c_str());
+            exit(1);
+        }
+
         engine->Attach(&state);
 
         unsigned t=state.t;

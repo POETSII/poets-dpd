@@ -181,8 +181,10 @@ struct BasicDPDEngineV5RawHandlers
         float inv_root_dt;
         float bond_r0;
         float bond_kappa;
-        float conservative[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
-        float sqrt_dissipative;
+        struct {
+            float conservative;
+            float sqrt_dissipative;
+        }interactions[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
         uint32_t t;
         uint64_t t_hash;
         uint64_t t_seed;
@@ -484,7 +486,7 @@ struct BasicDPDEngineV5RawHandlers
 
             auto bead_type1=get_bead_type(bead.id);
             auto bead_type2=get_bead_type(incoming.id);
-            float conStrength=cell.conservative[MAX_BEAD_TYPES*bead_type1+bead_type2];
+            auto strength=cell.interactions[MAX_BEAD_TYPES*bead_type1+bead_type2];
 
             float f[3];
             dpd_maths_core_half_step_raw::calc_force<EnableLogging,float,float[3],float[3]>(
@@ -492,8 +494,8 @@ struct BasicDPDEngineV5RawHandlers
                 cell.t_hash,
                 dx, dr,
                 kappa, r0, 
-                conStrength,
-                cell.sqrt_dissipative,
+                strength.conservative,
+                strength.sqrt_dissipative,
                 BeadHash{bead.id}, BeadHash{incoming.id},
                 bead.v, incoming.v,
                 f

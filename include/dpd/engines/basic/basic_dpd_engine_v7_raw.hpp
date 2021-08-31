@@ -101,10 +101,10 @@ public:
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){
                     for(unsigned j=0; j<m_state->bead_types.size(); j++){
-                        dst.conservative[i*MAX_BEAD_TYPES+j]=m_state->interactions[i*m_state->bead_types.size()+j].conservative;
+                        dst.interactions[i*MAX_BEAD_TYPES+j].conservative=m_state->interactions[i*m_state->bead_types.size()+j].conservative;
+                        dst.interactions[i*MAX_BEAD_TYPES+j].sqrt_dissipative=sqrt(m_state->interactions[i*m_state->bead_types.size()+j].dissipative);
                     }
                 }
-                dst.sqrt_dissipative=pow_half(m_state->interactions[0].dissipative);
                 dst.t_hash = m_t_hash;
                 dst.t_seed = m_state->seed;
                 src.location.extract(dst.location);

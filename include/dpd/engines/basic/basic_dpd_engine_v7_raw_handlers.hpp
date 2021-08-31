@@ -159,7 +159,7 @@ struct BasicDPDEngineV7RawHandlers
 
                 auto bead_type1=BeadHash{bead.id}.get_bead_type();
                 auto bead_type2=BeadHash{incoming.id}.get_bead_type();
-                float conStrength=cell.conservative[MAX_BEAD_TYPES*bead_type1+bead_type2];
+                auto strength=cell.interactions[MAX_BEAD_TYPES*bead_type1+bead_type2];
 
                 float f[3];
                 dpd_maths_core_half_step_raw::calc_force<EnableLogging,float,float[3],float[3]>(
@@ -167,8 +167,8 @@ struct BasicDPDEngineV7RawHandlers
                     cell.t_hash,
                     dx, dr,
                     kappa, r0, 
-                    conStrength,
-                    cell.sqrt_dissipative,
+                    strength.conservative,
+                    strength.sqrt_dissipative,
                     BeadHash{bead.id}, BeadHash{incoming.id},
                     bead.v, incoming.v,
                     f
