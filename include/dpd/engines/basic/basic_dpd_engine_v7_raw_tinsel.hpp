@@ -11,14 +11,25 @@
 
 #include "POLiteHW.h"
 
-template<class Impl = POLiteHW<>>
+template<class Impl = POLiteHW<>, bool USE_X_CACHE=false>
 class BasicDPDEngineV7RawTinsel
-    : public BasicDPDEngineV7Raw
+    : public BasicDPDEngineV7Raw<USE_X_CACHE>
 {
 public:
-    using Handlers = BasicDPDEngineV7RawHandlers<false>;
+    using Handlers = BasicDPDEngineV7RawHandlers<false, USE_X_CACHE>;
 
     using None = typename Impl::None;
+
+    using OutputFlags =  typename Handlers::OutputFlags;
+    using raw_bead_resident_t = typename Handlers::raw_bead_resident_t;
+    using raw_bead_share_t = typename Handlers::raw_bead_share_t;
+    using raw_force_input_t = typename Handlers::raw_force_input_t;
+    using device_state_t = typename Handlers::device_state_t;
+
+    using BasicDPDEngineV7Raw<USE_X_CACHE>::m_devices;
+    using BasicDPDEngineV7Raw<USE_X_CACHE>::m_neighbour_map;
+    using BasicDPDEngineV7Raw<USE_X_CACHE>::m_state;
+    using BasicDPDEngineV7Raw<USE_X_CACHE>::m_t_hash;
 
     static constexpr auto NHoodPin = Impl::Pin(0);
 
@@ -152,7 +163,7 @@ public:
     {
         ensure_hostlink();
         
-        BasicDPDEngineV7Raw::Attach(state);
+        BasicDPDEngineV7Raw<USE_X_CACHE>::Attach(state);
 
         //std::cerr<<"Building graph\n";
 
@@ -220,7 +231,11 @@ public:
         graph.write(m_hostlink.get());
 
         //std::cerr<<"Booting\n";
-        m_hostlink->boot("bin/engines/basic_dpd_engine_v7_raw_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v7_raw_tinsel_hw.riscv.data.v");
+        if(USE_X_CACHE){
+            m_hostlink->boot("bin/engines/basic_dpd_engine_v7_raw_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v7_raw_tinsel_hw.riscv.data.v");
+        }else{
+            m_hostlink->boot("bin/engines/basic_dpd_engine_v7_raw_cache_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v7_raw_cache_tinsel_hw.riscv.data.v");
+        }
         //std::cerr<<"Go\n";
         m_hostlink->go();
 

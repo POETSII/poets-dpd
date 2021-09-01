@@ -32,6 +32,7 @@ namespace dpd_maths_core_half_step
         for(int i=0; i<3; i++){
             x[i] += (x[i]<0 ? dims[i] : 0);
             x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
+            assert(0<=x[i] && x[i] < dims[i]);
         }
 #ifndef TINSEL
         //std::cerr<<"  alt: x="<<x<<", b.x'="<<b.x<<", v="<<b.v<<"\n";

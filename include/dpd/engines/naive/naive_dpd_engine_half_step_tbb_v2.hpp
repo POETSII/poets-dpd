@@ -258,7 +258,7 @@ class NaiveDPDEngineHalfStepTBBV2
         return false;
     }
 
-    void update_cell_forces_inter(std::vector<BeadView> &home, std::vector<BeadView> &other, const vec3f_t &other_delta) const
+    void __attribute__((noinline)) update_cell_forces_inter(std::vector<BeadView> &home, std::vector<BeadView> &other, const vec3f_t &other_delta) const
     {
         for(BeadView & hb : home){
             for(const BeadView &ob : other)

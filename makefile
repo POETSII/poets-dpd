@@ -4,7 +4,7 @@ CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 #LDFLAGS += -fuse-ld=gold
 
-#CPPFLAGS += -DNDEBUG=1 
+CPPFLAGS += -DNDEBUG=1 
 CPPFLAGS += -O3 -march=native -ffast-math
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
@@ -37,8 +37,6 @@ ENGINES := $(filter-out %tinsel_hw,$(ENGINES))
 endif
 
 ENGINES := $(filter-out basic_dpd_engine_v6% ,$(ENGINES))
-ENGINES := $(filter-out basic_dpd_engine_v7% ,$(ENGINES))
-ENGINES := $(filter-out basic_dpd_engine_v8% ,$(ENGINES))
 
 all : $(TEST_BIN)
 

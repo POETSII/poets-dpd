@@ -45,11 +45,30 @@ class NaiveDPDEngineHalfStepTBB
 {
     struct LockedCell
     {
+        unsigned index;
         tbb::concurrent_vector<Bead*> new_beads;
         std::vector<Bead*> beads;
     };
 
     std::vector<LockedCell> m_locked_cells;
+
+    std::vector<Polymer*> m_polymers_with_angles;
+
+    void Attach(WorldState *s) override
+    {
+        m_locked_cells.clear();
+        NaiveDPDEngineHalfStep::Attach(s);
+
+        m_polymers_with_angles.clear();
+        if(s){
+            for(auto &p : s->polymers){
+                auto &pt=s->polymer_types.at(p.polymer_type);
+                if(!pt.bond_pairs.empty()){
+                    m_polymers_with_angles.push_back(&p);
+                }
+            }
+        }
+    }
 
     void step() override
     {
@@ -60,31 +79,59 @@ class NaiveDPDEngineHalfStepTBB
         double dt=m_state->dt;
 
         int num_cells=calc_num_cells();
-        int cell_reserve_size=4 * m_state->beads.size() / num_cells;
 
-        // Clear all cell information
-        m_locked_cells.resize(num_cells);
-        tbb::parallel_for(range1d_t(0, m_locked_cells.size(), 1024), [&](const range1d_t &r){
-            for(int i=r.begin(); i<r.end(); i++){
-                m_locked_cells[i].beads.clear();
-                m_locked_cells[i].beads.reserve(cell_reserve_size);
-            }
-        });
+        if(m_locked_cells.empty()){
+            int cell_reserve_size=4 * m_state->beads.size() / num_cells;
 
-        // Move the beads, and then assign to cells based on x(t+dt)
-        tbb::parallel_for(range1d_t(0, m_state->beads.size(), 1024), [&](const range1d_t &r){
-            for(int i=r.begin(); i<r.end(); i++){
-                auto &b = m_state->beads[i];
-                dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
-                m_locked_cells.at( world_pos_to_cell_index(b.x) ).new_beads.push_back(&b); // push into concurrent_vector
-            }
-        });
+            // Clear all cell information
+            m_locked_cells.resize(num_cells);
+            tbb::parallel_for(range1d_t(0, m_locked_cells.size(), 64), [&](const range1d_t &r){
+                for(int i=r.begin(); i<r.end(); i++){
+                    m_locked_cells[i].index=i;
+                    m_locked_cells[i].beads.clear();
+                    m_locked_cells[i].beads.reserve(cell_reserve_size);
+                }
+            });
 
-         tbb::parallel_for(range1d_t(0, m_locked_cells.size(), 1024), [&](const range1d_t &r){
+            // Move the beads, and then assign to cells based on x(t+dt)
+            tbb::parallel_for(range1d_t(0, m_state->beads.size(), 1024), [&](const range1d_t &r){
+                for(int i=r.begin(); i<r.end(); i++){
+                    auto &b = m_state->beads[i];
+                    dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
+                    m_locked_cells.at( world_pos_to_cell_index(b.x) ).new_beads.push_back(&b); // push into concurrent_vector
+                }
+            });
+        }else{
+            // Move the beads, and then assign to cells based on x(t+dt)
+            tbb::parallel_for(range1d_t(0, m_locked_cells.size(), 64), [&](const range1d_t &r){
+                for(int i=r.begin(); i<r.end(); i++){
+                    auto &c = m_locked_cells[i];
+                    for(int j=c.beads.size()-1; j>=0; j--){
+                        auto *b = c.beads[j];
+                        dpd_maths_core_half_step::update_pos(dt, m_state->box, *b);
+                        unsigned index=world_pos_to_cell_index(b->x);
+                        if(index!=i){
+                            // Add to dst
+                            assert(m_locked_cells.at(index).index==index);
+                            m_locked_cells.at( index ).new_beads.push_back(b); // push into concurrent_vector
+                            // Remove from here
+                            c.beads[j]=c.beads.back();
+                            c.beads.resize(c.beads.size()-1);
+                        }else{
+                            assert(c.index==index);
+                        }
+                    }
+                }
+            });
+        }
+
+         tbb::parallel_for(range1d_t(0, m_locked_cells.size(), 64), [&](const range1d_t &r){
             for(int i=r.begin(); i<r.end(); i++){
                 auto &c =m_locked_cells[i];
-                c.beads.assign(c.new_beads.begin(), c.new_beads.end());
-                c.new_beads.clear();
+                if(!c.new_beads.empty()){
+                    c.beads.insert(c.beads.end(), c.new_beads.begin(), c.new_beads.end());
+                    c.new_beads.clear();
+                }
             }
          });
 
@@ -104,7 +151,7 @@ class NaiveDPDEngineHalfStepTBB
                                 for(dir[2]=-1; dir[2]<=+1; dir[2]++){
                                     auto [other_pos,other_delta] = make_relative_cell_pos(pos, dir);
                                     const auto &other=m_locked_cells[cell_pos_to_index(other_pos)];
-                                    update_cell_forces(home.beads, other.beads, other_delta);
+                                    update_cell_forces<false>(home.beads, other.beads, other_delta);
                                 }
                             }
                         }
@@ -117,9 +164,9 @@ class NaiveDPDEngineHalfStepTBB
         // We can do this in parallel, even though update_angle_bond modifies 3 beads, because
         // each polymer is processed in the same task. So there cant be any angle bonds affecting
         // inter-task, as that would mean angle bonds between beads in different polymers.
-        tbb::parallel_for(range1d_t(0, m_state->polymers.size(), 64), [&](const range1d_t &r){
+        tbb::parallel_for(range1d_t(0, m_polymers_with_angles.size(), 64), [&](const range1d_t &r){
             for(int i=r.begin(); i<r.end(); i++){
-                const auto &p = m_state->polymers[i];
+                const auto &p = *m_polymers_with_angles[i];
                 const auto &pt = m_state->polymer_types.at(p.polymer_type);
                 for(const auto &bond_pair : pt.bond_pairs){
                     update_angle_bond(p, pt, bond_pair);
@@ -133,6 +180,7 @@ class NaiveDPDEngineHalfStepTBB
                 dpd_maths_core_half_step::update_mom(dt, m_state->beads[i]);
             }
         });
+
 
         m_state->t += 1;
     }

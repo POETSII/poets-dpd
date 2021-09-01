@@ -163,6 +163,8 @@ int main(int argc, const char *argv[])
             interval_size=std::stoi(argv[5]);
         }
 
+        std::cerr<<"interval_count="<<interval_count<<", interval_size="<<interval_size<<"\n";
+
         std::ifstream input(srcFile.c_str());
         if(!input.is_open()){
             fprintf(stderr, "Couldnt open %s\n", srcFile.c_str());

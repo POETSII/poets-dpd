@@ -6,8 +6,6 @@
 struct BasicDPDEngineV8RawHandlers
     : public BasicDPDEngineV5RawHandlers
 {
-    static const bool USE_X_CACHE=true;
-
     struct raw_bead_share_t
     {
         raw_bead_view_t beads[2];
@@ -51,11 +49,6 @@ struct BasicDPDEngineV8RawHandlers
         float *x_cache=cell.x_cache; 
         for(unsigned i=0; i<resident.size(); i++, x_cache+=3){ 
             cell.cached_bond_indices[i]=0xff;
-            if(USE_X_CACHE){
-                for(int j=0; j<3; j++){
-                    x_cache[j] = resident[i].x[j];
-                }
-            }
         }
 
         calc_intra_forces(cell);
@@ -106,11 +99,7 @@ struct BasicDPDEngineV8RawHandlers
         )
     {
         float dx[3];
-        if(USE_X_CACHE){
-            vec3_sub(dx, bead_x, incoming_x);
-        }else{
-            vec3_sub(dx, bead.x, incoming_x);
-        }
+        vec3_sub(dx, bead.x, incoming_x);
         float dr_sqr=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
         if(dr_sqr >=1 || dr_sqr < MIN_DISTANCE_CUTOFF_SQR){ // The min threshold avoid large forces, and also skips self-interaction
             return NotBonded;
@@ -136,26 +125,23 @@ struct BasicDPDEngineV8RawHandlers
 
         auto bead_type1=get_bead_type(bead.id);
         auto bead_type2=get_bead_type(incoming_id);
-        float conStrength=cell.conservative[MAX_BEAD_TYPES*bead_type1+bead_type2];
+        auto interactions=cell.interactions[MAX_BEAD_TYPES*bead_type1+bead_type2];
 
         float incoming_vv[3]={incoming_v[0],incoming_v[1],incoming_v[2]};
         float ff[3];
-        dpd_maths_core_half_step_raw::calc_force<float,float[3],float[3]>(
+        dpd_maths_core_half_step_raw::calc_force<false,float,float[3],float[3]>(
             cell.inv_root_dt,
             cell.t_hash,
             dx, dr,
             kappa, r0, 
-            conStrength,
-            cell.sqrt_dissipative,
+            interactions.conservative,
+            interactions.sqrt_dissipative,
             get_hash_code(bead.id), get_hash_code(incoming_id),
             bead.v, incoming_vv,
             ff
         );
-        for(int i=0; i<3; i++){
-            f[i]=ff[i];
-        }
 
-        vec3_add(bead.f, f);
+        vec3_add(bead.f, ff);
 
         return bondLevel;
     }
@@ -174,7 +160,7 @@ struct BasicDPDEngineV8RawHandlers
         //std::cerr<<"K: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
         unsigned cached_bond_index=cached_bonds.size();
         raw_cached_bond_t tmp;
-        tmp.bead_hash=get_hash_code(incoming_id);
+        tmp.bead_hash=BeadHash{incoming_id}.hash;
         vec3_copy(tmp.x, neighbour_x);
         cached_bonds.push_back(tmp);
         //std::cerr<<" caching, bead_i="<<bead_i<<", bead_id="<<get_hash_code(bead.id)<<" target="<<get_hash_code(incoming.id)<<"\n";

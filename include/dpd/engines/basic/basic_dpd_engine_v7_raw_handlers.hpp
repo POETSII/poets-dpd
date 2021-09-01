@@ -3,13 +3,11 @@
 
 #include "dpd/engines/basic/basic_dpd_engine_v5_raw_handlers.hpp"
 
-template<bool EnableLogging=false>
+template<bool EnableLogging=false, bool USE_X_CACHE=false>
 struct BasicDPDEngineV7RawHandlers
     : public BasicDPDEngineV5RawHandlers
 {
     using Base  = BasicDPDEngineV5RawHandlers;    
-
-    static const bool USE_X_CACHE=true;
 
     struct raw_bead_share_t
     {
@@ -20,6 +18,7 @@ struct BasicDPDEngineV7RawHandlers
     struct device_state_t
         : Base::device_state_t
     {
+        bool is_edge;
         float x_cache[MAX_BEADS_PER_CELL*3];
     };
 
@@ -31,7 +30,7 @@ struct BasicDPDEngineV7RawHandlers
             case Phase::PreMigrate:
             case Phase::Outputting: 
             case Phase::SharingAndForcing: return Base::on_barrier_pre_migrate(cell); break;
-            case Phase::Migrating: return Base::on_barrier_pre_share(cell); break;            
+            case Phase::Migrating: return on_barrier_pre_share(cell); break;            
         }
     }
 
@@ -97,6 +96,8 @@ struct BasicDPDEngineV7RawHandlers
         auto begin=incoming_share.beads;
         auto end=incoming_share.beads+std::size(incoming_share.beads);
 
+        bool is_edge=true; //cell.is_edge;
+
         while(begin!=end){
             const auto &incoming=*begin;
             if(incoming.id==0xFFFFFFFFul){
@@ -106,13 +107,16 @@ struct BasicDPDEngineV7RawHandlers
             
             float neighbour_x[3];
             vec3_copy(neighbour_x, incoming.x);
-            int32_t neighbour_cell_pos[3];
-            vec3_floor_nn(neighbour_cell_pos, neighbour_x);
-            for(int d=0; d<3; d++){
-                if(cell.location[d]==0 && neighbour_cell_pos[d]==cell.box[d]-1){
-                    neighbour_x[d] -= cell.box[d];
-                }else if(cell.location[d]==cell.box[d]-1 && neighbour_cell_pos[d]==0){
-                    neighbour_x[d] += cell.box[d];
+
+            if(is_edge){
+                int32_t neighbour_cell_pos[3];
+                vec3_floor_nn(neighbour_cell_pos, neighbour_x);
+                for(int d=0; d<3; d++){
+                    if(cell.location[d]==0 && neighbour_cell_pos[d]==cell.box[d]-1){
+                        neighbour_x[d] -= cell.box[d];
+                    }else if(cell.location[d]==cell.box[d]-1 && neighbour_cell_pos[d]==0){
+                        neighbour_x[d] += cell.box[d];
+                    }
                 }
             }
 
@@ -129,6 +133,9 @@ struct BasicDPDEngineV7RawHandlers
                 // distance check in calc_force.
                 float dx[3];
                 if(USE_X_CACHE){
+                    for(int d=0;d<3;d++){
+                        assert(bead_x[d]==bead.x[d]);
+                    }
                     vec3_sub(dx, bead_x, neighbour_x);
                 }else{
                     vec3_sub(dx, bead.x, neighbour_x);

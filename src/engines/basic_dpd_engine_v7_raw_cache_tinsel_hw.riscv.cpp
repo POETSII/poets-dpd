@@ -3,7 +3,7 @@
 #include <tinsel.h>
 #include <POLite.h>
 
-constexpr bool USE_X_CACHE=false;
+constexpr bool USE_X_CACHE=true;
 using Thread = typename BasicDPDEngineV7RawTinsel<POLiteHW<>,USE_X_CACHE>::Thread;
 
 using f2i_t = union{

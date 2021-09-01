@@ -66,6 +66,7 @@ private:
     friend class BasicDPDEngineV4Raw;
     friend class BasicDPDEngineV5Raw;
     friend class BasicDPDEngineV6Raw;
+    template<bool USE_X_CACHE>
     friend class BasicDPDEngineV7Raw;
     friend class BasicDPDEngineV8Raw;
 

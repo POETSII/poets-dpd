@@ -16,6 +16,7 @@
     - Multiple time-steps within loop.
     - Output is via message.
 */
+template<bool USE_X_CACHE=false>
 class BasicDPDEngineV7Raw
     : public BasicDPDEngine
 {
@@ -29,16 +30,17 @@ public:
 
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
 
-    using Handlers = BasicDPDEngineV7RawHandlers<false>;
+    static constexpr bool EnableLogging=false;
+    using Handlers = BasicDPDEngineV7RawHandlers<EnableLogging, USE_X_CACHE>;
 
-    using OutputFlags = Handlers::OutputFlags;
-    using raw_bead_view_t = Handlers::raw_bead_view_t;
-    using raw_bead_share_t = Handlers::raw_bead_share_t;
-    using raw_angle_bond_info_t = Handlers::raw_angle_bond_info_t;
-    using raw_bead_resident_t = Handlers::raw_bead_resident_t;
-    using raw_cached_bond_t = Handlers::raw_cached_bond_t;
-    using raw_force_input_t = Handlers::raw_force_input_t;
-    using device_state_t = Handlers::device_state_t;
+    using OutputFlags = typename Handlers::OutputFlags;
+    using raw_bead_view_t = typename Handlers::raw_bead_view_t;
+    using raw_bead_share_t = typename Handlers::raw_bead_share_t;
+    using raw_angle_bond_info_t = typename Handlers::raw_angle_bond_info_t;
+    using raw_bead_resident_t = typename Handlers::raw_bead_resident_t;
+    using raw_cached_bond_t = typename Handlers::raw_cached_bond_t;
+    using raw_force_input_t = typename Handlers::raw_force_input_t;
+    using device_state_t = typename Handlers::device_state_t;
 
     struct message_t
     {
@@ -51,15 +53,6 @@ public:
         if(s->bead_types.size()>1){
             if(s->bead_types.size() > MAX_BEAD_TYPES){
                 return "Too many bead types.";
-            }
-
-            double diss=s->interactions.at(1).dissipative;
-            for(unsigned i=0; i<s->bead_types.size(); i++){
-                for(unsigned j=0; j<s->bead_types.size(); j++){
-                    if( s->interactions[i*s->bead_types.size()+j].dissipative!=diss){
-                        return "Dissipative strength must be uniform";
-                    }
-                }
             }
         }
 
@@ -96,7 +89,7 @@ public:
 
                 m_box.extract(dst.box);
                 dst.dt=m_state->dt;
-                dst.inv_root_dt=recip_pow_half(m_state->dt);
+                dst.inv_root_dt=pow_half(24/m_state->dt);
                 dst.bond_r0=m_bond_r0;
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -109,6 +102,10 @@ public:
                 dst.t_seed = m_state->seed;
                 src.location.extract(dst.location);
                 m_location_to_device[vec3i_t(src.location)]=&dst;
+                dst.is_edge=false;
+                for(unsigned d=0; d<3; d++){
+                    dst.is_edge |= dst.location[d]==0 || dst.location[d]==m_state->box[d]-1;
+                }
 
                 auto &nhood = m_neighbour_map[&dst];
                 nhood.reserve(src.neighbours.size());
