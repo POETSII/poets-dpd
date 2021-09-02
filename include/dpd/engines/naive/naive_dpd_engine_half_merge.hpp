@@ -14,6 +14,7 @@
 #include <cmath>
 #include <array>
 #include <unordered_set>
+#include <mutex>
 
 #include <immintrin.h>
 
@@ -21,6 +22,8 @@ class NaiveDPDEngineHalfMerge
     : public DPDEngine
 {
 public:
+    friend class NaiveDPDEngineHalfMergeTBB;
+
     std::string CanSupport(const WorldState *s) const override
     {
         for(int d=0;d<3;d++){
@@ -59,6 +62,8 @@ private:
         std::vector<Bead*> beads;
         std::vector<Cell*> neighbours;
         std::vector<Bead*> incoming;
+
+        std::mutex mutex;
     };
 
     unsigned m_numBeadTypes;
@@ -91,7 +96,7 @@ private:
 
         std::vector<vec3i_t> rel_nhood=make_relative_nhood_forwards(/*excludeCentre*/true);
 
-        m_cells.resize( m_dims[0]*m_dims[1]*m_dims[2] );
+        m_cells=std::vector<Cell>( m_dims[0]*m_dims[1]*m_dims[2] );
         for(unsigned i=0; i<m_cells.size(); i++){
             auto &c = m_cells[i];
             c.index=i;
