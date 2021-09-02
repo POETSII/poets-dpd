@@ -186,9 +186,9 @@ template<class T>
 inline vec3g_t<T> vec_wrap(const vec3g_t<T> &x, const vec3g_t<T> &bounds)
 {
     return {
-        x[0] + ((x[0]<0) ? bounds[0] : 0) - (x[0]>=bounds[0] ? -bounds[0] : 0),
-        x[1] + ((x[1]<0) ? bounds[1] : 0) - (x[1]>=bounds[1] ? -bounds[1] : 0),
-        x[2] + ((x[2]<0) ? bounds[2] : 0) - (x[2]>=bounds[0] ? -bounds[2] : 0)
+        x[0] + ((x[0]<0) ? bounds[0] : 0) + (x[0]>=bounds[0] ? -bounds[0] : 0),
+        x[1] + ((x[1]<0) ? bounds[1] : 0) + (x[1]>=bounds[1] ? -bounds[1] : 0),
+        x[2] + ((x[2]<0) ? bounds[2] : 0) + (x[2]>=bounds[2] ? -bounds[2] : 0)
     };
 }
 

@@ -137,7 +137,7 @@ public:
         std::cerr<<"  b0: x="<<s.beads[1].x<<", v="<<s.beads[1].v<<", f="<<s.beads[1].f<<"\n";
         */
 
-        if(s.t * s.dt > 30){
+        if(s.t * s.dt > 5){
             m_sum_dist += dist;
             m_count_dist += 1;
         }
@@ -153,7 +153,7 @@ public:
             }
             return dist;
         }else{
-            //std::cerr<<"# t="<<s.t<<", dist="<<dist<<", equib="<<m_r_equilibrium<<", mean="<<m_sum_dist/m_count_dist<<"\n";
+            std::cerr<<"# t="<<s.t<<", dist="<<dist<<", equib="<<m_r_equilibrium<<", mean="<<m_sum_dist/m_count_dist<<"\n";
             double mean_dist=m_sum_dist / m_count_dist;
             require( std::abs(mean_dist - m_r_equilibrium) < 0.05, "Mean distance is wrong.");
             return 0;

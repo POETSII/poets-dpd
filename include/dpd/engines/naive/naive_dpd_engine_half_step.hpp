@@ -121,7 +121,7 @@ private:
 
     vec3i_t index_to_cell_pos(unsigned index) const
     {
-        return { index/(m_dims[1]*m_dims[2]) , (index/m_dims[2])%m_dims[0] , index%m_dims[2] };
+        return { (int)(index/(m_dims[1]*m_dims[2])) , (int)((index/m_dims[2])%m_dims[0]) , (int)(index%m_dims[2]) };
     }
 
     unsigned world_pos_to_cell_index(const vec3r_t &pos) const
