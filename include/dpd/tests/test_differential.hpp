@@ -63,6 +63,7 @@ std::pair<bool,std::string> test_differential(
             int xdiff_index=-1;
             double vdiff=0;
             double fdiff=0;
+            int fdiff_index=-1;
             for(unsigned i=0; i<state1.beads.size(); i++){
                 //std::cerr<<" ref="<<state1.beads[i].x<<", "<<state2.beads[i].x<<"\n";
                 vec3r_t dx=state1.beads[i].x-state2.beads[i].x;
@@ -80,13 +81,22 @@ std::pair<bool,std::string> test_differential(
                     xdiff_index=i;
                 }
                 vdiff=std::max(vdiff, (state1.beads[i].v-state2.beads[i].v).l2_norm() );
-                fdiff=std::max(fdiff, (state1.beads[i].f-state2.beads[i].f).l2_norm() );
+                double fdiffnow=(state1.beads[i].f-state2.beads[i].f).l2_norm();
+                if(fdiffnow > fdiff){
+                    fdiff=fdiffnow;
+                    fdiff_index=i;
+                }
             }
             if(fdiff>10*maxDiff){ // Forces can be large, so allow more slack
                 std::cerr<<"At time "<<state1.t<<" the f values have diverged.\n";
+                
 
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);
+
+                std::cerr<<"  fdiff_max at bead "<<fdiff_index<<", diff="<<fdiff<<"\n";
+                std::cerr<<"      ref="<<state1.beads[fdiff_index].f<<"\n";
+                std::cerr<<"      got="<<state2.beads[fdiff_index].f<<"\n";
 
                 return {false, "Force divergence."};
             }

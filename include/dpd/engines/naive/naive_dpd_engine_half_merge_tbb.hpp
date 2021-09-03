@@ -126,9 +126,9 @@ private:
                             for(unsigned iz=gz; iz<m_dims[2]; iz+=4){
                                 SuperCell sc;
                                 unsigned off=0;
-                                for(unsigned lx=0; lx<2; lx++){
-                                    for(unsigned ly=0; ly<2; ly++){
-                                        for(unsigned lz=0; lz<2; lz++){
+                                for(int lx=0; lx<2; lx++){
+                                    for(int ly=0; ly<2; ly++){
+                                        for(int lz=0; lz<2; lz++){
                                             unsigned index=cell_pos_to_index({ix+lx,iy+ly,iz+lz});
                                             if(!seen.insert(index).second){
                                                 throw std::runtime_error("Duplicate");

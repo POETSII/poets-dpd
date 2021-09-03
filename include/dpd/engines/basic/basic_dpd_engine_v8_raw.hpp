@@ -20,6 +20,7 @@ class BasicDPDEngineV8Raw
     : public BasicDPDEngine
 {
 public:
+    static constexpr bool EnableLogging=true;
 
     static constexpr size_t MAX_BEADS_PER_CELL = 32;
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
@@ -316,7 +317,7 @@ public:
                     Handlers::on_recv_force(*message.dst, std::get<raw_force_input_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_share_t>(message.payload)){
                     assert(message.dst);
-                    Handlers::on_recv_share(*message.dst, std::get<raw_bead_share_t>(message.payload));
+                    Handlers::on_recv_share<EnableLogging>(*message.dst, std::get<raw_bead_share_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_resident_t>(message.payload)){
                     if(message.dst==0){
                         bool carry_on=callback(std::get<raw_bead_resident_t>(message.payload));
@@ -384,7 +385,7 @@ public:
 
             unsigned active_yes=0;
             for(auto &state : states){
-                active_yes += Handlers::on_barrier(state);
+                active_yes += Handlers::on_barrier<EnableLogging>(state);
             }
             if(active_yes==0){
                 break;

@@ -15,10 +15,11 @@ struct BasicDPDEngineV8RawHandlers
     struct device_state_t
         : BasicDPDEngineV5RawHandlers::device_state_t
     {
-        float x_cache[MAX_BEADS_PER_CELL*3];
+
     };
 
 
+    template<bool EnableLogging>
     static bool on_barrier(device_state_t &cell)
     {
         switch(cell.phase){
@@ -26,7 +27,7 @@ struct BasicDPDEngineV8RawHandlers
             case PreMigrate:
             case Outputting: 
             case SharingAndForcing: return on_barrier_pre_migrate(cell); break;
-            case Migrating: return on_barrier_pre_share(cell); break;            
+            case Migrating: return on_barrier_pre_share<EnableLogging>(cell); break;            
         }
     }
 
@@ -35,6 +36,7 @@ struct BasicDPDEngineV8RawHandlers
         BasicDPDEngineV5RawHandlers::on_init(cell);
     }
 
+    template<bool EnableLogging>
     static bool on_barrier_pre_share(device_state_t &cell)
     {
         assert(cell.phase==Migrating);
@@ -46,12 +48,11 @@ struct BasicDPDEngineV8RawHandlers
 
         cell.share_todo = resident.size();
 
-        float *x_cache=cell.x_cache; 
-        for(unsigned i=0; i<resident.size(); i++, x_cache+=3){ 
+        for(unsigned i=0; i<resident.size(); i++){ 
             cell.cached_bond_indices[i]=0xff;
         }
 
-        calc_intra_forces(cell);
+        calc_intra_forces<EnableLogging>(cell);
 
         cell.phase=SharingAndForcing;
         cell.rts=cell.share_todo==0 ? 0 : RTS_FLAG_share;
@@ -91,11 +92,11 @@ struct BasicDPDEngineV8RawHandlers
         HookeanBonding // also implies spatial bonding
     };
 
-    // Return true if there is a hookean bond
+    template<bool EnableLogging>
     static int interact(
         device_state_t &cell,
         raw_bead_resident_t &bead, const float *bead_x, uint32_t incoming_id, const float *incoming_x, const float *incoming_v,
-        float f[3]
+        float *f3
         )
     {
         float dx[3];
@@ -128,8 +129,7 @@ struct BasicDPDEngineV8RawHandlers
         auto interactions=cell.interactions[MAX_BEAD_TYPES*bead_type1+bead_type2];
 
         float incoming_vv[3]={incoming_v[0],incoming_v[1],incoming_v[2]};
-        float ff[3];
-        dpd_maths_core_half_step_raw::calc_force<false,float,float[3],float[3]>(
+        dpd_maths_core_half_step_raw::calc_force<EnableLogging,float,float[3],float*>(
             cell.inv_root_dt,
             cell.t_hash,
             dx, dr,
@@ -138,10 +138,10 @@ struct BasicDPDEngineV8RawHandlers
             interactions.sqrt_dissipative,
             get_hash_code(bead.id), get_hash_code(incoming_id),
             bead.v, incoming_vv,
-            ff
+            f3
         );
 
-        vec3_add(bead.f, ff);
+        vec3_add(bead.f, f3);
 
         return bondLevel;
     }
@@ -179,9 +179,10 @@ struct BasicDPDEngineV8RawHandlers
         }
     }
 
+    template<bool EnableLogging>
     static void on_recv_share(device_state_t &cell, const raw_bead_share_t &incoming_share)
     {
-        //std::cerr<<"  Recv: ("<<cell.location[0]<<","<<cell.location[1]<<","<<cell.location[2]<<"), p="<<&cell<<", nres="<<cell.resident.n<<", other="<<get_hash_code(incoming.id)<<"\n";
+        //std::cerr<<"  Recv: ("<<cell.location[0]<<","<<cell.location[1]<<","<<cell.location[2]<<")\n";
 
         auto resident=make_bag_wrapper(cell.resident);
         auto cached_bonds=make_bag_wrapper(cell.cached_bonds);
@@ -203,6 +204,7 @@ struct BasicDPDEngineV8RawHandlers
 
             // TODO : don't send these messages to self
             if(neighbour_cell_pos[0]==cell.location[0] && neighbour_cell_pos[1]==cell.location[1] && neighbour_cell_pos[2]==cell.location[2]){
+                //std::cerr<<" Skipping self.\n";
                 return;
             }
 
@@ -214,13 +216,12 @@ struct BasicDPDEngineV8RawHandlers
                 }
             }
 
-            const float *bead_x=cell.x_cache;
             unsigned cached_bond_index=cached_bonds.size(); // This is the index it will have, _if_ it is cached
-            for(unsigned bead_i=0; bead_i < resident.size(); bead_i++, bead_x+=3){
+            for(unsigned bead_i=0; bead_i < resident.size(); bead_i++){
                 auto &bead=resident[bead_i];
 
                 float f[3];
-                auto bondLevel=interact(cell, bead, bead_x, incoming.id, neighbour_x, incoming.v, f );
+                auto bondLevel=interact<EnableLogging>(cell, bead, bead.x, incoming.id, neighbour_x, incoming.v, f );
                 if(bondLevel==HookeanBonding){
                     cache_bond(cell, bead_i, bead, incoming.id, neighbour_x);
                 }
@@ -228,6 +229,7 @@ struct BasicDPDEngineV8RawHandlers
         }
     }
 
+    template<bool EnableLogging>
     static void calc_intra_forces(device_state_t &cell)
     {
         auto resident=make_bag_wrapper(cell.resident);
@@ -239,7 +241,8 @@ struct BasicDPDEngineV8RawHandlers
                 auto &neighbour=resident[j];
 
                 float f[3];
-                auto bondLevel=interact(cell, bead, bead.x, neighbour.id, neighbour.x, neighbour.v, f);
+                auto bondLevel=interact<EnableLogging>(cell, bead, bead.x, neighbour.id, neighbour.x, neighbour.v, f);
+                //std::cerr<<"bondLevel="<<bondLevel<<", f="<<f[0]<<","<<f[1]<<","<<f[2]<<"\n";
                 if(bondLevel > NotBonded){
                     vec3_sub(neighbour.f, f);
                 }
