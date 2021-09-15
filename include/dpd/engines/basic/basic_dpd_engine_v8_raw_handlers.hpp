@@ -20,7 +20,7 @@ struct BasicDPDEngineV8RawHandlers
 
 
     template<bool EnableLogging>
-    static bool on_barrier(device_state_t &cell)
+    static __attribute__((noinline)) bool on_barrier(device_state_t &cell)
     {
         switch(cell.phase){
             default: assert(false); // fallthrough
@@ -93,7 +93,7 @@ struct BasicDPDEngineV8RawHandlers
     };
 
     template<bool EnableLogging>
-    static int interact(
+    static int  interact(
         device_state_t &cell,
         raw_bead_resident_t &bead, const float *bead_x, uint32_t incoming_id, const float *incoming_x, const float *incoming_v,
         float *f3
@@ -146,7 +146,7 @@ struct BasicDPDEngineV8RawHandlers
         return bondLevel;
     }
 
-    static void cache_bond(device_state_t &cell, unsigned bead_i, raw_bead_resident_t &bead, uint32_t incoming_id, const float *neighbour_x)
+    static void __attribute__((noinline)) cache_bond(device_state_t &cell, unsigned bead_i, raw_bead_resident_t &bead, uint32_t incoming_id, const float *neighbour_x)
     {
         static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
         bool hit = get_polymer_offset(incoming_id) == bead.angle_bonds[0].partner_head || get_polymer_offset(incoming_id) == bead.angle_bonds[0].partner_tail;

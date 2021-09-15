@@ -20,7 +20,7 @@ class BasicDPDEngineV8Raw
     : public BasicDPDEngine
 {
 public:
-    static constexpr bool EnableLogging=true;
+    static constexpr bool EnableLogging=false;
 
     static constexpr size_t MAX_BEADS_PER_CELL = 32;
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic

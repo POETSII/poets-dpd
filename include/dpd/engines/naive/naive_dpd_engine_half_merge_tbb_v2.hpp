@@ -1,6 +1,8 @@
 #ifndef naive_dpd_engine_half_merge_tbb_hpp
 #define naive_dpd_engine_half_merge_tbb_hpp
 
+#error "Not complete or tested"
+
 #include "dpd/engines/naive/naive_dpd_engine_half_merge.hpp"
 
 #include "dpd/maths/dpd_maths_core_half_step.hpp"
@@ -11,7 +13,10 @@
 #include <immintrin.h>
 #include <array>
 
-class NaiveDPDEngineHalfMergeTBB
+#define SIMDPP_ARCH_X86_AVX2
+#include "simdpp/simd.h"
+
+class NaiveDPDEngineHalfMergeTBBV2
     : public NaiveDPDEngineHalfMerge
 {
 public:
@@ -25,7 +30,129 @@ public:
     }
 
 private:
-    static constexpr bool USE_PACKED=true;
+    using vec4f = simdpp::float32<4>;
+
+    struct vec4f_plus_u32
+    {
+        union{
+            float x[4]; // Stored in 1,2, and 3
+            struct {
+                uint32_t _pad_[3];
+                uint32_t id;
+            };
+        };
+
+        uint32_t get_u32() const
+        { return id; }
+
+        float get_f32(unsigned i) const
+        {
+            return x[i-1];
+        }
+
+        vec4f get_vec4f() const
+        {
+            vec4f_t res=load(x);
+            return simdpp::move4_l<1>(res); // Shift each element towards 0; MSW is zero
+        }
+    };
+
+    struct LocalBead
+    {
+        vec3_plus_u32 v_plus_id;
+        vec4f f;
+    };
+
+    struct Cell
+    {
+
+        static constexpr int DIRECT_STORE=4;
+
+        uint16_t resident;
+        uint16_t allocated;
+
+        vec4f *x;
+        LocalBead *bead_extra;
+    };
+
+    void interact_direct(Cell &home, Cell &other)
+    {
+        vec4f dx_i[MAX_BEADS_PER_CELL];
+        float dr2_i[MAX_BEADS_PER_CELL];
+
+        for(int io=0; io < other.resident; io++){
+            vec4f other_x=other.x[io];
+            vec4f other_f(0,0,0,0);
+
+            // TODO : move after for low probability interactions?
+            vec3_plus_u32 other_v_plus_id=other.bead_extra[io].v_plus_id
+
+            bool any_hit=false;
+            for(int i=0; i<home.resident; i++){
+                vec4f dx = x[i] - other_x;
+                vec4f dx2=dx[i]*dx[i];
+                float dr2=simdpp::reduce_add(dx2);
+                dx_i[i] = dx;
+                dr2_i[i] = dr2;
+                any_hit |= dr2 < 1;
+            }
+
+            if(!any_hit){
+                return;
+            }
+
+            BeadHash other_bead_hash{other_v_plus_id.get_u32()};
+
+            const float *other_strengths_row = m_interactions + 2*MAX_BEAD_TYPES*other_bead_hash.get_bead_type();
+
+            for(int i=0; i<home.resident; i++){
+                float dr2 = dr2_i[i];
+                if(dr2[i] >= 1){
+                    continue;
+                }
+                if(dr2[i]<MIN_DISTANCE_CUTOFF_SQR){
+                    continue;
+                }
+
+                vec4f dx=dx_i[i];
+
+                float dr=sqrtf(dr2);
+                float inv_dr=1.0f/dr;
+
+                auto &home_bead_extra=home.bead_extra[i];
+                vec3_plus_u32 home_v_plus_id=home_bead_extra.v_plus_id;
+                BeadHash home_bead_hash{home_v_plus_id.get_u32()};
+
+                const float *strengths_cell = other_strengths_row + 2*home_bead_hash.get_bead_type();
+
+                vec4f dv = home_v_plus_id - other_v_plus_id;
+
+                float wr = 1.0f - dr;
+
+                float conForce=strengths_cell[0] * wr;
+
+                dx *= inv_dr;
+
+                float rdotv = libsimdpp::reduce_add(dx * dv);
+                float sqrt_gammap = strengths_cell[1] * wr;
+
+                float dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
+                float u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
+                float randScale = sqrt_gammap * m_scale_inv_sqrt_dt ;
+                float randForce = randScale * u;
+
+                float scaled_force = conForce + dissForce + randForce;
+
+                vec4f f = dx * scaled_force;
+
+                home_bead_extra.f += f;
+
+                other_f -= f;
+            }
+        }
+    }
+
+    
 
     struct SuperCell
     {
@@ -114,14 +241,7 @@ private:
         }, tbb::simple_partitioner{});
     }
 
-    /*template<class F>
-    void parallel_for_each_cell_blocked(unsigned grain, F &&f)
-    {
-        for(unsigned i=0; i<m_conflict_groups.size(); i++){
-            parallel_for_each(m_conflict_groups[i], grain, f);
-        }
-    }*/
-
+  
     template<class F>
     void parallel_for_each_cell_blocked(F &&f)
     {

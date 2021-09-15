@@ -15,6 +15,7 @@
 
 struct split_string
 {
+    std::string original;
     std::string data;            // String with spaces replaced by nulls
     std::vector<std::pair<uint16_t,uint16_t>> parts; // Contains the beginning index of each null-terminated sub-part
 
@@ -69,6 +70,10 @@ struct split_string
         char *ep;
         const char *begin=&data[0]+e.first;
         const char *end=&data[0]+e.first+e.second;
+        if(begin+1 == end && *begin < '0'){
+            return (unsigned)*begin;
+        }
+        std::string tmp(begin, end);
         uint64_t r=strtoull(begin, &ep, 10);
         if(ep!=end){
             throw std::runtime_error("Not all chars consumed while parsing '"+string_at(index)+"'");
@@ -107,10 +112,16 @@ split_string read_prefixed_line_and_split_on_space(std::istream &src, const std:
         int start=-1;
         unsigned curr=0;
 
+        res.original=s;
+
         while(curr<=s.size()){
-            if(isspace(s[curr]) || s[curr]==0){ // C++11 - s[s.size()] is null, and we are allowed to write it (but only with null)
+            //if(isspace(s[curr]) || s[curr]==0){ // C++11 - s[s.size()] is null, and we are allowed to write it (but only with null)
+            if(' ' ==s[curr] || s[curr]==0){
                 if(start!=-1){
                     assert( curr-start > 0 );
+                    if(!res.parts.empty()){
+                        assert(res.parts.back().first+res.parts.back().second < start);
+                    }
                     res.parts.push_back({start, curr-start});
                 }
                 start=-1;
@@ -124,11 +135,16 @@ split_string read_prefixed_line_and_split_on_space(std::istream &src, const std:
         }
 
         if(res.parts.empty()){
+            res.original.clear();
+            res.data.clear();
             continue;
         }
 
         
         if(res.data[res.parts[0].first]=='#'){
+            res.original.clear();
+            res.data.clear();
+            res.parts.clear();
             continue;  // This is slow, but assume comments are quite infrequent
         }
 

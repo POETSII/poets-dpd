@@ -23,7 +23,7 @@ BeadType read_bead_type(std::istream &src, int &line_no)
 
 std::ostream &write_bead(std::ostream &dst, const Bead &b, const WorldState &s)
 {
-    dst<<"B "<<b.bead_id<<" "<<b.polymer_id<<" "<<s.polymers.at(b.polymer_id).polymer_type<<" "<<b.polymer_offset;
+    dst<<"B "<<b.bead_id<<" "<<b.polymer_id<<" "<<s.polymers.at(b.polymer_id).polymer_type<<" "<<(unsigned)b.polymer_offset;
     dst<<" ";
     for(unsigned i=0; i<3; i++){
         dst<<" "<<b.x[i]+s.origin[i];
@@ -63,7 +63,12 @@ void read_bead(std::istream &src, int line_no, WorldState &s)
     res.bead_type=poly_type.bead_types.at(res.polymer_offset);
     
     if(poly.bead_ids.at(res.polymer_offset) != (uint32_t)-1 ){
-        throw std::runtime_error("Duplicate bead within polymer");
+        if(res.polymer_offset==10){
+            // HACK : delete me
+            res.polymer_offset=13; // Turn \n into \r
+        }else{
+            throw std::runtime_error("Duplicate bead within polymer");
+        }
     }
     poly.bead_ids.at(res.polymer_offset) = res.bead_id;
 

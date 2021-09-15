@@ -1,55 +1,12 @@
-#ifndef basic_dpd_engine_v5_raw_handlers_hpp
-#define basic_dpd_engine_v5_raw_handlers_hpp
+#ifndef basic_dpd_engine_v5_f14_raw_handlers_hpp
+#define basic_dpd_engine_v5_f14_raw_handlers_hpp
 
-#include "dpd/storage/bag_wrapper.hpp"
-#include "dpd/maths/dpd_maths_core_half_step_raw.hpp"
+#include "basic_dpd_engine_v5_raw_handlers_hpp"
 
-#include <iterator>
-#include <cstring>
-
-inline void tinsel_require(bool cond, const char *msg)
+struct BasicDPDEngineV5F14RawHandlers
+    : BasicDPDEngineV5RawHandlers
 {
-    if(!cond){
-        #ifdef TINSEL
-        printf(msg);
-        #else
-        throw std::runtime_error(msg);
-        #endif
-    }
-}
-
-struct BasicDPDEngineV5RawHandlers
-{
-    static constexpr size_t MAX_BONDS_PER_BEAD = 4;
-    static constexpr size_t MAX_BEADS_PER_CELL = 32;
-    static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
-    static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
-    static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
-
-    static constexpr size_t MAX_BEAD_TYPES=4;
-
-    static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
-
-    enum OutputFlags
-    {
-        RTS_INDEX_migrate=0,
-        RTS_INDEX_share=1,
-        RTS_INDEX_force=2,
-        RTS_INDEX_output=3,
-
-        RTS_FLAG_migrate = 1<<RTS_INDEX_migrate,
-        RTS_FLAG_share = 1<<RTS_INDEX_share,
-        RTS_FLAG_force = 1<<RTS_INDEX_force,
-        RTS_FLAG_output = 1<<RTS_INDEX_output
-    };
-
-    enum Phase : uint32_t
-    {
-        PreMigrate,
-        Migrating,
-        SharingAndForcing,
-        Outputting
-    };
+    
 
     static uint32_t get_bead_type(uint32_t bead_id)
     { return BeadHash{bead_id}.get_bead_type(); }
@@ -76,6 +33,7 @@ struct BasicDPDEngineV5RawHandlers
     template<class A, class B>
     static void copy_bead_view(A *dst, const B *src)
     {
+        static_assert(std::is_same<A::x,B::x>::value);
         static_assert(offsetof(A,id)==0);
         static_assert(offsetof(A,id)==offsetof(B,id));
         static_assert(offsetof(A,x)==sizeof(A::id));
@@ -111,7 +69,7 @@ struct BasicDPDEngineV5RawHandlers
     struct raw_bead_view_t
     {
         uint32_t id;
-        float x[3];
+        int32_t x[3];
         float v[3];
 
         void operator=(const raw_bead_view_t &x)
@@ -133,7 +91,7 @@ struct BasicDPDEngineV5RawHandlers
     {
         // raw_bead_view_t
         uint32_t id;
-        float x[3];
+        int32_t x[3];
         float v[3];
 
         // Extras
@@ -167,7 +125,7 @@ struct BasicDPDEngineV5RawHandlers
     struct raw_cached_bond_t
     {
         uint32_t bead_hash;
-        float x[3];
+        int32_t x[3];
     };
 
     struct raw_force_input_t

@@ -1,9 +1,12 @@
-#include "dpd/engines/basic/basic_dpd_engine_v5_raw_tinsel.hpp"
+#include "dpd/engines/basic/basic_dpd_engine_v8_raw_tinsel.hpp"
 
 #include <tinsel.h>
 #include <POLite.h>
 
-using Thread = typename BasicDPDEngineV5RawTinsel<POLiteHW<>>::Thread;
+#include <cstring>
+
+constexpr bool USE_X_CACHE=false;
+using Thread = typename BasicDPDEngineV8RawTinsel<POLiteHW<>>::Thread;
 
 using f2i_t = union{
         float f;
@@ -76,23 +79,11 @@ float pow_half(float x) {
    return u.x;
 }
 
-
-inline int floor_nn_iter(float x)
-{
-    // MASSIVE TODO : The round-to-even behaviour of tinsel is a problem here
-    int r=0;
-    while(x>=1.0f){
-        x=x-1;
-        r=r+1;
-    }
-    return r;
-}
-
 inline int floor_nn(float x)
 {
     // WARNING : The round-to-even behaviour of tinsel is a problem here
     // I think this is equivalent to floor, _assumign_ that int conversion is round to even
-    const float delta=0.499999970198;
+    const float delta=0.499999970198f;
     int r=(int)(x-delta); // Warning! This will get converted to round to nearest even
     
     assert( r= floorf(x) ); // Note: this is _expected to fail in x86. It should pass in tinsel though.

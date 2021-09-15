@@ -54,6 +54,14 @@ public:
 private:
     WorldState *m_state;
 
+    struct Packed
+    {
+        float x[3];
+        uint32_t id;
+        float v[3];
+        uint32_t _pad_;
+    };
+
     struct Cell
     {
         unsigned index;
@@ -62,6 +70,8 @@ private:
         std::vector<Bead*> beads;
         std::vector<Cell*> neighbours;
         std::vector<Bead*> incoming;
+
+        std::vector<Packed> packed;
 
         std::mutex mutex;
     };
