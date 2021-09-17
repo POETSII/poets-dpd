@@ -261,6 +261,17 @@ template<class T>
 inline void vec3_floor_nn(int32_t dst[3], const T x[3])
 { for(int i=0; i<3; i++){ assert(x[i]>=0); dst[i] = floor_nn(x[i]); } }
 
+
+inline int round_impl(float x)
+{
+#ifdef TINSEL
+    return (int)x; // Tinsel only does round nearest even
+#else
+    return std::roundf(x);
+#endif
+}
+
+
 template<class D, class T>
 inline void vec3_copy(D &dst, const T &src)
 {

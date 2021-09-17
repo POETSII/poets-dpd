@@ -1,9 +1,9 @@
-#ifndef basic_dpd_engine_v7_raw_hpp
-#define basic_dpd_engine_v7_raw_hpp
+#ifndef basic_dpd_engine_v5_f22_raw_hpp
+#define basic_dpd_engine_v5_f22_raw_hpp
 
 #include "dpd/engines/basic/basic_dpd_engine.hpp"
 
-#include "dpd/engines/basic/basic_dpd_engine_v7_raw_handlers.hpp"
+#include "dpd/engines/basic/basic_dpd_engine_v5_f22_raw_handlers.hpp"
 
 #include <iterator>
 #include <unordered_map>
@@ -11,13 +11,7 @@
 #include <variant>
 #include <random>
 
-/*
-    - Outer wrapper is true message loop.
-    - Multiple time-steps within loop.
-    - Output is via message.
-*/
-template<bool USE_X_CACHE=false>
-class BasicDPDEngineV7Raw
+class BasicDPDEngineV5F22Raw
     : public BasicDPDEngine
 {
 public:
@@ -30,22 +24,22 @@ public:
 
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
 
-    static constexpr bool EnableLogging=false;
-    using Handlers = BasicDPDEngineV7RawHandlers<EnableLogging, USE_X_CACHE>;
+    static constexpr bool EnableLogging = false;
 
-    using OutputFlags = typename Handlers::OutputFlags;
-    using raw_bead_view_t = typename Handlers::raw_bead_view_t;
-    using raw_bead_share_t = typename Handlers::raw_bead_share_t;
-    using raw_angle_bond_info_t = typename Handlers::raw_angle_bond_info_t;
-    using raw_bead_resident_t = typename Handlers::raw_bead_resident_t;
-    using raw_cached_bond_t = typename Handlers::raw_cached_bond_t;
-    using raw_force_input_t = typename Handlers::raw_force_input_t;
-    using device_state_t = typename Handlers::device_state_t;
+    using Handlers = BasicDPDEngineV5F22RawHandlers;
+
+    using OutputFlags = Handlers::OutputFlags;
+    using raw_bead_view_f22_t = Handlers::raw_bead_view_f22_t;
+    using raw_angle_bond_info_t = Handlers::raw_angle_bond_info_t;
+    using raw_bead_resident_f22_t = Handlers::raw_bead_resident_f22_t;
+    using raw_cached_bond_f22_t = Handlers::raw_cached_bond_f22_t;
+    using raw_force_input_t = Handlers::raw_force_input_t;
+    using device_state_f22_t = Handlers::device_state_f22_t;
 
     struct message_t
     {
-        device_state_t *dst;
-        std::variant<std::monostate,raw_bead_resident_t,raw_bead_share_t,raw_force_input_t> payload;
+        device_state_f22_t *dst;
+        std::variant<std::monostate,raw_bead_resident_f22_t,raw_bead_view_f22_t,raw_force_input_t> payload;
     };
     
     std::string CanSupport(const WorldState *s) const override
@@ -59,12 +53,12 @@ public:
         return BasicDPDEngine::CanSupport(s);
     }
 
-    std::vector<device_state_t> m_devices;
-    std::unordered_map<vec3i_t,device_state_t*> m_location_to_device;
-    std::unordered_map<device_state_t*,std::vector<device_state_t*>> m_neighbour_map;
+    std::vector<device_state_f22_t> m_devices;
+    std::unordered_map<vec3i_t,device_state_f22_t*> m_location_to_device;
+    std::unordered_map<device_state_f22_t*,std::vector<device_state_f22_t*>> m_neighbour_map;
     std::unordered_map<BeadHash,uint32_t> m_bead_hash_to_original_id;
 
-    void set_bead_hash(raw_bead_resident_t &b, bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
+    void set_bead_id(raw_bead_resident_f22_t &b, bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
     {
         b.id=BeadHash::construct(bead_type, is_monomer, polymer_id, polymer_offset).hash;
     }
@@ -84,12 +78,12 @@ public:
 
             m_devices.resize(m_cells.size());
             for(unsigned i=0; i<m_cells.size(); i++){
-                device_state_t &dst=m_devices[i];
+                device_state_f22_t &dst=m_devices[i];
                 const cell_t &src=m_cells[i];
 
                 m_box.extract(dst.box);
                 dst.dt=m_state->dt;
-                dst.inv_root_dt=pow_half(24/m_state->dt);
+                dst.inv_root_dt=pow_half(24 * dpd_maths_core_half_step::kT / m_state->dt);
                 dst.bond_r0=m_bond_r0;
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -98,14 +92,11 @@ public:
                         dst.interactions[i*MAX_BEAD_TYPES+j].sqrt_dissipative=sqrt(m_state->interactions[i*m_state->bead_types.size()+j].dissipative);
                     }
                 }
+                dst.t=m_state->t;
                 dst.t_hash = m_t_hash;
                 dst.t_seed = m_state->seed;
-                src.location.extract(dst.location);
+                src.location.extract(dst.location_f0);
                 m_location_to_device[vec3i_t(src.location)]=&dst;
-                dst.is_edge=false;
-                for(unsigned d=0; d<3; d++){
-                    dst.is_edge |= dst.location[d]==0 || dst.location[d]==m_state->box[d]-1;
-                }
 
                 auto &nhood = m_neighbour_map[&dst];
                 nhood.reserve(src.neighbours.size());
@@ -124,7 +115,7 @@ public:
     {
         unsigned time;
         unsigned num_seen;
-        std::vector<raw_bead_resident_t> beads;
+        std::vector<raw_bead_resident_f22_t> beads;
         std::unordered_map<BeadHash,uint32_t> *bead_hash_to_id;
 
         output_slice(output_slice &&) = default;
@@ -135,15 +126,15 @@ public:
             , num_seen(0)
             , bead_hash_to_id(&_bead_hash_to_id)
         {
-            raw_bead_resident_t tmp;
+            raw_bead_resident_f22_t tmp;
             tmp.id=0xFFFFFFFFul;
             beads.resize(bead_hash_to_id->size(), tmp); // All start with invalid id
         }
 
-        void add(const raw_bead_resident_t &b)
+        void add(const raw_bead_resident_f22_t &b)
         {
             require(b.t==time, "Wrong time for slice.");
-            auto id=bead_hash_to_id->at(Handlers::get_hash_code(b.id));
+            auto id=bead_hash_to_id->at(Handlers::get_hash_code(b));
             auto &dst=beads.at(id);
             if(dst.id==0xFFFFFFFFul){
                 dst=b;
@@ -164,11 +155,14 @@ public:
         unsigned interval_size,
         std::function<bool()> interval_callback
     ) {
+        //std::cerr<<"Run\n";
+
+        assert(interval_count*interval_size>0);
+
         import_beads();
 
         for(auto &device : m_devices){
             device.phase=Handlers::PreMigrate;
-            device.t=m_state->t;
             device.interval_size=interval_size;
             device.intervals_todo=interval_count;
             device.interval_offset=interval_size;
@@ -182,8 +176,8 @@ public:
 
         for(auto &cell : m_cells){
             for(auto &b : cell.beads){
-                raw_bead_resident_t bb;
-                Handlers::copy_bead_resident(&bb, &b);
+                raw_bead_resident_f22_t bb;
+                Handlers::copy_bead_resident_plain_to_f22(&bb, &b);
                 bb.t=0;
 
                 // Pre-correct one-step backwards in time, as handlers will do one too many
@@ -191,8 +185,9 @@ public:
 
                 bb.checksum=calc_checksum(bb);
 
-                vec3i_t loc=floor(b.x);
-                auto &dst = m_location_to_device[loc];
+                vec3i_t loc{bb.x_f22[0]>>22, bb.x_f22[1]>>22, bb.x_f22[2]>>22};
+                //std::cerr<<"b="<<b.x<<", bb="<<vec3i_t{bb.x_f22}<<", Loc = "<<loc<<"\n";
+                auto &dst = m_location_to_device.at(loc);
                 auto resident=make_bag_wrapper(dst->resident);
                 resident.push_back(bb);
             }
@@ -213,12 +208,14 @@ public:
             for(unsigned i=0; i<outputs.size(); i++){
                 auto &output=outputs[i];
 
-                dpd_maths_core_half_step_raw::update_mom<float,raw_bead_resident_t>((float)m_state->dt, output);
+                dpd_maths_core_half_step_raw::update_mom<float,raw_bead_resident_f22_t>((float)m_state->dt, output);
 
                 auto &dst=m_state->beads.at(i);
-                assert(dst.get_hash_code() == Handlers::get_hash_code(output.id));
+                assert(dst.get_hash_code() == Handlers::get_hash_code(output));
 
-                dst.x.assign(output.x);
+                for(int d=0; d<3; d++){
+                    dst.x[d] = output.x_f22[d] * (1.0 / (1<<22));
+                }
                 dst.v.assign(output.v);
                 dst.f.assign(output.f);
             }
@@ -238,7 +235,7 @@ public:
         unsigned next_slice_t=interval_size; // time of the next slice to be added to slices
         int finished_slice_t=-1;
 
-        auto process_output=[&](raw_bead_resident_t &output) -> bool
+        auto process_output=[&](raw_bead_resident_f22_t &output) -> bool
         {
             assert(!aborted);
 
@@ -291,11 +288,11 @@ public:
     }
 
     virtual void step_all(
-        std::vector<device_state_t> &states,
-        std::unordered_map<device_state_t*, std::vector<device_state_t*>> &neighbour_map,
+        std::vector<device_state_f22_t> &states,
+        std::unordered_map<device_state_f22_t*, std::vector<device_state_f22_t*>> &neighbour_map,
         unsigned interval_size,
         unsigned interval_count,
-        std::function<bool(raw_bead_resident_t &output)> callback
+        std::function<bool(raw_bead_resident_f22_t &output)> callback
     )
     {
         assert(interval_count * interval_size > 0);
@@ -304,8 +301,8 @@ public:
 
         std::vector<message_t> messages;
         std::vector<message_t> messages_next;
-        std::vector<raw_bead_resident_t> outputs_now; // outputs for this time-step
-        std::vector<raw_bead_resident_t> outputs_future; // outputs for any future time-step
+        std::vector<raw_bead_resident_f22_t> outputs_now; // outputs for this time-step
+        std::vector<raw_bead_resident_f22_t> outputs_future; // outputs for any future time-step
 
         std::mt19937_64 rng;
 
@@ -321,17 +318,17 @@ public:
                 }else if(std::holds_alternative<raw_force_input_t>(message.payload)){
                     assert(message.dst);
                     Handlers::on_recv_force(*message.dst, std::get<raw_force_input_t>(message.payload));
-                }else if(std::holds_alternative<raw_bead_share_t>(message.payload)){
+                }else if(std::holds_alternative<raw_bead_view_f22_t>(message.payload)){
                     assert(message.dst);
-                    Handlers::on_recv_share(*message.dst, std::get<raw_bead_share_t>(message.payload));
-                }else if(std::holds_alternative<raw_bead_resident_t>(message.payload)){
+                    Handlers::on_recv_share<EnableLogging>(*message.dst, std::get<raw_bead_view_f22_t>(message.payload));
+                }else if(std::holds_alternative<raw_bead_resident_f22_t>(message.payload)){
                     if(message.dst==0){
-                        bool carry_on=callback(std::get<raw_bead_resident_t>(message.payload));
+                        bool carry_on=callback(std::get<raw_bead_resident_f22_t>(message.payload));
                         if(!carry_on){
                             return; // Quit the whole loop
                         }
                     }else{
-                        Handlers::on_recv_migrate(*message.dst, std::get<raw_bead_resident_t>(message.payload));
+                        Handlers::on_recv_migrate(*message.dst, std::get<raw_bead_resident_f22_t>(message.payload));
                     }
                 }else{
                     throw std::logic_error("Unknown message type.");
@@ -357,15 +354,15 @@ public:
                     Handlers::on_send_force(state, tmp);
                     payload=tmp;
                 }else if(rts & Handlers::OutputFlags::RTS_FLAG_migrate){
-                    raw_bead_resident_t tmp;
+                    raw_bead_resident_f22_t tmp;
                     Handlers::on_send_migrate(state, tmp);
                     payload=tmp;
                 }else if(rts & Handlers::OutputFlags::RTS_FLAG_share){
-                    raw_bead_share_t tmp;
+                    raw_bead_view_f22_t tmp;
                     Handlers::on_send_share(state, tmp);
                     payload=tmp;
                 }else if(rts & Handlers::OutputFlags::RTS_FLAG_output){
-                    raw_bead_resident_t tmp;
+                    raw_bead_resident_f22_t tmp;
                     Handlers::on_send_output(state, tmp);
                     payload=tmp;
                     is_local_broadcast=false;

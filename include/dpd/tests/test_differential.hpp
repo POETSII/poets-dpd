@@ -57,7 +57,7 @@ std::pair<bool,std::string> test_differential(
             //std::cerr<<"t="<<state1.t<<"\n";
             
 
-            double maxDiff= 0.0001;
+            double maxDiff= 0.001;
 
             double xdiff=0;
             int xdiff_index=-1;

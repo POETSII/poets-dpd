@@ -131,6 +131,8 @@ bin/test_hash : LDLIBS += -ltestu01
 
 bin/test_engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
+bin/test_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+
 bin/benchmark_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
 bin/benchmark_engine_intervals : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)

@@ -26,7 +26,7 @@ struct BasicDPDEngineV5RawHandlers
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
-    static constexpr size_t MAX_BEAD_TYPES=4;
+    static constexpr size_t MAX_BEAD_TYPES=8;
 
     static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
 
@@ -114,7 +114,8 @@ struct BasicDPDEngineV5RawHandlers
         float x[3];
         float v[3];
 
-        void operator=(const raw_bead_view_t &x)
+        template<class T>
+        void operator=(const T &x)
         {
             copy_bead_view(this, &x);
         }
@@ -250,12 +251,14 @@ struct BasicDPDEngineV5RawHandlers
 
     static const bool DO_CHECKSUM=false;
 
-    static uint32_t calc_rts(const device_state_t &cell)
+    template<class TDeviceState=device_state_t>
+    static uint32_t calc_rts(const TDeviceState &cell)
     {
         return cell.rts;
     }
 
-    static bool on_barrier(device_state_t &cell)
+    template<class TDeviceState=device_state_t>
+    static bool on_barrier(TDeviceState &cell)
     {
         switch(cell.phase){
             default: assert(false); // fallthrough
@@ -266,7 +269,8 @@ struct BasicDPDEngineV5RawHandlers
         }
     }
 
-    static void /*__attribute__ ((noinline)) __attribute__((optimize("O0")))*/ on_init(device_state_t &cell)
+    template<class TDeviceState=device_state_t>
+    static void /*__attribute__ ((noinline)) __attribute__((optimize("O0")))*/ on_init(TDeviceState &cell)
     {
         if(DO_CHECKSUM){
             //auto resident=make_bag_wrapper(cell.resident);
@@ -285,7 +289,8 @@ struct BasicDPDEngineV5RawHandlers
     }
 
 
-    static bool on_barrier_pre_migrate(device_state_t &cell)
+    template<class TDeviceState=device_state_t>
+    static bool on_barrier_pre_migrate(TDeviceState &cell)
     {
         assert(cell.phase==PreMigrate || cell.phase==SharingAndForcing || cell.phase==Outputting);
 
@@ -366,8 +371,8 @@ struct BasicDPDEngineV5RawHandlers
         return true;
     }
 
-
-    static void on_send_migrate(device_state_t &cell, raw_bead_resident_t &outgoing)
+    template<class TDeviceState=device_state_t, class TRawBeadResident=raw_bead_resident_t>
+    static void on_send_migrate(TDeviceState &cell, TRawBeadResident &outgoing)
     {
         auto migrate_outgoing=make_bag_wrapper(cell.migrate_outgoing);
         assert(!migrate_outgoing.empty());
@@ -378,7 +383,8 @@ struct BasicDPDEngineV5RawHandlers
         cell.rts=migrate_outgoing.empty() ? 0 : RTS_FLAG_migrate;
     }
 
-    static void on_recv_migrate(device_state_t &cell, const raw_bead_resident_t &incoming)
+    template<class TDeviceState=device_state_t, class TRawBeadResident=raw_bead_resident_t>
+    static void on_recv_migrate(TDeviceState &cell, const TRawBeadResident &incoming)
     {
         auto resident=make_bag_wrapper(cell.resident);
 
@@ -406,7 +412,8 @@ struct BasicDPDEngineV5RawHandlers
         }
     }
 
-    static bool on_barrier_pre_share(device_state_t &cell)
+    template<class TDeviceState=device_state_t>
+    static bool on_barrier_pre_share(TDeviceState &cell)
     {
         assert(cell.phase==Migrating);
 
@@ -427,15 +434,15 @@ struct BasicDPDEngineV5RawHandlers
         return true;
     }
 
-
-    static void on_send_share(device_state_t &cell, raw_bead_view_t &outgoing)
+    template<class TDeviceState=device_state_t, class TRawBeadView=raw_bead_view_t>
+    static void on_send_share(TDeviceState &cell, TRawBeadView &outgoing)
     {
         auto resident=make_bag_wrapper(cell.resident);
 
         assert(cell.share_todo>0);
         --cell.share_todo;
         const auto &b = resident[cell.share_todo];
-        copy_bead_view( &outgoing, &b );
+        outgoing=b;
         outgoing.id = b.id;
 
         if(cell.share_todo==0){
@@ -443,8 +450,8 @@ struct BasicDPDEngineV5RawHandlers
         }
     }
 
-    template<bool EnableLogging>
-    static void on_recv_share(device_state_t &cell, const raw_bead_view_t &incoming)
+    template<bool EnableLogging, class TDeviceState=device_state_t, class TRawBeadView=raw_bead_view_t>
+    static void on_recv_share(TDeviceState &cell, const TRawBeadView &incoming)
     {
         //std::cerr<<"  Recv: ("<<cell.location[0]<<","<<cell.location[1]<<","<<cell.location[2]<<"), p="<<&cell<<", nres="<<cell.resident.n<<", other="<<get_hash_code(incoming.id)<<"\n";
 
@@ -548,7 +555,8 @@ struct BasicDPDEngineV5RawHandlers
         }
     }
 
-    static void calc_angle_force_for_middle_bead(device_state_t &cell, raw_bead_resident_t &bead, unsigned cache_index_a, unsigned cache_index_b)
+    template<class TDeviceState=device_state_t, class TRawBeadResident=raw_bead_resident_t>
+    static void calc_angle_force_for_middle_bead(TDeviceState &cell, TRawBeadResident &bead, unsigned cache_index_a, unsigned cache_index_b)
     {
         assert(cell.phase==SharingAndForcing);
 
@@ -602,7 +610,8 @@ struct BasicDPDEngineV5RawHandlers
     }
 
 
-    static void on_send_force(device_state_t &cell,raw_force_input_t &outgoing)
+    template<class TDeviceState=device_state_t>
+    static void on_send_force(TDeviceState &cell,raw_force_input_t &outgoing)
     {
         auto force_outgoing=make_bag_wrapper(cell.force_outgoing);
 
@@ -615,7 +624,8 @@ struct BasicDPDEngineV5RawHandlers
         }
     }
 
-    static void on_recv_force(device_state_t &cell, const raw_force_input_t &incoming)
+    template<class TDeviceState=device_state_t>
+    static void on_recv_force(TDeviceState &cell, const raw_force_input_t &incoming)
     {
         auto resident=make_bag_wrapper(cell.resident);
 
@@ -626,14 +636,15 @@ struct BasicDPDEngineV5RawHandlers
         }
     }
 
-    static void on_send_output(device_state_t &cell, raw_bead_resident_t &outgoing)
+    template<class TDeviceState=device_state_t, class TRawBeadResident=raw_bead_resident_t>
+    static void on_send_output(TDeviceState &cell, TRawBeadResident &outgoing)
     {
         assert(cell.phase == Outputting);
         assert(cell.interval_offset==cell.interval_size && cell.outputs_todo>0);
         assert(cell.output_reps_todo>0);
         
         cell.outputs_todo--;
-        copy_bead_resident(&outgoing, &cell.resident.elements[cell.outputs_todo]);
+        outgoing = cell.resident.elements[cell.outputs_todo];
 
         if(cell.outputs_todo==0){
             cell.output_reps_todo -= 1;

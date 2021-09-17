@@ -16,7 +16,7 @@ struct BasicDPDEnginev4RawConfig
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
-    static constexpr size_t MAX_BEAD_TYPES=12;
+    static constexpr size_t MAX_BEAD_TYPES=8;
 };
 
 

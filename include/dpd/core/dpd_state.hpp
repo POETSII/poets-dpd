@@ -96,7 +96,7 @@ namespace std
 };
 
 static const float MIN_DISTANCE_CUTOFF = 0.000000001;
-static const float MIN_DISTANCE_CUTOFF_SQR = MIN_DISTANCE_CUTOFF;
+static const float MIN_DISTANCE_CUTOFF_SQR = MIN_DISTANCE_CUTOFF * MIN_DISTANCE_CUTOFF;
 
 struct Bead
 {

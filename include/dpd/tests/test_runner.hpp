@@ -27,6 +27,9 @@ std::pair<bool,std::string> test_runner(
         unsigned steps_done=0;
 
         while(1){
+            //write_world_state(std::cout, state);
+            //std::cout<<"\n";
+
             if(steps_done > 100000){
                 return {false, "More than 100000 steps done without test finishing."};
             }

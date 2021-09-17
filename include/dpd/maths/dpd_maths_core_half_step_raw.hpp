@@ -50,6 +50,50 @@ namespace dpd_maths_core_half_step_raw
         vec3_clear(b.f);
     }
 
+    // Assumes that x is an integer with 22 fractional bits
+    template<class TScalar, class TBead>
+    void update_pos_f22(
+        TScalar dt,
+        const int32_t dims_f22[3],
+        TBead &b
+    )
+    {
+        // x(t+dt) = x(t) + v(t)*dt + f(t)*dt*dt
+        // v(t+dt/2) = v(t) + dt*f(t)/2
+
+
+        // auto x = b.x + b.v*dt + b.f*half(dt*dt);
+        // auto x = b.x + dt * ( b.v + b.f*half(dt) );
+        float dx[3];
+        vec3_mul(dx, b.f, half(dt));
+        vec3_add(dx, b.v);
+        vec3_mul(dx, dt);
+
+        int32_t orig[3];
+        vec3_copy(orig, b.x_f22);
+
+        int32_t nx[3];
+        for(int i=0; i<3; i++){
+            nx[i] = b.x_f22[i] + round_impl( dx[i] * float(1<<22) );
+        }
+
+        
+        for(int i=0; i<3; i++){
+            nx[i] += (nx[i]<0 ? dims_f22[i] : 0);
+            nx[i] -= (nx[i]>=dims_f22[i] ? dims_f22[i] : 0);
+            if(nx[i] < 0){
+                printf("<\n");
+            }
+            if(nx[i] >= dims_f22[i]){
+                printf(">\n");
+            }
+        }
+        vec3_copy(b.x_f22, nx);
+        
+        vec3_add_mul(b.v, b.f, half(dt));
+        vec3_clear(b.f);
+    }
+
 template<class TScalar, class TBead>
 void update_mom(
     TScalar dt,
@@ -111,7 +155,7 @@ void calc_force(
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
 #ifndef TINSEL
-    //std::cerr<<"  DUT: home="<<home_hash<<", other="<<other_hash<<", t_hash="<<t_hash<<", dx=("<<(dx[0]*dr)<<","<<(dx[1]*dr)<<","<<(dx[2]*dr)<<"), r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook="<<hookeanForce<<"\n";
+    //std::cerr<<"  DUT: home="<<home_hash.hash<<", other="<<other_hash.hash<<", t_hash="<<t_hash<<", dx=("<<(dx[0]*dr)<<","<<(dx[1]*dr)<<","<<(dx[2]*dr)<<"), r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook="<<hookeanForce<<"\n";
     //std::cerr<<"     sqrt_gammap="<<sqrt_gammap<<", rdotv="<<rdotv<<", pow_half(dissStrength)="<<sqrtDissStrength<<"\n";
 #endif
 
