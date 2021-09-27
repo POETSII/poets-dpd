@@ -14,7 +14,7 @@
 
 // This is a completely standardised hash-code, so that we get repeatable results across implementations.
 /*  bbbb 1ppp pppp pppp  pppp pppp pppp pppp  : monomer, up to 2^27 instances
-    bbbb 0ooo oooo pppp  pppp pppp pppp pppp  : polymer, up to 2^20 instances, and 127 beads per polymer
+    bbbb 0ooo ooop pppp  pppp pppp pppp pppp  : polymer, up to 2^21 instances, and 63 beads per polymer
     b is the bead type index
 */
 struct BeadHash
@@ -32,8 +32,8 @@ struct BeadHash
     static BeadHash construct(uint32_t bead_type, bool is_monomer, uint32_t polymer_id, uint32_t polymer_offset)
     {
         assert( is_monomer ? (polymer_offset==0 && polymer_id<(1u<<27))
-                                        : (polymer_offset<128 && polymer_id<(1u<<20)));
-        uint32_t base=(uint32_t(polymer_offset)<<20) | polymer_id;
+                                        : (polymer_offset<64 && polymer_id<(1u<<21)));
+        uint32_t base=(uint32_t(polymer_offset)<<21) | polymer_id;
         base |= uint32_t(is_monomer)<<27;
         base |= bead_type << 28;
         return BeadHash(base);
@@ -46,10 +46,10 @@ struct BeadHash
     { return hash>>28; }
 
     inline uint32_t get_polymer_offset() const
-    { return is_monomer() ? 0 : ((hash>>20)&0x7F); }
+    { return is_monomer() ? 0 : ((hash>>21)&0x3F); }
 
     inline uint32_t get_polymer_id() const
-    { return is_monomer() ? (hash&0x7FFFFFF) : (hash&0xFFFFF); }
+    { return is_monomer() ? (hash&0x7FFFFFF) : (hash&0x1FFFFF); }
 
     inline bool in_same_polymer(const BeadHash &h2) const
     {
@@ -57,7 +57,7 @@ struct BeadHash
         if( !(hash&h2.hash&(1<<27)) ){
             return false;
         }
-        return (hash&0xFFFFF) == (h2.hash&0xFFFFF);
+        return (hash&0x1FFFFF) == (h2.hash&0x1FFFFF);
     }
 
     inline BeadHash reduced_hash() const
@@ -68,7 +68,7 @@ struct BeadHash
     {
         assert(!is_monomer());
         assert(polymer_offset < 128);
-        return BeadHash{ (hash & 0xFFFFF) | (polymer_offset<<20) }; 
+        return BeadHash{ (hash & 0x1FFFFF) | (polymer_offset<<21) }; 
     }
 
     inline bool reduced_equals(const BeadHash &h2) const
@@ -122,7 +122,7 @@ struct Bead
 
     // This is a completely standardised hash-code, so that we get repeatable results across implementations.
     /*  0000 1ppp pppp pppp  pppp pppp pppp pppp  : monomer, up to 2^27 instances
-        0000 0ooo oooo pppp  pppp pppp pppp pppp  : polymer, up to 2^20 instances, and 127 beads per polymer
+        0000 0ooo ooop pppp  pppp pppp pppp pppp  : polymer, up to 2^21 instances, and 64 beads per polymer
     */
     BeadHash get_hash_code() const
     {

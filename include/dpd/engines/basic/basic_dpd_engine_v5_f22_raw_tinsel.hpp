@@ -33,9 +33,28 @@ public:
         };
     };
 
+    enum PerfCounters
+    {
+        ResidentBeadCount,
+        ResidentBondCount,
+        ResidentAngleCount,
+        // Really these should not be exposed by the device, as they are static
+        LocX,
+        LocY,
+        LocZ,
+
+        NumPerfCounters
+    };
+
+    static constexpr bool UseDevicePerfCounters = true;
+    static constexpr bool ENABLE_CORE_PERF_COUNTERS = true; //UseDevicePerfCounters;
+    static constexpr bool ENABLE_THREAD_PERF_COUNTERS = true; //UseDevicePerfCounters;
+
     struct State
     {
         device_state_f22_t state;
+
+        uint32_t device_performance_counters[UseDevicePerfCounters ? NumPerfCounters : 0];
     };
 
     
@@ -63,11 +82,40 @@ public:
             //}
             Handlers::on_init(s->state);
             update_rts();
+
+            if constexpr(UseDevicePerfCounters){
+                for(unsigned i=0; i< std::size(s->device_performance_counters); i++){
+                    s->device_performance_counters[i]=0;
+                }
+                s->device_performance_counters[LocX] = s->state.location_f0[0];
+                s->device_performance_counters[LocY] = s->state.location_f0[1];
+                s->device_performance_counters[LocZ] = s->state.location_f0[2];
+            }
+                        
         }
 
         inline bool step() {
+            if constexpr(UseDevicePerfCounters){
+                if(s->state.phase!=Handlers::Migrating){
+                    s->device_performance_counters[ResidentBeadCount] += s->state.resident.n;
+                    uint32_t bonds=0, angles=0;
+                    for(unsigned i=0; i<s->state.resident.n; i++){
+                        const auto &bead=s->state.resident.elements[i];
+                        if(!BeadHash{bead.id}.is_monomer()){
+                            for(unsigned j=0; j<MAX_BONDS_PER_BEAD; j++){
+                                bonds += bead.bond_partners[j] != -1;
+                            }
+                            angles += bead.angle_bonds[0].partner_head != -1;
+                        }
+                    }
+                    s->device_performance_counters[ResidentBondCount] += bonds;
+                    s->device_performance_counters[ResidentAngleCount] += angles;
+                }
+            }
+
             bool res= Handlers::on_barrier(s->state);
             update_rts();
+
             return res;
         }
 
@@ -101,6 +149,7 @@ public:
         }
 
         inline void recv(Message* msg, None* /*edge*/) {
+            
             if(msg->type==OutputFlags::RTS_INDEX_share){
                 Handlers::on_recv_share<false>(s->state, msg->bead_view);
 
@@ -126,7 +175,9 @@ public:
           State,     // State
           None,         // Edge label
           Message,    // Message
-          1
+          1,   // Num pins
+          ENABLE_CORE_PERF_COUNTERS,
+          ENABLE_THREAD_PERF_COUNTERS
         >;
 
 #ifndef TINSEL
@@ -221,6 +272,9 @@ public:
             graph.devices[i]->state.state.t = m_state->t;
             graph.devices[i]->state.state.t_hash = m_t_hash;
             graph.devices[i]->state.state.t_seed = m_state->seed;
+            if(states[i].resident.n==0){
+                fprintf(stderr, "device %u at %u,%u,%u is empty\n", i, states[i].location_f0[0], states[i].location_f0[1], states[i].location_f0[2]);
+            }
         }
 
         //std::cerr<<"Writing graph\n";
@@ -238,6 +292,48 @@ public:
             return ts.tv_sec+1e-9*ts.tv_nsec;
         };
 
+        /*
+        std::vector<std::vector<uint32_t>> perf_counters(states.size(), std::vector<uint32_t>(Device::NumDevicePerfCounters,0));
+        unsigned perf_counters_seen=0;
+
+        auto filter=[&](uint32_t threadId, const char *line) -> bool
+        {
+            // Pattern is: "DPC:%x,%x,%x,%x\n",  threadId,deviceOffset,counterOffset,counterValue
+
+            int len=strlen(line);
+            if(len < 4){
+                return false;
+            }
+            if(strncmp("DPC:",line,4)){
+                return false;
+            }
+
+            unsigned gotThreadId, deviceOffset, counterOffset,counterValue;
+            if(4!=sscanf(line, "DPC:%x,%x,%x,%x", &gotThreadId, &deviceOffset, &counterOffset, &counterValue)){
+                return false;
+            }
+            if(gotThreadId!=threadId){
+                fprintf(stderr, "Corrupted DPCs.\n");
+                exit(1);
+            }
+
+            unsigned deviceId=graph.getDeviceId(threadId, deviceOffset);
+            perf_counters.at(deviceId).at(counterOffset)=counterValue;
+
+            perf_counters_seen++;
+
+            return true;
+        };
+
+        m_hostlink->setStdOutFilterProc(filter);
+
+        */
+
+        PolitePerfCounterAccumulator<decltype(*m_graph),Thread> perf_counters(*m_graph, m_hostlink.get());
+
+        m_hostlink->setStdOutFilterProc([&](uint32_t threadId, const char *line){
+            return perf_counters.process_line(threadId, line);
+        });
         
         //std::cerr<<"Waiting for output\n";
         unsigned seen=0;
@@ -268,9 +364,31 @@ public:
             }
         }
 
-        for(int i=0; i<1000; i++){
-            (m_hostlink->pollStdOut(stderr));
+        fprintf(stderr, "Picking up performance counters.\n");
+        while(!perf_counters.is_complete()){
+            m_hostlink->pollStdOut(stderr);
+            perf_counters.print_progress();
         }
+
+        /*fprintf(stdout, "DeviceId,ThreadId,CoreId,x,y,z,SendTime,SendCount,RecvTime,RecvCount,BarrierGap,ResidentBeads,ResidentBonds,ResidentAngles\n");
+        for(unsigned i=0; i<states.size(); i++){
+            auto &state=states[i];
+            fprintf(stdout, "%u,%u,%u,%u,%u,%u", i, graph.getThreadIdFromDeviceId(i), graph.getThreadIdFromDeviceId(i)>>16, state.location_f0[0], state.location_f0[1], state.location_f0[2]);
+            for(unsigned j=0; j<perf_counters[i].size(); j++){
+                fprintf(stdout, ",%u", perf_counters[i][j]);
+            }
+            fprintf(stdout, "\n");
+        }
+        */
+
+       if(Device::HasDevicePerfCounters){
+        perf_counters.dump_combined_device_counters(
+            {"ResidentBeadCount","ResidentBondCount","ResidentAngleCount","LocX","LocY","LocZ"},
+            stdout
+        );
+       }else if(Thread::ENABLE_THREAD_PERF_COUNTERS){
+           perf_counters.dump_combined_thread_counters(stdout);
+       }
 
         m_hostlink.reset();
     }

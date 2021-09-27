@@ -13,7 +13,7 @@ struct bag_storage_concept
 };
 
 
-template<class TStorage, bool TUnsafe=true>
+template<class TStorage, bool TUnsafe=false>
 struct bag_wrapper
 {
     using T = typename std::remove_reference<decltype(TStorage::elements[0])>::type;

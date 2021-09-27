@@ -104,7 +104,7 @@ class NaiveDPDEngineHalfStepTBB
         }else{
             // Move the beads, and then assign to cells based on x(t+dt)
             tbb::parallel_for(range1d_t(0, m_locked_cells.size(), 64), [&](const range1d_t &r){
-                for(int i=r.begin(); i<r.end(); i++){
+                for(unsigned i=r.begin(); i<r.end(); i++){
                     auto &c = m_locked_cells[i];
                     for(int j=c.beads.size()-1; j>=0; j--){
                         auto *b = c.beads[j];

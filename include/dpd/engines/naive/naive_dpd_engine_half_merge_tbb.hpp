@@ -68,9 +68,9 @@ private:
                     // This gives the origin of a 2x2x2 cube within a 4x4x4 block
                     std::vector<SuperCell> group;
                     // Loop over all super cells within group
-                    for(unsigned ix=gx; ix<m_dims[0]; ix+=4){
-                        for(unsigned iy=gy; iy<m_dims[1]; iy+=4){
-                            for(unsigned iz=gz; iz<m_dims[2]; iz+=4){
+                    for(unsigned ix=gx; ix<(unsigned)m_dims[0]; ix+=4){
+                        for(unsigned iy=gy; iy<(unsigned)m_dims[1]; iy+=4){
+                            for(unsigned iz=gz; iz<(unsigned)m_dims[2]; iz+=4){
                                 SuperCell sc;
                                 unsigned off=0;
                                 for(int lx=0; lx<2; lx++){
