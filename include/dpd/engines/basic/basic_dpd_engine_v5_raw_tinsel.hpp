@@ -242,7 +242,7 @@ public:
             }
 
             for(const auto &kcs : thread_sums){
-                fprintf(tmp, "%u,%u,%u,%u\n", kcs.first, (kcs.first>>TinselLogThreadsPerCore) << TinselLogThreadsPerCore, kcs.second.first, kcs.second.second);
+                fprintf(tmp, "%u,%u,%u,%u\n", kcs.first, (kcs.first>>Impl::TinselLogThreadsPerCore) << Impl::TinselLogThreadsPerCore, kcs.second.first, kcs.second.second);
             }
             fclose(tmp);
         }
