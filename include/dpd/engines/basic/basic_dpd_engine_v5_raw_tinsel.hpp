@@ -9,9 +9,7 @@
 #include <unistd.h>
 #endif
 
-#include "POLiteHW.h"
-
-template<class Impl = POLiteHW<>>
+template<class Impl>
 class BasicDPDEngineV5RawTinsel
     : public BasicDPDEngineV5Raw
 {
@@ -234,7 +232,7 @@ public:
             for(unsigned i=0; i<m_devices.size(); i++){
                 uint32_t thread = graph.getThreadIdFromDeviceId(i);
                 
-                uint32_t core = (thread >> TinselLogThreadsPerCore) << TinselLogThreadsPerCore;
+                uint32_t core = (thread >> Impl::TinselLogThreadsPerCore) << Impl::TinselLogThreadsPerCore;
                 
                 unsigned weight=device_weights[i];
 

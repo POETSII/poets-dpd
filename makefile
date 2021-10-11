@@ -14,6 +14,10 @@ CPPFLAGS += -I $(TINSEL_ROOT)/include
 CPPFLAGS += -I $(TINSEL_ROOT)/hostlink
 CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 
+ifneq ($(TBBROOT),)
+CPPFLAGS += -I $(TBBROOT)/include
+endif
+
 LDLIBS +=  -lmetis -ltbb
 
 
