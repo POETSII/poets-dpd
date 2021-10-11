@@ -46,9 +46,9 @@ public:
         NumPerfCounters
     };
 
-    static constexpr bool UseDevicePerfCounters = true;
-    static constexpr bool ENABLE_CORE_PERF_COUNTERS = true; //UseDevicePerfCounters;
-    static constexpr bool ENABLE_THREAD_PERF_COUNTERS = true; //UseDevicePerfCounters;
+    static constexpr bool UseDevicePerfCounters = false;
+    static constexpr bool ENABLE_CORE_PERF_COUNTERS = false; //UseDevicePerfCounters;
+    static constexpr bool ENABLE_THREAD_PERF_COUNTERS = false; //UseDevicePerfCounters;
 
     struct State
     {
@@ -191,6 +191,22 @@ public:
         std::cerr<<"Construct\n";
         m_meshLenX=Impl::BoxMeshXLen;
         m_meshLenY=Impl::BoxMeshYLen;
+        if(getenv("PDPD_BOX_MESH_X")){
+            int v=atoi(getenv(PDPD_BOX_MESH_X));
+            if(v<1 || v>m_meshLenX){
+                throw std::runtime_error("Invalid PDPD_BOX_MESH_X");
+            }
+            m_meshLenX=v;
+            fprintf(stderr, "Setting boxMeshLenX to %d\n", m_meshLenX);
+        }
+        if(getenv("PDPD_BOX_MESH_Y")){
+            int v=atoi(getenv(PDPD_BOX_MESH_Y));
+            if(v<1 || v>m_meshLenY){
+                throw std::runtime_error("Invalid PDPD_BOX_MESH_Y");
+            }
+            m_meshLenY=v;
+            fprintf(stderr, "Setting boxMeshLenY to %d\n", m_meshLenY);
+        }
     }
 
     void ensure_hostlink()

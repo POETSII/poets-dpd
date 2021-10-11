@@ -143,6 +143,9 @@ struct Bond
     double r0;
     uint32_t bead_offset_head = -1;
     uint32_t bead_offset_tail = -1;
+
+    bool operator==(const Bond &o) const
+    { return kappa==o.kappa && r0==o.r0 && bead_offset_head==o.bead_offset_head && bead_offset_tail==o.bead_offset_tail; }
 };
 
 struct BondPair
@@ -151,6 +154,9 @@ struct BondPair
     double theta0;
     uint32_t bond_offset_head = -1;
     uint32_t bond_offset_tail = -1;
+
+    bool operator==(const BondPair &o) const
+    { return kappa==o.kappa && theta0==o.theta0 && bond_offset_head==o.bond_offset_head && bond_offset_tail==o.bond_offset_tail; }
 };
 
 struct PolymerType
@@ -160,6 +166,11 @@ struct PolymerType
     std::vector<Bond> bonds;
     std::vector<BondPair> bond_pairs;
     uint32_t polymer_id = -1;
+
+    bool operator==(const PolymerType &o) const
+    {
+        return name==o.name && bead_types==o.bead_types && bonds==o.bonds && bond_pairs==o.bond_pairs && polymer_id==o.polymer_id; 
+    }
 };
 
 struct Polymer
@@ -167,12 +178,18 @@ struct Polymer
     std::vector<uint32_t> bead_ids;
     uint32_t polymer_id = -1;
     uint32_t polymer_type = -1;
+
+    bool operator==(const Polymer &o) const
+    { return bead_ids==o.bead_ids && polymer_type==o.polymer_type && polymer_id==o.polymer_id; }
 };
 
 struct InteractionStrength
 {
     double conservative;
     double dissipative;
+
+    bool operator==(const InteractionStrength &o) const
+    { return conservative==o.conservative && dissipative==o.dissipative; }
 };
 
 struct WorldState

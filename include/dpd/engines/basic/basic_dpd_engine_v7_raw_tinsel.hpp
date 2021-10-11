@@ -203,6 +203,30 @@ public:
             }
         }
 
+        bool useDeviceWeights=false;
+        std::vector<unsigned> device_weights;
+        if(useDeviceWeights){
+            const int BASE_DEVICE_WEIGHT = 2;
+            device_weights.assign(m_devices.size(), BASE_DEVICE_WEIGHT);
+            for(const Polymer &p : m_state->polymers){
+                const PolymerType &pt=m_state->polymer_types[p.polymer_type];
+                for(const auto &bp : pt.bond_pairs){
+                    unsigned mid_off= pt.bonds.at(bp.bond_offset_head).bead_offset_tail;
+                    assert(mid_off == pt.bonds.at(bp.bond_offset_tail).bead_offset_head);
+                    unsigned mid_id = p.bead_ids.at(mid_off);
+
+                    vec3i_t loc=floor(m_state->beads.at(mid_id).x);
+                    const auto *dst = BasicDPDEngineV7Raw<USE_X_CACHE>::m_location_to_device[loc];
+                    
+                    device_weights.at(dst - &m_devices[0])++;
+                }
+            }
+
+            for(unsigned i=0; i<device_weights.size(); i++){
+                graph.setDeviceWeight(i, device_weights[i]);
+            }
+        }
+
         graph.map();
 
     }

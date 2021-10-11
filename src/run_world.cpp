@@ -123,6 +123,7 @@ int main(int argc, const char *argv[])
                 engine_name.c_str(), srcFile.c_str(), volume, (int)state.beads.size(), done,
                 t1-t0, t2-t1, state.beads.size()/(t2-t0)*done, state.beads.size()/(t2-t1)*interval_size
             );
+            fflush(stdout);
             t1=t2;
 
             std::vector<char> tmp(baseName.size()+100);

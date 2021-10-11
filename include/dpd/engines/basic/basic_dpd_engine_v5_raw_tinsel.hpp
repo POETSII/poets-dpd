@@ -134,8 +134,9 @@ public:
     std::shared_ptr<typename Impl::template PGraph<Device, State, None, Message>> m_graph;
     int m_meshLenX;
     int m_meshLenY;
+    bool m_use_device_weights;
 
-    BasicDPDEngineV5RawTinsel()
+    BasicDPDEngineV5RawTinsel(bool use_device_weights=false)
     {
         std::cerr<<"Construct\n";
         m_meshLenX=Impl::BoxMeshXLen;
@@ -168,7 +169,7 @@ public:
         unsigned volume=state->box[0]*state->box[1]*state->box[2];
         
         if(volume > 40*40*40){
-            // TOD: Link to the number of boxes
+            // TODO: Link to the number of boxes
             graph.mapVerticesToDRAM=true;
         }
 
@@ -198,7 +199,55 @@ public:
             }
         }
 
+        bool useDeviceWeights=false;
+        std::vector<unsigned> device_weights;
+        if(useDeviceWeights){
+            const int BASE_DEVICE_WEIGHT = 2;
+            device_weights.assign(m_devices.size(), BASE_DEVICE_WEIGHT);
+            for(const Polymer &p : m_state->polymers){
+                const PolymerType &pt=m_state->polymer_types[p.polymer_type];
+                for(const auto &bp : pt.bond_pairs){
+                    unsigned mid_off= pt.bonds.at(bp.bond_offset_head).bead_offset_tail;
+                    assert(mid_off == pt.bonds.at(bp.bond_offset_tail).bead_offset_head);
+                    unsigned mid_id = p.bead_ids.at(mid_off);
+
+                    vec3i_t loc=floor(m_state->beads.at(mid_id).x);
+                    const auto *dst = m_location_to_device[loc];
+                    
+                    device_weights.at(dst - &m_devices[0])++;
+                }
+            }
+
+            for(unsigned i=0; i<device_weights.size(); i++){
+                graph.setDeviceWeight(i, device_weights[i]);
+            }
+        }
+
         graph.map();
+
+        if(useDeviceWeights){
+            std::unordered_map<unsigned,std::pair<unsigned,unsigned>> thread_sums;
+
+            FILE *tmp=fopen("weight_mapping_cost.csv", "wt");
+            fprintf(stderr, "nDevices=%u\n", (unsigned)m_devices.size());
+
+            for(unsigned i=0; i<m_devices.size(); i++){
+                uint32_t thread = graph.getThreadIdFromDeviceId(i);
+                
+                uint32_t core = (thread >> TinselLogThreadsPerCore) << TinselLogThreadsPerCore;
+                
+                unsigned weight=device_weights[i];
+
+                auto &cs = thread_sums[thread];
+                cs.first += 1;
+                cs.second += weight;
+            }
+
+            for(const auto &kcs : thread_sums){
+                fprintf(tmp, "%u,%u,%u,%u\n", kcs.first, (kcs.first>>TinselLogThreadsPerCore) << TinselLogThreadsPerCore, kcs.second.first, kcs.second.second);
+            }
+            fclose(tmp);
+        }
 
     }
 

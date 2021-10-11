@@ -4,6 +4,8 @@
 #include "dpd_state.hpp"
 #include "split_string.hpp"
 
+#include "cvec3.hpp"
+
 #include <iostream>
 
 std::ostream &write_bead_type(std::ostream &dst, const BeadType &b, const WorldState &)
@@ -63,12 +65,7 @@ void read_bead(std::istream &src, int line_no, WorldState &s)
     res.bead_type=poly_type.bead_types.at(res.polymer_offset);
     
     if(poly.bead_ids.at(res.polymer_offset) != (uint32_t)-1 ){
-        if(res.polymer_offset==10){
-            // HACK : delete me
-            res.polymer_offset=13; // Turn \n into \r
-        }else{
-            throw std::runtime_error("Duplicate bead within polymer");
-        }
+        throw std::runtime_error("Duplicate bead within polymer");
     }
     poly.bead_ids.at(res.polymer_offset) = res.bead_id;
 
@@ -87,6 +84,204 @@ void read_bead(std::istream &src, int line_no, WorldState &s)
 
     s.beads[res.bead_id]=res;
 }
+
+/*
+    Positions in binary are encoded as 32-bit numbers with 16-bits of fractional precision.
+    They are stored relative to the origin, the same as WorldState, but not like the text format.
+
+     No attempt is made to delta-encode or anything, though the MSBs should mostly be zero.
+    
+    Velocity and force are encoded at 8 bytes per vector using CVec3.
+
+    Typically this results in 2 + 12 + 8 + 8 = 30 bytes per bead, versus ~100 bytes per bead for the text version with default cout precision
+
+    Leading zeros should be common in the header and position, so can probably be compressed a little with conventional methods.
+*/
+
+struct BinaryIOWriteContext
+{
+    std::ostream &dst;
+    uint32_t prev_polymer_id=0xFFFFFFFFul;
+    uint32_t prev_bead_id=0xFFFFFFFFul;
+
+    template<class T>
+    void write(const T &x)
+    {
+        dst.write((char*)&x, sizeof(T));
+        if(dst.bad()){
+            throw std::runtime_error("Error while writing binary stream.");
+        }
+    }
+
+    void write_u32(uint32_t x)
+    {
+        write(x);
+    }
+};
+
+struct PolymerBinary
+{
+    uint16_t polymer_type : 13;
+    uint16_t non_sequential_polymer_id : 1;    // If 0 then the polymer_id is previous + 1
+    uint16_t non_sequential_bead_id_inter : 1; // If 0 then first bead id is previous bead id + 1
+    uint16_t non_sequential_bead_id_intra : 1; // If 0 then bead ids in polymer are sequential
+};
+
+struct BinaryIOReadContext
+{
+    std::istream &src;
+    uint32_t prev_polymer_id=0xFFFFFFFFul;
+    uint32_t prev_bead_id=0xFFFFFFFFul;
+
+    template<class T>
+    void read(T &x)
+    {
+        src.read((char*)&x, sizeof(T));
+        if(src.bad()){
+            throw std::runtime_error("Error while reading binary stream.");
+        }
+    }
+
+    uint32_t read_u32()
+    {
+        uint32_t x;
+        read(x);
+        return x;
+    }
+};
+
+void write_polymer_binary(const Polymer &p, const WorldState &s, BinaryIOWriteContext &ctxt)
+{
+    PolymerBinary header;
+
+    header.non_sequential_polymer_id=p.polymer_id != ctxt.prev_polymer_id+1;
+    header.non_sequential_bead_id_inter=p.bead_ids.at(0) != ctxt.prev_bead_id+1;
+    header.non_sequential_bead_id_intra=false;
+    for(unsigned i=1; i<p.bead_ids.size(); i++){
+        if( p.bead_ids[i-1]+1 != p.bead_ids[i] ){
+            header.non_sequential_bead_id_intra=true;
+            break;
+        }
+    }
+    header.polymer_type=p.polymer_type;
+        
+    ctxt.write(header);
+    if(header.non_sequential_polymer_id){
+        ctxt.write_u32(p.polymer_id-ctxt.prev_polymer_id);
+    }
+    ctxt.prev_polymer_id=p.polymer_id;
+
+    const double POS_SCALE=65536; // Use 16-bits of fractional precision
+
+    bool first=true;
+    for(unsigned bead_id : p.bead_ids){
+        if( (first && header.non_sequential_bead_id_inter) || (!first && header.non_sequential_bead_id_intra)){
+            ctxt.write_u32(bead_id - ctxt.prev_bead_id);
+        }
+        ctxt.prev_bead_id=bead_id;
+
+        const auto &bead=s.beads.at(bead_id);
+
+        std::array<uint32_t,3> pos;
+        for(unsigned d=0; d<3; d++){
+            double rr=round(bead.x[d]*POS_SCALE);
+            if( rr == s.box[d]*POS_SCALE ){
+                rr=0;
+            }
+            if(rr < 0 || rr == s.box[d]*POS_SCALE){
+                throw std::runtime_error("Bead is out of bounds.");
+            }
+            pos[d]=(uint32_t)rr;
+        };
+
+        ctxt.write(pos);
+
+        CVec3 v(bead.v);
+        ctxt.write(v);
+
+        CVec3 f(bead.f);
+        ctxt.write(f);
+
+        first=false;
+    }
+
+    ctxt.prev_bead_id=p.bead_ids.back();
+}
+
+void read_polymer_binary(WorldState &s, BinaryIOReadContext &ctxt)
+{
+    PolymerBinary header;
+    ctxt.read(header);
+
+    uint32_t polymer_id;
+    if(header.non_sequential_polymer_id){
+        std::cerr<<"Non seq polymer id\n";
+        polymer_id = ctxt.prev_polymer_id + ctxt.read_u32();
+    }else{
+        polymer_id = ctxt.prev_polymer_id + 1;
+    }
+    ctxt.prev_polymer_id = polymer_id;
+    //std::cerr<<"Begin polymer "<<polymer_id<<"\n";
+
+    if(polymer_id >= s.polymers.size()){
+        throw std::runtime_error("Polymer id out of range.");
+    }
+
+    auto &poly=s.polymers.at(polymer_id);
+    if(poly.bead_ids.size()!=0){
+        throw std::runtime_error("Polymer appears twice.");
+    }
+    poly.polymer_id=polymer_id;
+    poly.polymer_type=header.polymer_type;
+    const auto &pt=s.polymer_types.at(poly.polymer_type);
+
+    bool first=true;
+    for(unsigned i=0; i<pt.bead_types.size(); i++){
+        uint32_t bead_id;
+        if( (first && header.non_sequential_bead_id_inter) || (!first && header.non_sequential_bead_id_intra) ){
+            bead_id=ctxt.prev_bead_id + ctxt.read_u32();
+        }else{
+            bead_id=ctxt.prev_bead_id+1;
+        }
+        ctxt.prev_bead_id=bead_id;
+
+        poly.bead_ids.push_back(bead_id);
+
+        Bead &bead=s.beads.at(bead_id);
+
+        if(bead.bead_id != (uint32_t)-1){
+            throw std::runtime_error("Bead appears twice.");
+        }
+        bead.bead_id=bead_id;
+        bead.bead_type=pt.bead_types[i];
+        bead.is_monomer=pt.bead_types.size()==1;
+        bead.polymer_id=polymer_id;
+        bead.polymer_offset=i;
+        bead.polymer_type=poly.polymer_type;
+
+        std::array<uint32_t,3> pos;
+        ctxt.read(pos);
+        for(int d=0; d<3; d++){
+            double x=ldexp(pos[d],-16);
+            if(x < 0 || x >= s.box[d]){
+                throw std::runtime_error("Bead was out of box.");
+            }
+
+            bead.x[d]=x;
+        }
+
+        CVec3 v;
+        ctxt.read(v);
+        bead.v=v.get_vec3r();
+
+        CVec3 f;
+        ctxt.read(f);
+        bead.f=f.get_vec3r();
+
+        first=false;
+    }
+}
+
 
 std::ostream &write_polymer_type(std::ostream &dst, const PolymerType &m, const WorldState &)
 {
@@ -166,9 +361,13 @@ void read_polymer_type(std::istream &src, int &line_no, WorldState &state)
     }
 }
 
-std::ostream &write_world_state(std::ostream &dst, const WorldState &state)
+std::ostream &write_world_state(std::ostream &dst, const WorldState &state, bool binary=false)
 {
-    dst<<"WorldState v0 "<<state.bead_types.size()<<" "<<state.polymer_types.size()<<" "<<state.beads.size()<<" "<<state.polymers.size()<<"\n";
+    if(binary){
+        dst<<"WorldState v1binary "<<state.bead_types.size()<<" "<<state.polymer_types.size()<<" "<<state.beads.size()<<" "<<state.polymers.size()<<"\n";
+    }else{
+        dst<<"WorldState v0 "<<state.bead_types.size()<<" "<<state.polymer_types.size()<<" "<<state.beads.size()<<" "<<state.polymers.size()<<"\n";
+    }
     dst<<"T "<<state.t<<" "<<state.dt<<"\n";
     dst<<"Lambda "<<state.lambda<<"\n";
     dst<<"Origin "<<state.origin[0]<<" "<<state.origin[1]<<" "<<state.origin[2]<<"\n";
@@ -203,11 +402,21 @@ std::ostream &write_world_state(std::ostream &dst, const WorldState &state)
     }
     dst<<"\n";
 
-    dst<<"# Beads\n";
-    for(const auto &b : state.beads){
-        write_bead(dst, b, state);
+    if(binary){
+        dst<<"BinaryData\n";
+        char ch=0;
+        dst.write(&ch, 1);
+        BinaryIOWriteContext ctxt{dst};
+        for(const Polymer &p : state.polymers){
+            write_polymer_binary(p, state, ctxt);
+        }
+    }else{
+        dst<<"# Beads\n";
+        for(const auto &b : state.beads){
+            write_bead(dst, b, state);
+        }
+        dst<<"\n";
     }
-    dst<<"\n";
     return dst;
 }
 
@@ -218,7 +427,10 @@ WorldState read_world_state(std::istream &src, int &line_no)
     auto p=read_prefixed_line_and_split_on_space(src, "WorldState", 6, line_no);
     int world_state_line_no=line_no;
     try{
-        if(p.string_at(1)!="v0"){
+        bool is_binary=false;
+        if(p.string_at(1)=="v1binary"){
+            is_binary=true;
+        }else if(p.string_at(1)!="v0"){
             throw std::runtime_error("Expecting version 'v0' for WorldState, but got '"+p.string_at(1)+"'");
         }
 
@@ -268,8 +480,31 @@ WorldState read_world_state(std::istream &src, int &line_no)
         for(auto & s: res.polymer_types){
             read_polymer_type(src, line_no, res);
         }
-        for(unsigned i=0; i<res.beads.size(); i++){
-            read_bead(src, line_no, res);
+
+        if(is_binary){
+            auto p=read_prefixed_line_and_split_on_space(src, "BinaryData", 1, line_no);
+            while(1){
+                char ch;
+                src.read(&ch, 1);
+                if(src.bad()){
+                    throw std::runtime_error("Missing null before binary data.");
+                }
+                if(ch==0){
+                    break;
+                }
+                if(!isspace(ch)){
+                    throw std::runtime_error("Unexpected char before null char.");
+                }                
+            }
+
+            BinaryIOReadContext ctxt{src};
+            for(unsigned i=0; i<res.polymers.size(); i++){
+                read_polymer_binary(res, ctxt);
+            }
+        }else{
+            for(unsigned i=0; i<res.beads.size(); i++){
+                read_bead(src, line_no, res);
+            }
         }
 
     }catch(...){
