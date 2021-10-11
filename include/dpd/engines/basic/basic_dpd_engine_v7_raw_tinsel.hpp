@@ -9,9 +9,9 @@
 #include <unistd.h>
 #endif
 
-#include "POLiteHW.h"
+//#include "POLiteHW.h"
 
-template<class Impl = POLiteHW<>, bool USE_X_CACHE=false>
+template<class Impl, bool USE_X_CACHE=false>
 class BasicDPDEngineV7RawTinsel
     : public BasicDPDEngineV7Raw<USE_X_CACHE>
 {
@@ -126,7 +126,7 @@ public:
         { return false; }
     };
 
-    using Thread = PThread<
+    using Thread = typename Impl::template PThread<
           Device,
           State,     // State
           None,         // Edge label
