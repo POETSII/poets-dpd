@@ -126,7 +126,7 @@ public:
         { return false; }
     };
 
-    using Thread = PThread<
+    using Thread = typename Impl::template PThread<
           Device,
           State,     // State
           None,         // Edge label

@@ -3,6 +3,8 @@
 #include <tinsel.h>
 #include <POLite.h>
 
+#include "POLiteHW.h"
+
 constexpr bool USE_X_CACHE=true;
 using Thread = typename BasicDPDEngineV7RawTinsel<POLiteHW<>,USE_X_CACHE>::Thread;
 
