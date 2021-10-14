@@ -14,7 +14,15 @@ CPPFLAGS += -I $(TINSEL_ROOT)/include
 CPPFLAGS += -I $(TINSEL_ROOT)/hostlink
 CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 
-LDLIBS +=  -lmetis -ltbb
+#ifneq ($(TBBROOT),)
+#CPPFLAGS += -I $(TBBROOT)/include
+#LDFLAGS += -L $(TBBROOT)/lib
+#endif
+
+CPPFLAGS += -I ~/local/include
+LDFLAGS += -L ~/local/lib
+
+LDLIBS += -ltbb
 
 
 TEST_BIN := bin/test_naive_engine \
@@ -31,6 +39,7 @@ ifeq ($(DISABLE_RISCV),)
 ENGINES_RISCV := $(filter %.riscv,$(patsubst src/engines/%.cpp,%, $(filter-out src/engines/memcpy.riscv.cpp, $(wildcard src/engines/*.cpp))))
 LDFLAGS += -L $(TINSEL_ROOT)/hostlink
 LDLIBS += -l:hostlink.a
+LDLIBS += -lmetis
 else
 ENGINES_RISCV := 
 ENGINES := $(filter-out %tinsel_hw,$(ENGINES))
