@@ -1,0 +1,20 @@
+#PBS -lwalltime=22:00:00
+#PBS -lselect=1:ncpus=32:mem=8gb
+
+module load gcc/10.2.0
+
+LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${HOME}/local/lib
+>&2 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+
+export PDPD_NUM_THREADS=32
+
+mkdir -p $PBS_O_WORKDIR/output32r10
+LAST=$(ls $PBS_O_WORKDIR/output32r9/*.state | sort -t. -nk2 | tail -n 1)
+
+>&2 echo "Running!"
+mkdir -p $PBS_O_WORKDIR/output 
+(cd $HOME/projects/poets-dpd && bin/run_world NaiveDPDEngineHalfMergeTBB \
+	${LAST} \
+	$PBS_O_WORKDIR/output32r10/out- \
+	200 50000 5000 \
+)
