@@ -6,12 +6,13 @@
 
 #include <iterator>
 #include <cstring>
+#include <fstream>
 
 inline void tinsel_require(bool cond, const char *msg)
 {
     if(!cond){
         #ifdef TINSEL
-        printf(msg);
+        puts(msg);
         #else
         throw std::runtime_error(msg);
         #endif
@@ -20,6 +21,8 @@ inline void tinsel_require(bool cond, const char *msg)
 
 struct BasicDPDEngineV5RawHandlers
 {
+    static constexpr const char *THIS_HEADER=__FILE__;
+
     static constexpr size_t MAX_BONDS_PER_BEAD = 4;
     static constexpr size_t MAX_BEADS_PER_CELL = 32;
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
@@ -119,6 +122,14 @@ struct BasicDPDEngineV5RawHandlers
         {
             copy_bead_view(this, &x);
         }
+
+        template<class Visitor>
+        void walk(Visitor &vv)
+        {
+            vv("id", id);
+            vv("x", x, std::size(x));
+            vv("v", v, std::size(v));
+        };
     };
     static_assert(sizeof(raw_bead_view_t)==28);
 
@@ -150,6 +161,15 @@ struct BasicDPDEngineV5RawHandlers
             //This is signed because tinsel can only do int->float conversion. It cannot do unsigned->float
             int8_t kappa;   // Kappa is just an integer. Typically this is quite small, e.g. 5 or 15. Should be less than 127
             uint8_t _pad_;
+
+            template<class Visitor>
+            void walk(Visitor &vv)
+            {
+                vv("partner_head", partner_head);
+                vv("partner_tail", partner_tail);
+                vv("kappa", kappa);
+                vv("_pad_", _pad_);
+            }
         }angle_bonds[MAX_ANGLE_BONDS_PER_BEAD];
 
         uint32_t t;  // Time-step
@@ -158,6 +178,19 @@ struct BasicDPDEngineV5RawHandlers
         void operator=(const raw_bead_resident_t &x)
         {
             copy_bead_resident(this, &x);
+        }
+
+        template<class Visitor>
+        void walk(Visitor &vv)
+        {
+            vv("id", id);
+            vv("x", x, std::size(x));
+            vv("v", v, std::size(v));
+            vv("f", f, std::size(f));
+            vv("bond_partners", bond_partners, std::size(bond_partners));
+            vv("angle_bonds", angle_bonds, std::size(angle_bonds));
+            vv("t", t);
+            vv("checksum", checksum);
         }
     };
     static_assert(sizeof(raw_bead_resident_t)==56);
@@ -169,6 +202,13 @@ struct BasicDPDEngineV5RawHandlers
     {
         uint32_t bead_hash;
         float x[3];
+
+        template<class Visitor>
+        void walk(Visitor &vv)
+        {
+            vv("bead_hash", bead_hash);
+            vv("x", x, std::size(x));
+        }
     };
 
     struct raw_force_input_t
@@ -179,6 +219,13 @@ struct BasicDPDEngineV5RawHandlers
         void operator=(const raw_force_input_t &x)
         {
             memcpy32((uint32_t*)this, (const uint32_t*)&x, sizeof(*this)/4);
+        }
+
+        template<class Visitor>
+        void walk(Visitor &vv)
+        {
+            vv("target_hash", target_hash);
+            vv("f", f, std::size(f));
         }
     };
 
@@ -203,6 +250,13 @@ struct BasicDPDEngineV5RawHandlers
         struct {
             float conservative;
             float sqrt_dissipative;
+
+            template<class Visitor>
+            void walk(Visitor &vv)
+            {
+                vv("conservative", conservative);
+                vv("sqrt_dissipative", sqrt_dissipative);
+            }
         }interactions[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
         uint32_t t;
         uint64_t t_hash;
@@ -212,7 +266,7 @@ struct BasicDPDEngineV5RawHandlers
 
         int32_t location[3];
 
-        Phase phase;
+        int32_t phase;  // of type Phase
         uint32_t rts;
 
         uint32_t intervals_todo;
@@ -225,28 +279,89 @@ struct BasicDPDEngineV5RawHandlers
             raw_bead_resident_t elements[MAX_BEADS_PER_CELL];
             uint16_t n;
             uint16_t lost;
+
+            template<class Visitor>
+            void walk(Visitor &vv)
+            {
+                vv("elements", elements, std::size(elements));
+                vv("n", n);
+                vv("lost", lost);
+            }
         }resident;
         struct{
             raw_bead_resident_t elements[MAX_BEADS_PER_CELL];
             uint16_t n;
             uint16_t lost;
+
+            template<class Visitor>
+            void walk(Visitor &vv)
+            {
+                vv("elements", elements, std::size(elements));
+                vv("n", n);
+                vv("lost", lost);
+            }
         }migrate_outgoing;
         struct force_input_bag
         {
             raw_force_input_t elements[MAX_OUTGOING_FORCES_PER_CELL];
             uint16_t n;
             uint16_t lost;
+
+            template<class Visitor>
+            void walk(Visitor &vv)
+            {
+                vv("elements", elements, std::size(elements));
+                vv("n", n);
+                vv("lost", lost);
+            }
         } force_outgoing;
         struct cached_bond_bag
         {
             raw_cached_bond_t elements[MAX_CACHED_BONDS_PER_CELL];
             uint16_t n;
             uint16_t lost;
+
+            template<class Visitor>
+            void walk(Visitor &vv)
+            {
+                vv("elements", elements, std::size(elements));
+                vv("n", n);
+                vv("lost", lost);
+            }
         } cached_bonds;
 
         // Should probably be co-located with the beads for caching
         static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
         uint8_t cached_bond_indices[MAX_BEADS_PER_CELL]; // 0xff if not seen, otherwise the first bond that was seen
+    
+        template<class Visitor>
+        void walk(Visitor &vv)
+        {
+            vv("box", box, std::size(box));
+            vv("dt", dt);
+            vv("inv_root_dt", inv_root_dt);
+            vv("bond_r0", bond_r0);
+            vv("bond_kappa", bond_kappa);
+            vv("interactions", interactions, std::size(interactions));
+            vv("t", t);
+            vv("t_hash", t_hash);
+            vv("t_seed", t_seed);
+            vv("interval_size", interval_size);
+            vv("output_reps", output_reps);
+            vv("location", location, std::size(location));
+            vv("phase", phase);
+            vv("rts", rts);
+            vv("intervals_todo", intervals_todo);
+            vv("interval_offset", interval_offset);
+            vv("output_reps_todo", output_reps_todo);
+            vv("outputs_todo", outputs_todo);
+            vv("share_todo", share_todo);
+            vv("resident", resident);
+            vv("migrate_outgoing", migrate_outgoing);
+            vv("force_outgoing", force_outgoing);
+            vv("cached_bonds", cached_bonds);
+            vv("cached_bond_indices", cached_bond_indices, std::size(cached_bond_indices));
+        }
     };
 
     static const bool DO_CHECKSUM=false;

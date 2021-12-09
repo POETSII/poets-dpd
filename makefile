@@ -4,9 +4,9 @@ CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 #LDFLAGS += -fuse-ld=gold
 
-CPPFLAGS += -DNDEBUG=1 
+#CPPFLAGS += -DNDEBUG=1 
 CPPFLAGS += -O3 -march=native -ffast-math
-#CPPFLAGS += -fsanitize=address -fsanitize=undefined
+CPPFLAGS += -fsanitize=address -fsanitize=undefined
 
 TINSEL_ROOT = tinsel
 
