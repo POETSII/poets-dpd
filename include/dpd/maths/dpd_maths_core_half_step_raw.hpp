@@ -66,7 +66,7 @@ template<
     class TScalar, class TVector, class TForce
 >
 void calc_force(
-    TScalar inv_sqrt_dt,
+    TScalar scale_inv_sqrt_dt,
     uint64_t t_hash,
 
     TVector dx, TScalar dr,
@@ -100,7 +100,7 @@ void calc_force(
 
     TScalar dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
     TScalar u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
-    TScalar randForce = sqrt_gammap * inv_sqrt_dt * u;
+    TScalar randForce = sqrt_gammap * scale_inv_sqrt_dt * u;
 
     TScalar dr0=r0-dr;
     TScalar hookeanForce=kappa*dr0;

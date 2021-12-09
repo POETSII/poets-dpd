@@ -396,7 +396,6 @@ private:
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dx",ForceLoggingFlags::SymmetricFlipped, 3,ddx);
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dr",ForceLoggingFlags::SymmetricFlipped, 1,&dr);
             double ddd[3]={other_delta[0],other_delta[1],other_delta[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"other_delta",ForceLoggingFlags::Asymmetric, 3,ddd);
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-invrootdt",ForceLoggingFlags::Symmetric, 1, &scaled_inv_root_dt);
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-gammap",ForceLoggingFlags::Symmetric, 1, &gammap);
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng",ForceLoggingFlags::Symmetric, 1, &u);

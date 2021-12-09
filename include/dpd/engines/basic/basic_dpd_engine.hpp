@@ -2,6 +2,7 @@
 #define basic_dpd_engine_hpp
 
 #include "dpd/core/dpd_engine.hpp"
+#include "dpd/core/logging.hpp"
 
 #include "dpd/maths/dpd_maths_core_half_step.hpp"
 
@@ -512,6 +513,10 @@ protected:
 
     virtual void step()
     {
+        if(ForceLogging::logger()){
+            ForceLogging::logger()->SetTime(m_state->t);
+        }
+
         double dt=m_state->dt;
 
         m_t_hash = get_t_hash(m_state->t, m_state->seed);
@@ -613,6 +618,19 @@ protected:
             for(auto &b : cell.beads){
                 dpd_maths_core_half_step::update_mom(dt, b);
                 b.checksum=calc_checksum(b);
+            }
+        }
+
+        if(ForceLogging::logger()){
+            for(unsigned cell_index=0; cell_index<m_cells.size(); cell_index++){
+                const cell_t &c = m_cells.at(cell_index);
+
+                for(const auto &bb : c.beads){
+                    auto bead_id=m_state->polymers.at(bb.id.get_polymer_id()).bead_ids.at(bb.id.get_polymer_offset());
+                    auto &b=m_state->beads.at(bead_id);
+                    double x[3]={bb.x[0],bb.x[1],bb.x[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.bead_id,"x_next",3,x);
+                }
             }
         }
 

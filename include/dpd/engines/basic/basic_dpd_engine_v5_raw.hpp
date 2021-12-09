@@ -95,7 +95,7 @@ public:
 
                 m_box.extract(dst.box);
                 dst.dt=m_state->dt;
-                dst.inv_root_dt=recip_pow_half(m_state->dt);
+                dst.scaled_inv_root_dt=pow_half(24 / m_state->dt);
                 dst.bond_r0=m_bond_r0;
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){

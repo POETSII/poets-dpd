@@ -177,7 +177,7 @@ struct BasicDPDEngineV5RawHandlers
 
         int32_t box[3];
         float dt;
-        float inv_root_dt;
+        float scaled_inv_root_dt;
         float bond_r0;
         float bond_kappa;
         float conservative[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
@@ -486,7 +486,7 @@ struct BasicDPDEngineV5RawHandlers
 
             float f[3];
             dpd_maths_core_half_step_raw::calc_force<float,float[3],float[3]>(
-                cell.inv_root_dt,
+                cell.scaled_inv_root_dt,
                 cell.t_hash,
                 dx, dr,
                 kappa, r0, 

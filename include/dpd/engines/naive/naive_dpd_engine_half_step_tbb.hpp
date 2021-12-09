@@ -7,6 +7,7 @@
 
 #include "dpd/core/vec3.hpp"
 #include "dpd/core/hash.hpp"
+#include "dpd/core/logging.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -53,6 +54,10 @@ class NaiveDPDEngineHalfStepTBB
 
     void step() override
     {
+        if(ForceLogging::logger()){
+            ForceLogging::logger()->SetTime(m_state->t);
+        }
+
         using range1d_t = tbb::blocked_range<int>;
 
         m_t_hash=get_t_hash(m_state->t, m_state->seed);
@@ -133,6 +138,13 @@ class NaiveDPDEngineHalfStepTBB
                 dpd_maths_core_half_step::update_mom(dt, m_state->beads[i]);
             }
         });
+
+        if(ForceLogging::logger()){
+            for(auto &b : m_state->beads){
+                double x[3]={b.x[0],b.x[1],b.x[2]};
+                ForceLogging::logger()->LogBeadProperty(b.bead_id,"x_next",3,x);
+            }
+        }
 
         m_state->t += 1;
     }
