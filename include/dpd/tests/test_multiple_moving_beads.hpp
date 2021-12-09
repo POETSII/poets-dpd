@@ -15,24 +15,25 @@ class TestMultipleMovingBeads
     std::vector<vec3r_t> m_x0;
     vec3r_t m_v;
     vec3r_t m_sep;
+    vec3r_t m_dims;
 
 public:
-    static std::string calc_name(const vec3r_t &x0, const vec3r_t &dx, const vec3r_t &sep)
+    static std::string calc_name(const vec3r_t &x0, const vec3r_t &dx, const vec3r_t &sep, const vec3r_t &dims)
     {
         std::stringstream tmp;
-        tmp<<"TestMultipleMovingBeads[x0="<<x0<<";dx="<<dx<<";sep="<<sep<<"]";
+        tmp<<"TestMultipleMovingBeads[x0="<<x0<<";dx="<<dx<<";sep="<<sep<<";dims="<<dims<<"]";
         return tmp.str();
     }
 
     static void register_tests()
     {
-        auto add = [](vec3r_t dx)
+        auto add = [](vec3r_t dx, vec3r_t dims)
         {
             vec3r_t sep{1.2, 1.2, 1.2};
 
-            std::string name=calc_name({0,0,0}, dx, sep);
+            std::string name=calc_name({0,0,0}, dx, sep, dims);
             TestBase::add_test_factory(name, 0, [=](){
-                return std::make_shared<TestMultipleMovingBeads>(name,  dx, sep);
+                return std::make_shared<TestMultipleMovingBeads>(name,  dx, sep, dims);
             });
         };
 
@@ -40,7 +41,9 @@ public:
         for(v[0]=-1; v[0]<=1; v[0]++){
             for(v[1]=-1; v[1]<=1; v[1]++){
                 for(v[2]=-1; v[2]<=1; v[2]++){
-                    add(v);
+                    add(v, {7,8,9});
+                    add(v, {4,8,8});
+                    add(v, {4,8,4});
                 }
             }
         }
@@ -50,14 +53,24 @@ public:
         for(int i=0; i<10; i++){
             add({
                 urng(rng), urng(rng), urng(rng)
-            });
+            }, {7,8,9});
+            add({
+                urng(rng), urng(rng), urng(rng)
+            }, {4,4,4});
+            add({
+                urng(rng), urng(rng), urng(rng)
+            }, {4,8,4});
+            add({
+                urng(rng), urng(rng), urng(rng)
+            }, {4,8,8});
         }
     }
 
-    TestMultipleMovingBeads(std::string name, const vec3r_t &v=vec3r_t{0.5,0,0}, const vec3r_t &sep=vec3r_t{1.2, 1.2, 1.2})
+    TestMultipleMovingBeads(std::string name, const vec3r_t &v=vec3r_t{0.5,0,0}, const vec3r_t &sep=vec3r_t{1.2, 1.2, 1.2}, const vec3r_t &dims={7,8,9})
         : m_name(name)
         , m_v(v)
         , m_sep(sep)
+        , m_dims(dims)
     {}
 
     virtual std::string name() const 
@@ -67,9 +80,8 @@ public:
 
     WorldState create_world() override
     {
-        vec3r_t len={7,8,9};
 
-        WorldStateBuilder b(len);
+        WorldStateBuilder b(m_dims);
         WorldState &s=b.data();
 
         s.t=0;
@@ -79,9 +91,9 @@ public:
         b.add_polymer_type("W", {"W"}, {}, {});
 
         vec3r_t pos={0,0,0};
-        while(pos[0] + m_sep[0] < len[0]){
-            while(pos[1] + m_sep[1] < len[1]){
-                while(pos[2] + m_sep[2] < len[2]){
+        while(pos[0] + m_sep[0] < m_dims[0]){
+            while(pos[1] + m_sep[1] < m_dims[1]){
+                while(pos[2] + m_sep[2] < m_dims[2]){
                     unsigned index=b.add_monomer("W", pos, m_v);
                     assert(index==m_x0.size());
                     m_x0.push_back(pos);

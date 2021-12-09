@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <cassert>
+#include <unordered_map>
 
 #include "vec3.hpp"
 
@@ -13,55 +14,89 @@
 
 // This is a completely standardised hash-code, so that we get repeatable results across implementations.
 /*  bbbb 1ppp pppp pppp  pppp pppp pppp pppp  : monomer, up to 2^27 instances
-    bbbb 0ooo oooo pppp  pppp pppp pppp pppp  : polymer, up to 2^20 instances, and 127 beads per polymer
+    bbbb 0ooo ooop pppp  pppp pppp pppp pppp  : polymer, up to 2^21 instances, and 63 beads per polymer
     b is the bead type index
 */
-inline uint32_t bead_hash_construct(uint32_t bead_type, bool is_monomer, uint32_t polymer_id, uint32_t polymer_offset)
+struct BeadHash
 {
-    assert( is_monomer ? (polymer_offset==0 && polymer_id<(1u<<27))
-                                    : (polymer_offset<128 && polymer_id<(1u<<20)));
-    uint32_t base=(uint32_t(polymer_offset)<<20) | polymer_id;
-    base |= uint32_t(is_monomer)<<27;
-    base |= bead_type << 28;
-    return base;
-}
+    uint32_t hash;
 
-inline bool bead_hash_is_monomer(uint32_t hash)
-{ return hash&(1<<27); }
+    BeadHash()
+        : hash(0)
+    {}
 
-inline uint32_t bead_hash_get_bead_type(uint32_t hash)
-{ return hash>>28; }
+    explicit BeadHash(uint32_t raw)
+        : hash(raw)
+    {}
 
-inline uint32_t bead_hash_get_polymer_offset(uint32_t hash)
-{ return bead_hash_is_monomer(hash) ? 0 : ((hash>>20)&0x7F); }
-
-inline uint32_t bead_hash_get_polymer_id(uint32_t hash)
-{ return bead_hash_is_monomer(hash) ? (hash&0x7FFFFFF) : (hash&0xFFFFF); }
-
-inline bool bead_hash_in_same_polymer(uint32_t h1, uint32_t h2)
-{
-    assert(h1!=h2);
-    if( !(h1&h2&(1<<27)) ){
-        return false;
+    static BeadHash construct(uint32_t bead_type, bool is_monomer, uint32_t polymer_id, uint32_t polymer_offset)
+    {
+        assert( is_monomer ? (polymer_offset==0 && polymer_id<(1u<<27))
+                                        : (polymer_offset<64 && polymer_id<(1u<<21)));
+        uint32_t base=(uint32_t(polymer_offset)<<21) | polymer_id;
+        base |= uint32_t(is_monomer)<<27;
+        base |= bead_type << 28;
+        return BeadHash(base);
     }
-    return (h1&0xFFFFF) == (h2&0xFFFFF);
-}
 
-// This cannot work out what the bead type is, so will return the 0 for the bead type
-inline uint32_t bead_hash_make_reduced_hash_from_polymer_offset(uint32_t origin_hash, unsigned polymer_offset)
-{
-    assert(!bead_hash_is_monomer(origin_hash));
-    assert(polymer_offset < 128);
-    return (origin_hash & 0xFFFFF) | (polymer_offset<<20); 
-}
+    bool is_monomer() const
+    { return hash&(1<<27); }
 
-inline bool bead_hash_equals(uint32_t h1, uint32_t h2)
+    inline uint32_t get_bead_type() const
+    { return hash>>28; }
+
+    inline uint32_t get_polymer_offset() const
+    { return is_monomer() ? 0 : ((hash>>21)&0x3F); }
+
+    inline uint32_t get_polymer_id() const
+    { return is_monomer() ? (hash&0x7FFFFFF) : (hash&0x1FFFFF); }
+
+    inline bool in_same_polymer(const BeadHash &h2) const
+    {
+        assert(hash!=h2.hash);
+        if( !(hash&h2.hash&(1<<27)) ){
+            return false;
+        }
+        return (hash&0x1FFFFF) == (h2.hash&0x1FFFFF);
+    }
+
+    inline BeadHash reduced_hash() const
+    { return BeadHash{hash&uint32_t(0xFFFFFFFul)}; }
+
+    // This cannot work out what the bead type is, so will return the 0 for the bead type
+    inline BeadHash make_reduced_hash_from_polymer_offset(unsigned polymer_offset) const
+    {
+        assert(!is_monomer());
+        assert(polymer_offset < 128);
+        return BeadHash{ (hash & 0x1FFFFF) | (polymer_offset<<21) }; 
+    }
+
+    inline bool reduced_equals(const BeadHash &h2) const
+    {
+        return (hash&0x0FFFFFFFul)==(h2.hash&0x0FFFFFFFul);
+    }
+
+    inline bool operator==(const BeadHash &o) const
+    { return hash==o.hash; }
+
+    inline bool operator!=(const BeadHash &o) const
+    { return hash!=o.hash; }
+};
+
+namespace std
 {
-    return (h1&0x0FFFFFFFul)==(h2&0x0FFFFFFFul);
-}
+    template<>
+    struct hash<BeadHash>
+    {
+        size_t operator()(BeadHash h) const
+        {
+            return h.hash;
+        }
+    };
+};
 
 static const float MIN_DISTANCE_CUTOFF = 0.000000001;
-static const float MIN_DISTANCE_CUTOFF_SQR = MIN_DISTANCE_CUTOFF;
+static const float MIN_DISTANCE_CUTOFF_SQR = MIN_DISTANCE_CUTOFF * MIN_DISTANCE_CUTOFF;
 
 struct Bead
 {
@@ -87,11 +122,11 @@ struct Bead
 
     // This is a completely standardised hash-code, so that we get repeatable results across implementations.
     /*  0000 1ppp pppp pppp  pppp pppp pppp pppp  : monomer, up to 2^27 instances
-        0000 0ooo oooo pppp  pppp pppp pppp pppp  : polymer, up to 2^20 instances, and 127 beads per polymer
+        0000 0ooo ooop pppp  pppp pppp pppp pppp  : polymer, up to 2^21 instances, and 64 beads per polymer
     */
-    uint32_t get_hash_code() const
+    BeadHash get_hash_code() const
     {
-        return bead_hash_construct(bead_type, is_monomer, polymer_id, polymer_offset);
+        return BeadHash::construct(bead_type, is_monomer, polymer_id, polymer_offset);
     }
 };
 
@@ -108,6 +143,9 @@ struct Bond
     double r0;
     uint32_t bead_offset_head = -1;
     uint32_t bead_offset_tail = -1;
+
+    bool operator==(const Bond &o) const
+    { return kappa==o.kappa && r0==o.r0 && bead_offset_head==o.bead_offset_head && bead_offset_tail==o.bead_offset_tail; }
 };
 
 struct BondPair
@@ -116,6 +154,9 @@ struct BondPair
     double theta0;
     uint32_t bond_offset_head = -1;
     uint32_t bond_offset_tail = -1;
+
+    bool operator==(const BondPair &o) const
+    { return kappa==o.kappa && theta0==o.theta0 && bond_offset_head==o.bond_offset_head && bond_offset_tail==o.bond_offset_tail; }
 };
 
 struct PolymerType
@@ -125,6 +166,11 @@ struct PolymerType
     std::vector<Bond> bonds;
     std::vector<BondPair> bond_pairs;
     uint32_t polymer_id = -1;
+
+    bool operator==(const PolymerType &o) const
+    {
+        return name==o.name && bead_types==o.bead_types && bonds==o.bonds && bond_pairs==o.bond_pairs && polymer_id==o.polymer_id; 
+    }
 };
 
 struct Polymer
@@ -132,12 +178,18 @@ struct Polymer
     std::vector<uint32_t> bead_ids;
     uint32_t polymer_id = -1;
     uint32_t polymer_type = -1;
+
+    bool operator==(const Polymer &o) const
+    { return bead_ids==o.bead_ids && polymer_type==o.polymer_type && polymer_id==o.polymer_id; }
 };
 
 struct InteractionStrength
 {
     double conservative;
     double dissipative;
+
+    bool operator==(const InteractionStrength &o) const
+    { return conservative==o.conservative && dissipative==o.dissipative; }
 };
 
 struct WorldState
@@ -154,6 +206,11 @@ struct WorldState
 
     std::vector<Polymer> polymers;
     std::vector<Bead> beads;
+
+    uint32_t bead_hash_to_id(const BeadHash &hash)
+    {
+        return polymers.at(hash.get_polymer_id()).bead_ids.at(hash.get_polymer_offset());
+    }
 };
 
 #endif

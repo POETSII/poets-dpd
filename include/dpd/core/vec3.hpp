@@ -186,9 +186,9 @@ template<class T>
 inline vec3g_t<T> vec_wrap(const vec3g_t<T> &x, const vec3g_t<T> &bounds)
 {
     return {
-        x[0] + ((x[0]<0) ? bounds[0] : 0) - (x[0]>=bounds[0] ? -bounds[0] : 0),
-        x[1] + ((x[1]<0) ? bounds[1] : 0) - (x[1]>=bounds[1] ? -bounds[1] : 0),
-        x[2] + ((x[2]<0) ? bounds[2] : 0) - (x[2]>=bounds[0] ? -bounds[2] : 0)
+        x[0] + ((x[0]<0) ? bounds[0] : 0) + (x[0]>=bounds[0] ? -bounds[0] : 0),
+        x[1] + ((x[1]<0) ? bounds[1] : 0) + (x[1]>=bounds[1] ? -bounds[1] : 0),
+        x[2] + ((x[2]<0) ? bounds[2] : 0) + (x[2]>=bounds[2] ? -bounds[2] : 0)
     };
 }
 
@@ -261,6 +261,17 @@ template<class T>
 inline void vec3_floor_nn(int32_t dst[3], const T x[3])
 { for(int i=0; i<3; i++){ assert(x[i]>=0); dst[i] = floor_nn(x[i]); } }
 
+
+inline int round_impl(float x)
+{
+#ifdef TINSEL
+    return (int)x; // Tinsel only does round nearest even
+#else
+    return std::roundf(x);
+#endif
+}
+
+
 template<class D, class T>
 inline void vec3_copy(D &dst, const T &src)
 {
@@ -270,7 +281,7 @@ inline void vec3_copy(D &dst, const T &src)
 }
 
 template<class T>
-inline bool vec3_equal(const T x[3], const T y[3])
+inline bool vec3_equal(const T *x, const T *y)
 {
     return x[0]==y[0] && x[1]==y[1] && x[2]==y[2];
 }

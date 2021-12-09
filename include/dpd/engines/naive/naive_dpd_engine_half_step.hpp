@@ -2,6 +2,7 @@
 #define naive_dpd_engine_half_step_hpp
 
 #include "dpd/core/dpd_engine.hpp"
+#include "dpd/engines/naive/naive_dpd_engine.hpp"
 
 #include "dpd/maths/dpd_maths_core_half_step.hpp"
 
@@ -11,6 +12,9 @@
 #include <cassert>
 #include <cmath>
 #include <array>
+#include <unordered_set>
+
+#include <immintrin.h>
 
 /*
     This method must have lambda=0.5
@@ -60,13 +64,15 @@ private:
     WorldState *m_state;
 
     unsigned m_numBeadTypes;
-    vec3r_t m_origins; // origin in each dimension. Must be an integer, though encoded as real
     vec3r_t m_lengths; // dimensions in all directions Must be an integer, though encoded as real
+    vec3i_t m_dims;// Same as m_leNgths
     std::vector<std::vector<Bead*>> m_cells;
 
     double m_scaled_inv_root_dt;
 
     uint64_t m_t_hash;
+
+    std::unordered_set<std::pair<const Bead*,const Bead*>, NaiveDPDEngine<false>::bp_hash> m_seen_pairs;
 
     void check_constraints_and_setup()
     {
@@ -82,6 +88,7 @@ private:
             require( round(m_state->box[i]) == m_state->box[i], "box must be integer aligned");
             require( m_state->box[i] >= 2, "Distance in each direction must be at least 2");
             m_lengths[i]=m_state->box[i];
+            m_dims[i]=(int)m_state->box[i];
         }
 
         m_numBeadTypes=m_state->bead_types.size();
@@ -101,22 +108,20 @@ private:
     {
         vec3i_t res;
         for(unsigned i=0; i<3; i++){
-            res[i] = floor(pos[i] - m_origins[i]);
-            assert(0<=res[i] && res[i] < m_lengths[i]);
+            res[i] = (int)floor(pos[i]);
+            assert(0<=res[i] && res[i] < m_dims[i]);
         }
         return res;
     }
 
     unsigned cell_pos_to_index(vec3i_t pos) const
     {
-        unsigned index=0;
-        unsigned last_dim=0;
-        for(unsigned i=0; i<3; i++){
-            assert(0<= pos[i] && pos[i] < m_lengths[i] );
-            index = index * last_dim + pos[i];
-            last_dim = m_lengths[i];
-        }
-        return index;
+        return pos[0]*m_dims[1]*m_dims[2] + pos[1] * m_dims[2] + pos[2];
+    }
+
+    vec3i_t index_to_cell_pos(unsigned index) const
+    {
+        return { (int)(index/(m_dims[1]*m_dims[2])) , (int)((index/m_dims[2])%m_dims[0]) , (int)(index%m_dims[2]) };
     }
 
     unsigned world_pos_to_cell_index(const vec3r_t &pos) const
@@ -135,7 +140,7 @@ private:
             int base_is_left = raw < 0;
             int base_is_right = raw == m_lengths[i];
 
-            pos[i] = raw + (base_is_left - base_is_right) * m_lengths[i];
+            pos[i] = raw + (base_is_left - base_is_right) * m_dims[i];
 
             delta[i] = (base_is_right - base_is_left) * m_lengths[i];
         }
@@ -157,7 +162,42 @@ private:
 
     virtual void step()
     {
+        m_seen_pairs.clear();
+
+        if(ForceLogging::logger()){
+            step_impl<true>();
+        }else{
+            step_impl<false>();
+        }
+    }
+
+    template<bool EnableLogging>
+    void step_impl()
+    {
         m_t_hash=get_t_hash(m_state->t, m_state->seed);
+
+        if(EnableLogging && ForceLogging::logger()){
+            ForceLogging::logger()->SetTime(m_state->t);
+            ForceLogging::logger()->LogProperty("dt", 1, &m_state->dt);
+            double seed_low=m_state->seed &0xFFFFFFFFul;
+            double seed_high=m_state->seed>>32;
+            ForceLogging::logger()->LogProperty("seed_lo", 1, &seed_low);
+            ForceLogging::logger()->LogProperty("seed_high", 1, &seed_high);
+            double t_hash_low=m_t_hash&0xFFFFFFFFul;
+            double t_hash_high=m_t_hash>>32;
+            ForceLogging::logger()->LogProperty("t_hash_lo", 1, &t_hash_low);
+            ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
+            for(auto &b : m_state->beads){
+                double h=b.get_hash_code().hash;
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(), "b_hash", 1, &h);
+                double x[3]={b.x[0],b.x[1],b.x[2]};
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x",3,x);
+                double v[3]={b.v[0],b.v[1],b.v[2]};
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"v",3,v);
+                double f[3]={b.f[0],b.f[1],b.f[2]};
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f",3,f);
+            }
+        }
 
         double dt=m_state->dt;
 
@@ -185,7 +225,7 @@ private:
                             for(dir[2]=-1; dir[2]<=+1; dir[2]++){
                                 auto [other_pos,other_delta] = make_relative_cell_pos(pos, dir);
                                 const auto &other=m_cells[cell_pos_to_index(other_pos)];
-                                update_cell_forces(home, other, other_delta);
+                                update_cell_forces<EnableLogging>(home, other, other_delta);
                             }
                         }
                     }
@@ -204,6 +244,18 @@ private:
         // Final momentum update
         for(auto &b : m_state->beads){
             dpd_maths_core_half_step::update_mom(dt, b);
+        }
+
+        if(EnableLogging && ForceLogging::logger()){
+            for(auto &b : m_state->beads){
+
+                if(ForceLogging::logger()){
+                    double v[3]={b.v[0],b.v[1],b.v[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"v_next",3,v);
+                    double f[3]={b.f[0],b.f[1],b.f[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_next",3,f);
+                }
+            }
         }
 
         m_state->t += 1;
@@ -234,21 +286,28 @@ private:
         return false;
     }
 
-    template<class TBeadPtrVec>
-    void update_cell_forces(TBeadPtrVec &home, const TBeadPtrVec &other, const vec3r_t &other_delta) const
+    template<bool EnableLogging,class TBeadPtrVec>
+    void  __attribute__((noinline))  update_cell_forces(TBeadPtrVec &home, const TBeadPtrVec &other, const vec3r_t &other_delta)
     {
-        for(Bead *hb : home){
-            for(const Bead *ob : other)
-            {
-                if(hb==ob){
-                    continue;
-                }
+        /*
+        for(const Bead *ob : other)
+        {
+            _mm_prefetch((const char *)&ob->x, _MM_HINT_T0);
+        }
+        */
 
-                vec3r_t dx = vec3r_t(hb->x) - vec3r_t(ob->x) - other_delta; 
+        
+        for(const Bead *ob : other)
+        {
+            vec3r_t ob_x = vec3r_t(ob->x) + other_delta;
+            for(Bead *hb : home){
+                vec3r_t dx =  hb->x - ob_x;
                 double dr2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
                 if(dr2 >= 1 || dr2<MIN_DISTANCE_CUTOFF_SQR){
                     continue;
                 }
+
+                assert(hb!=ob);
 
                 double dr=pow_half(dr2);
 
@@ -257,7 +316,7 @@ private:
 
                 vec3r_t f;
                 
-                dpd_maths_core_half_step::calc_force(
+                dpd_maths_core_half_step::calc_force<EnableLogging>(
                     m_scaled_inv_root_dt,
                     [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
                     [&](unsigned a, unsigned b){ return pow_half(m_state->interactions[a*m_numBeadTypes+b].dissipative); },
@@ -269,6 +328,13 @@ private:
                     f
                 );
                 hb->f += f;
+
+                if(EnableLogging){
+                    std::pair<const Bead*,const Bead*> pp(hb,ob);
+                    if(!m_seen_pairs.insert(pp).second){
+                        fprintf(stderr, "  Seen %u %u twice\n", hb->get_hash_code().hash, ob->get_hash_code().hash);
+                    }
+                }
             }
         }
     }

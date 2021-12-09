@@ -9,16 +9,27 @@
 #include <unistd.h>
 #endif
 
-#include "POLiteHW.h"
+//#include "POLiteHW.h"
 
-template<class Impl = POLiteHW<>>
+template<class Impl, bool USE_X_CACHE=false>
 class BasicDPDEngineV7RawTinsel
-    : public BasicDPDEngineV7Raw
+    : public BasicDPDEngineV7Raw<USE_X_CACHE>
 {
 public:
-    using Handlers = BasicDPDEngineV7RawHandlers;
+    using Handlers = BasicDPDEngineV7RawHandlers<false, USE_X_CACHE>;
 
     using None = typename Impl::None;
+
+    using OutputFlags =  typename Handlers::OutputFlags;
+    using raw_bead_resident_t = typename Handlers::raw_bead_resident_t;
+    using raw_bead_share_t = typename Handlers::raw_bead_share_t;
+    using raw_force_input_t = typename Handlers::raw_force_input_t;
+    using device_state_t = typename Handlers::device_state_t;
+
+    using BasicDPDEngineV7Raw<USE_X_CACHE>::m_devices;
+    using BasicDPDEngineV7Raw<USE_X_CACHE>::m_neighbour_map;
+    using BasicDPDEngineV7Raw<USE_X_CACHE>::m_state;
+    using BasicDPDEngineV7Raw<USE_X_CACHE>::m_t_hash;
 
     static constexpr auto NHoodPin = Impl::Pin(0);
 
@@ -45,7 +56,7 @@ public:
 
         void update_rts()
         {
-            auto rts=BasicDPDEngineV7RawHandlers::calc_rts(s->state);
+            auto rts=Handlers::calc_rts(s->state);
             if(rts&OutputFlags::RTS_FLAG_output){
                 *readyToSend = Impl::HostPin;
             }else if(rts){
@@ -115,7 +126,7 @@ public:
         { return false; }
     };
 
-    using Thread = PThread<
+    using Thread = typename Impl::template PThread<
           Device,
           State,     // State
           None,         // Edge label
@@ -152,7 +163,7 @@ public:
     {
         ensure_hostlink();
         
-        BasicDPDEngineV7Raw::Attach(state);
+        BasicDPDEngineV7Raw<USE_X_CACHE>::Attach(state);
 
         //std::cerr<<"Building graph\n";
 
@@ -192,6 +203,30 @@ public:
             }
         }
 
+        bool useDeviceWeights=false;
+        std::vector<unsigned> device_weights;
+        if(useDeviceWeights){
+            const int BASE_DEVICE_WEIGHT = 2;
+            device_weights.assign(m_devices.size(), BASE_DEVICE_WEIGHT);
+            for(const Polymer &p : m_state->polymers){
+                const PolymerType &pt=m_state->polymer_types[p.polymer_type];
+                for(const auto &bp : pt.bond_pairs){
+                    unsigned mid_off= pt.bonds.at(bp.bond_offset_head).bead_offset_tail;
+                    assert(mid_off == pt.bonds.at(bp.bond_offset_tail).bead_offset_head);
+                    unsigned mid_id = p.bead_ids.at(mid_off);
+
+                    vec3i_t loc=floor(m_state->beads.at(mid_id).x);
+                    const auto *dst = BasicDPDEngineV7Raw<USE_X_CACHE>::m_location_to_device[loc];
+                    
+                    device_weights.at(dst - &m_devices[0])++;
+                }
+            }
+
+            for(unsigned i=0; i<device_weights.size(); i++){
+                graph.setDeviceWeight(i, device_weights[i]);
+            }
+        }
+
         graph.map();
 
     }
@@ -220,7 +255,11 @@ public:
         graph.write(m_hostlink.get());
 
         //std::cerr<<"Booting\n";
-        m_hostlink->boot("bin/engines/basic_dpd_engine_v7_raw_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v7_raw_tinsel_hw.riscv.data.v");
+        if(USE_X_CACHE){
+            m_hostlink->boot("bin/engines/basic_dpd_engine_v7_raw_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v7_raw_tinsel_hw.riscv.data.v");
+        }else{
+            m_hostlink->boot("bin/engines/basic_dpd_engine_v7_raw_cache_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v7_raw_cache_tinsel_hw.riscv.data.v");
+        }
         //std::cerr<<"Go\n";
         m_hostlink->go();
 

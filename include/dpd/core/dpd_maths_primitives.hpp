@@ -18,10 +18,10 @@ inline float recip(float x)
 
 // These wierd names are to stop magic from the C library and compiler getting in the way
 
-inline double recip_pow_half(double x)
 #ifdef TINSEL
-;
+double recip_pow_half(double x);
 #else
+inline double recip_pow_half(double x)
 { return 1.0/sqrt(x); }
 #endif
 
@@ -41,10 +41,11 @@ inline double pow_half(double x)
 { return sqrt(x); }
 #endif
 
-inline float pow_half(float x)
+
 #ifdef TINSEL
-;
+float pow_half(float x);
 #else
+inline float pow_half(float x)
 { return sqrtf(x); }
 #endif
 

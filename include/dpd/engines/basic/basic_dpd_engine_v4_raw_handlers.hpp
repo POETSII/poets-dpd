@@ -16,7 +16,7 @@ struct BasicDPDEnginev4RawConfig
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
-    static constexpr size_t MAX_BEAD_TYPES=12;
+    static constexpr size_t MAX_BEAD_TYPES=8;
 };
 
 
@@ -48,24 +48,24 @@ struct BasicDPDEnginev4RawHandlers
     };
 
     static uint32_t get_bead_type(uint32_t bead_id)
-    { return bead_hash_get_bead_type(bead_id); }
+    { return BeadHash{bead_id}.get_bead_type(); }
 
     static bool is_monomer(uint32_t bead_id) 
-    { return bead_hash_is_monomer(bead_id); }
+    { return BeadHash{bead_id}.is_monomer(); }
 
     static uint32_t get_polymer_id(uint32_t bead_id)
-    { return bead_hash_get_polymer_id(bead_id); }
+    { return BeadHash{bead_id}.get_polymer_id(); }
 
     static uint32_t get_polymer_offset(uint32_t bead_id)
-    { return bead_hash_get_polymer_offset(bead_id); }
+    { return BeadHash{bead_id}.get_polymer_offset(); }
 
-    static uint32_t make_hash_from_offset(uint32_t bead_id, unsigned offset)
+    static BeadHash make_hash_from_offset(uint32_t bead_id, unsigned offset)
     {
-        return bead_hash_make_reduced_hash_from_polymer_offset(bead_id, offset);
+        return BeadHash{bead_id}.make_reduced_hash_from_polymer_offset( offset);
     }
 
-    static uint32_t get_hash_code(uint32_t bead_id)
-    { return bead_id; }
+    static BeadHash get_hash_code(uint32_t bead_id)
+    { return BeadHash{bead_id}; }
 
 
     struct raw_bead_view_t
@@ -171,8 +171,10 @@ struct BasicDPDEnginev4RawHandlers
         float inv_root_dt=nanf("");
         float bond_r0 = nanf("");
         float bond_kappa = nanf("");
-        float conservative[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
-        float sqrt_dissipative;
+        struct {
+            float conservative;
+            float sqrt_dissipative;
+        }interactions[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
         uint32_t t;
         uint64_t t_hash;
         uint64_t t_seed;
@@ -225,7 +227,8 @@ struct BasicDPDEnginev4RawHandlers
         return cell.rts;
     }
 
-    static void on_barrier(device_state_t &cell)
+    template<class TState>
+    static void on_barrier(TState &cell)
     {
         switch(cell.phase){
             case PreMigrate:
@@ -350,6 +353,7 @@ struct BasicDPDEnginev4RawHandlers
         cell.share_todo = resident.size();
 
         for(unsigned i=0; i<resident.size(); i++){ 
+            assert( vec3f_t{resident[i].f}.l2_norm() == 0);
             cell.cached_bond_indices[i]=0xff;
             #ifndef NDEBUG
             cell.debug_hookean_bonds_seen[i]=0;
@@ -376,6 +380,7 @@ struct BasicDPDEnginev4RawHandlers
         }
     }
 
+    template<bool EnableLogging>
     static void on_recv_share(device_state_t &cell, const raw_bead_view_t &incoming)
     {
         //std::cerr<<"  Recv: ("<<cell.location[0]<<","<<cell.location[1]<<","<<cell.location[2]<<"), p="<<&cell<<", nres="<<cell.resident.n<<", other="<<get_hash_code(incoming.id)<<"\n";
@@ -434,16 +439,16 @@ struct BasicDPDEnginev4RawHandlers
             }
             #endif
 
-            float conStrength=cell.conservative[MAX_BEAD_TYPES*get_bead_type(bead.id)+get_bead_type(incoming.id)];
+            auto strength=cell.interactions[MAX_BEAD_TYPES*get_bead_type(bead.id)+get_bead_type(incoming.id)];
 
             float f[3];
-            dpd_maths_core_half_step_raw::calc_force<float,float[3],float[3]>(
+            dpd_maths_core_half_step_raw::calc_force<EnableLogging,float,float[3],float[3]>(
                 cell.inv_root_dt,
                 cell.t_hash,
                 dx, dr,
                 kappa, r0, 
-                conStrength,
-                cell.sqrt_dissipative,
+                strength.conservative,
+                strength.sqrt_dissipative,
                 get_hash_code(bead.id), get_hash_code(incoming.id),
                 bead.v, incoming.v,
                 f
@@ -455,7 +460,7 @@ struct BasicDPDEnginev4RawHandlers
                 //std::cerr<<"K: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
                 if(!cached){
                     raw_cached_bond_t tmp;
-                    tmp.bead_hash=get_hash_code(incoming.id);
+                    tmp.bead_hash=get_hash_code(incoming.id).hash;
                     vec3_copy(tmp.x, neighbour_x);
                     cached_bonds.push_back(tmp);
                     //std::cerr<<" caching, bead_i="<<bead_i<<", bead_id="<<get_hash_code(bead.id)<<" target="<<get_hash_code(incoming.id)<<"\n";
@@ -477,7 +482,7 @@ struct BasicDPDEnginev4RawHandlers
                         // Once both partners have arrived, we calculate force and push onto outgoing_forces
                         //std::cerr<<"Force!`\n";
                         assert(bead.id == resident[bead_i].id);
-                        calc_angle_force_for_middle_bead(cell, bead, cell.cached_bond_indices[bead_i], cached_bond_index);
+                        calc_angle_force_for_middle_bead<EnableLogging>(cell, bead, cell.cached_bond_indices[bead_i], cached_bond_index);
                         assert(force_outgoing.size()>0);
                         cell.rts |= RTS_FLAG_force;
                         //std::cerr<<"DoenFr\n";
@@ -490,6 +495,7 @@ struct BasicDPDEnginev4RawHandlers
         }
     }
 
+    template<bool EnableLogging>
     static void calc_angle_force_for_middle_bead(device_state_t &cell, raw_bead_resident_t &bead, unsigned cache_index_a, unsigned cache_index_b)
     {
         assert(cell.phase==SharingAndForcing);
@@ -503,18 +509,15 @@ struct BasicDPDEnginev4RawHandlers
         // We only call this function if we already know it is an angle bond
         assert(bead.angle_bonds[ai].partner_head!=0xFF);
 
-        auto head_hash=make_hash_from_offset(bead.id, bead.angle_bonds[ai].partner_head);
-        auto tail_hash=make_hash_from_offset(bead.id, bead.angle_bonds[ai].partner_tail);
+        BeadHash head_hash=make_hash_from_offset(bead.id, bead.angle_bonds[ai].partner_head);
+        BeadHash tail_hash=make_hash_from_offset(bead.id, bead.angle_bonds[ai].partner_tail);
 
         const auto *head=&cached_bonds[cache_index_a];
         const auto *tail=&cached_bonds[cache_index_b];
 
-        if(head->bead_hash==tail_hash){
+        if( BeadHash{head->bead_hash}.reduced_equals(tail_hash) ){
             std::swap(head, tail);
         }
-
-        assert(head->bead_hash==head_hash);
-        assert(tail->bead_hash==tail_hash);
         
         // The cache copies should already have wrapping applied
         float first[3], second[3];
@@ -528,7 +531,7 @@ struct BasicDPDEnginev4RawHandlers
 
         float headForce[3], middleForce[3], tailForce[3];
 
-        dpd_maths_core_half_step_raw::calc_angle_force<true,float,float[3],float[3]>(
+        dpd_maths_core_half_step_raw::calc_angle_force<EnableLogging,float,float[3],float[3]>(
             (float)bead.angle_bonds[ai].kappa, 0.0f, 0.0f,
             first, FirstLength,
             second, SecondLength,
@@ -538,12 +541,18 @@ struct BasicDPDEnginev4RawHandlers
         vec3_add(bead.f, middleForce);
 
         force_outgoing.alloc_back();
-        force_outgoing.back().target_hash=head_hash;
+        force_outgoing.back().target_hash=head_hash.hash;
         vec3_copy(force_outgoing.back().f, headForce);
 
         force_outgoing.alloc_back();
-        force_outgoing.back().target_hash=tail_hash;
+        force_outgoing.back().target_hash=tail_hash.hash;
         vec3_copy(force_outgoing.back().f, tailForce);
+
+        if(EnableLogging && ForceLogging::logger()){
+            ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, BeadHash{bead.id}, BeadHash{tail->bead_hash}, "f_next_angle_head", 3, headForce);
+            ForceLogging::logger()->LogBeadTripleProperty(BeadHash{bead.id}, BeadHash{head->bead_hash},  BeadHash{tail->bead_hash}, "f_next_angle_mid", 3, middleForce);
+            ForceLogging::logger()->LogBeadTripleProperty(BeadHash{tail->bead_hash}, BeadHash{head->bead_hash}, BeadHash{bead.id}, "f_next_angle_tail", 3, tailForce);
+        }
     }
 
 
@@ -565,8 +574,12 @@ struct BasicDPDEnginev4RawHandlers
         auto resident=make_bag_wrapper(cell.resident);
 
         for(auto &b : resident){
-            if( get_hash_code(b.id) == incoming.target_hash){
+            if( BeadHash{incoming.target_hash}.reduced_equals(BeadHash{b.id})){
                 vec3_add(b.f, incoming.f);
+                if(ForceLogging::logger()){
+                    ForceLogging::logger()->LogBeadProperty(BeadHash{b.id}, "recv_force_angle", 3, incoming.f);
+                }
+
             }
         }
     }

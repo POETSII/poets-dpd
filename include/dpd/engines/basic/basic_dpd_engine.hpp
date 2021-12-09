@@ -10,12 +10,16 @@
 
 #include "dpd/core/make_nhood.hpp"
 
+#include "dpd/core/logging.hpp"
+
 #include <cassert>
 #include <cmath>
 #include <array>
 #include <cstdint>
 #include <math.h>
+#ifndef TINSEL
 #include <iostream>
+#endif
 
 
 // Calculate checksum except for the last 4 bytes (assumed to be the checksum field).
@@ -63,63 +67,20 @@ private:
     friend class BasicDPDEngineV4Raw;
     friend class BasicDPDEngineV5Raw;
     friend class BasicDPDEngineV6Raw;
+    template<bool USE_X_CACHE>
     friend class BasicDPDEngineV7Raw;
     friend class BasicDPDEngineV8Raw;
 
-    struct bead_hash_t
-    {
-        /*  1ppp pppp pppp pppp  pppp pppp pppp bbbb
-            0ooo oooo pppp pppp  pppp pppp pppp bbbb
-            p = polymer id
-            o = polymer offset
-            b = bead type
-
-            A polymer id plus offset is just shifted right by 4
-            0000 1ppp pppp pppp  pppp pppp pppp pppp
-            0000 0ooo oooo pppp  pppp pppp pppp pppp
-            This is generally cheaper than masking
-        */
-        uint32_t bead_hash;
-
-        void operator=(uint32_t x)
-        {
-            bead_hash=x;
-        }
-
-        uint32_t get_bead_type() const
-        { return bead_hash_get_bead_type(bead_hash); }
-
-        bool is_monomer() const
-        { return bead_hash_is_monomer(bead_hash); }
-
-        uint32_t get_polymer_id() const
-        { return bead_hash_get_polymer_id(bead_hash); }
-
-        uint32_t get_polymer_offset() const
-        { return bead_hash_get_polymer_offset(bead_hash); }
-
-        // This cannot work out what the bead type is, so will return the 0xf for the bead type
-        uint32_t make_reduced_hash_from_offset(unsigned offset)
-        {
-            return bead_hash_make_reduced_hash_from_polymer_offset(bead_hash, offset);
-        }
-
-        uint32_t get_hash_code() const
-        {
-            return bead_hash;
-        }
-
-    };
-    static_assert(sizeof(bead_hash_t)==4);
+    static_assert(sizeof(BeadHash)==4);
 
     struct bead_view_t
     {
-        bead_hash_t id;
+        BeadHash id;
         vec3f_t x;
         vec3f_t v;
 
-        uint32_t get_hash_code() const
-        { return id.get_hash_code(); }
+        BeadHash get_hash_code() const
+        { return id; }
 
         uint32_t get_bead_type() const
         { return id.get_bead_type(); }
@@ -165,7 +126,7 @@ private:
 
     void get_bond_info(
         const bead_resident_t &home,
-        const bead_hash_t &other_id,
+        const BeadHash &other_id,
         int &angle_partner_count,
         float &kappa,
         float &r0
@@ -215,11 +176,15 @@ public:
                     bond_r0=b.r0;
                 }else{
                     if(! (float(b.kappa) == bond_kappa) ){
+                        #ifndef TINSEL
                         std::cerr<<" b.kappa="<<b.kappa<<", "<<bond_kappa<<"\n";
+                        #endif
                         return "All bonds must have same kappa.";
                     }
                     if( !(float(b.r0) == bond_r0) ){
+                        #ifndef TINSEL
                         std::cerr<<" b.r0="<<b.kappa<<", "<<bond_r0<<"\n";
+                        #endif
                         return "All bonds must have same r0.";
                     }
                 }
@@ -313,7 +278,7 @@ protected:
         const PolymerType &pt = m_state->polymer_types.at(b.polymer_type);
         bool is_monomer=pt.bead_types.size()==1;
 
-        bb.id=bead_hash_construct(b.get_bead_type(), b.is_monomer, b.polymer_id, b.polymer_offset);
+        bb.id=BeadHash::construct(b.get_bead_type(), b.is_monomer, b.polymer_id, b.polymer_offset);
         vec3_copy(bb.x, b.x);
         vec3_copy(bb.v, b.v);
         vec3_copy(bb.f, b.f);
@@ -417,7 +382,7 @@ protected:
             ii.dissipative=pow_half(ii.dissipative);
         }
         m_dt=m_state->dt;
-        m_inv_root_dt=recip_pow_half(m_state->dt);
+        m_inv_root_dt=pow_half(24 * dpd_maths_core_half_step::kT / m_state->dt);
 
         m_cells.resize( m_box[0] * m_box[1] * m_box[2] );
         vec3i_t pos;
@@ -514,12 +479,42 @@ protected:
     virtual void step()
     {
         if(ForceLogging::logger()){
+            step_impl<true>();
+        }else{
+            step_impl<false>();
+        }
+    }
+
+    template<bool EnableLogging>
+    void step_impl()
+    {
+        m_t_hash = get_t_hash(m_state->t, m_state->seed);
+
+        if(EnableLogging && ForceLogging::logger()){
             ForceLogging::logger()->SetTime(m_state->t);
+            ForceLogging::logger()->LogProperty("dt", 1, &m_state->dt);
+            double seed_low=m_state->seed &0xFFFFFFFFul;
+            double seed_high=m_state->seed>>32;
+            ForceLogging::logger()->LogProperty("seed_lo", 1, &seed_low);
+            ForceLogging::logger()->LogProperty("seed_high", 1, &seed_high);
+            double t_hash_low=m_t_hash&0xFFFFFFFFul;
+            double t_hash_high=m_t_hash>>32;
+            ForceLogging::logger()->LogProperty("t_hash_lo", 1, &t_hash_low);
+            ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
+            for(auto &c : m_cells){
+                for(auto &b : c.beads){
+                    double h=b.id.hash;
+                    ForceLogging::logger()->LogBeadProperty(b.id, "b_hash", 1, &h);
+                    double x[3]={b.x[0],b.x[1],b.x[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.id,"x",3,x);
+                    double f[3]={b.f[0],b.f[1],b.f[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.id,"f",3,f);
+                }
+            }
         }
 
         double dt=m_state->dt;
 
-        m_t_hash = get_t_hash(m_state->t, m_state->seed);
 
         // Move the beads, and then assign to cells based on x(t+dt)
         std::vector<bead_resident_t> moved; // Temporarily hold those that moved
@@ -557,11 +552,8 @@ protected:
         
         for(cell_t &cell : m_cells){
             assert(cell.neighbours.size()==27);
-            unsigned tmp=0;
             for(unsigned neighbour_index : cell.neighbours){
                 cell_t &neighbour = m_cells[neighbour_index];
-                //std::cerr<<m_state->t<<", i="<<tmp<<", cell="<<cell.location<<", nbor="<<neighbour.location<<"\n";
-                tmp++;
 
                 // Stay on one neighbour so we can tell if it must be cached
                 // We do wrapping on a per bead basis, to simulate receiving each one
@@ -571,30 +563,24 @@ protected:
 
                     vec3f_t neighbour_x = neighbour_bead.x;
                     vec3i_t neighbour_cell_pos = floor(neighbour_x);
-                    bool wrapped=false;
+                    
                     for(int d=0; d<3; d++){
                         if(cell.location[d]==0 && neighbour_cell_pos[d]==m_box[d]-1){
                             neighbour_x[d] -= m_box[d];
-                            wrapped=true;
                         }else if(cell.location[d]==m_box[d]-1 && neighbour_cell_pos[d]==0){
                             neighbour_x[d] += m_box[d];
-                            wrapped=true;
                         }
-                    }
-                    if(wrapped){
-                        //std::cerr<<"Wrapped: "<<neighbour_bead.x<<" -> "<<neighbour_x<<"\n";
                     }
 
                     for(unsigned i=0; i<cell.beads.size(); i++){
                         // This implicitly interacts each bead with itself, which is handled with a
                         // distance check in calc_force.
-                        cache_neighbour |= calc_force( cell.beads[i], neighbour_bead, neighbour_x);
+                        cache_neighbour |= calc_force<EnableLogging>( cell.beads[i], neighbour_bead, neighbour_x);
                     }
 
                     if(cache_neighbour){
-                        uint32_t hash_code=neighbour_bead.id.get_hash_code();
+                        uint32_t hash_code=neighbour_bead.id.hash;
                         cell.cached_bonds.push_back({hash_code, neighbour_x});
-                        //std::cerr<<"Caching, t="<<m_state->t<<", cell="<<cell.location<<", "<<neighbour_bead.id.get_polymer_id()<<", poff="<<neighbour_bead.id.get_polymer_offset()<<", hash="<<hash_code<<"\n";
                     }
                 }
             }
@@ -605,7 +591,7 @@ protected:
         for(cell_t &cell : m_cells){
             std::vector<force_input_t> forces;
             for(auto &b : cell.beads){
-                update_bead_angle(cell.cached_bonds, b, forces);
+                update_bead_angle<EnableLogging>(cell.cached_bonds, b, forces);
             }
             for(unsigned neighbour_index : cell.neighbours){
                 on_recv_forces(m_cells[neighbour_index], forces);
@@ -635,19 +621,29 @@ protected:
         }
 
         m_state->t += 1;
+
+        if(EnableLogging && ForceLogging::logger()){
+            for(auto &c : m_cells){
+                for(auto &b : c.beads){
+                    double x[3]={b.x[0],b.x[1],b.x[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x_next",3,x);
+                    double f[3]={b.f[0],b.f[1],b.f[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_next",3,f);
+                }
+            }
+        }
     }
 
     // Note that b_x has already been adjusted for wrapping
+    template<bool EnableLogging>
     bool calc_force(bead_resident_t &a, const bead_view_t &b, const vec3f_t &b_x)
     {
         vec3f_t dx=a.x-b_x;
         float dr_sqr=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
-        if(dr_sqr >=1 || dr_sqr < 1e-5){ // The min threshold avoid large forces, and also skips self-interaction
+        if(dr_sqr >=1 || dr_sqr < MIN_DISTANCE_CUTOFF_SQR){ // The min threshold avoid large forces, and also skips self-interaction
             return false;
         }
         float dr=pow_half(dr_sqr);
-
-        //std::cerr<<"dut : a="<<a.get_bead_id()<<", b="<<b.get_bead_id()<<", dx="<<dx<<"\n";
 
         float kappa, r0;
         int angle_bond_count;
@@ -660,7 +656,7 @@ protected:
         );
 
         vec3f_t f;
-        dpd_maths_core_half_step::calc_force(
+        dpd_maths_core_half_step::calc_force<EnableLogging>(
             m_inv_root_dt,
             [&](unsigned a, unsigned b){ return m_interactions[m_numBeadTypes*a+b].conservative; },
             // Note that this is teh sqrt of the dissipative
@@ -671,7 +667,6 @@ protected:
             a, b,
             f
         );
-        //std::cerr<<"Dut: t_hash="<<m_t_hash<<", h="<<a.id.get_polymer_id()<<", dx="<<dx<<", dr="<<dr<<", f="<<f<<"\n";
 
         a.f += f;
         return angle_bond_count > 0;
@@ -679,13 +674,13 @@ protected:
 
     // TCache is a vector-like container of cached bonds
     // TOutgoing is a container that supports push_back of a force_input_t
-    template<class TCache,class TOutgoing>
+    template<bool EnableLogging, class TCache,class TOutgoing>
     void update_bead_angle(TCache &cache, bead_resident_t &bead, TOutgoing &outgoing)
     {
-        auto find_cached_pos=[&](uint32_t target_hash) -> const cached_bond_t *
+        auto find_cached_pos=[&](BeadHash target_hash) -> const cached_bond_t *
         {
             for(unsigned i=0; i<cache.size(); i++){
-                if( bead_hash_equals(cache[i].bead_hash ,target_hash)){
+                if( target_hash.reduced_equals( BeadHash{cache[i].bead_hash}) ){
                     return &cache[i];
                 }
             }
@@ -697,8 +692,8 @@ protected:
             if(bead.angle_bonds[i].partner_head==0xFF){
                 break;
             }
-            auto head_reduced_hash=bead.id.make_reduced_hash_from_offset(bead.angle_bonds[i].partner_head);
-            auto tail_reduced_hash=bead.id.make_reduced_hash_from_offset(bead.angle_bonds[i].partner_tail);
+            auto head_reduced_hash=bead.get_hash_code().make_reduced_hash_from_polymer_offset(bead.angle_bonds[i].partner_head);
+            auto tail_reduced_hash=bead.get_hash_code().make_reduced_hash_from_polymer_offset(bead.angle_bonds[i].partner_tail);
             const auto *head=find_cached_pos(head_reduced_hash);
             const auto *tail=find_cached_pos(tail_reduced_hash);
             
@@ -720,22 +715,24 @@ protected:
                 headForce, middleForce, tailForce
             );
 
-            //std::cerr<<"Dut: fh="<<headForce<<", fm="<<middleForce<<", ft="<<tailForce<<"\n";
+            if(EnableLogging && ForceLogging::logger()){
+                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, bead.get_hash_code(), BeadHash{tail->bead_hash}, "f_next_angle_head", headForce);
+                ForceLogging::logger()->LogBeadTripleProperty(bead.get_hash_code(), BeadHash{head->bead_hash}, BeadHash{tail->bead_hash}, "f_next_angle_mid", middleForce);
+                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{tail->bead_hash}, BeadHash{head->bead_hash}, bead.get_hash_code(), "f_next_angle_tail", tailForce);
+            }
 
             bead.f += middleForce;
 
-            outgoing.push_back( { head_reduced_hash, headForce } );
-            outgoing.push_back( { tail_reduced_hash, tailForce } );
+            outgoing.push_back( { head_reduced_hash.hash, headForce } );
+            outgoing.push_back( { tail_reduced_hash.hash, tailForce } );
         }
     }
 
     void on_recv_forces(cell_t &cell, const std::vector<force_input_t> &forces)
     {
         for(auto &b : cell.beads){
-            auto bpo = b.id.get_hash_code();
             for(const auto &f : forces){
-                if( bead_hash_equals( bpo , f.target_hash) ){
-                    //std::cerr<<"  bpo="<<bpo<<", fdpd="<<b.f<<", fangle="<<f.f<<", f="<<b.f+f.f<<"\n";
+                if( b.get_hash_code().reduced_equals( BeadHash{f.target_hash} ) ){
                     b.f += f.f;
                 }
             }

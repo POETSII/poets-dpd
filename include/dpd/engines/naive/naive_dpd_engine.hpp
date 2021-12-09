@@ -61,18 +61,37 @@ public:
         }
     }
 
+
+    struct bp_hash
+    {
+        size_t operator()(const std::pair<const Bead *, const Bead *> ab) const
+        {
+            return std::hash<const Bead*>()(ab.first) + 19937 * std::hash<const Bead*>()(ab.second);
+        }
+    };
 private:
     WorldState *m_state;
 
+    struct Cell
+    {
+        unsigned index;
+        vec3i_t pos;
+        std::vector<Bead*> beads;
+    };
+
     unsigned m_numBeadTypes;
-    vec3r_t m_origins; // origin in each dimension. Must be an integer, though encoded as real
     vec3r_t m_lengths; // dimensions in all directions Must be an integer, though encoded as real
+    vec3i_t m_dims; // Same as lengths, but integer
     std::vector<vec3r_t> m_forces;
-    std::vector<std::vector<Bead*>> m_cells;
+    std::vector<Cell> m_cells;
 
     double m_inv_root_dt;
 
     uint64_t m_t_hash;
+
+    
+
+    std::unordered_set<std::pair<const Bead*,const Bead*>, bp_hash> m_seen_pairs;
 
 
     void check_constraints_and_setup()
@@ -91,6 +110,7 @@ private:
             require( round(m_state->box[i]) == m_state->box[i], "box must be integer aligned");
             require( m_state->box[i] >= 2, "Distance in each direction must be at least 2");
             m_lengths[i]=m_state->box[i];
+            m_dims[i]=(int)m_state->box[i];
         }
 
         m_numBeadTypes=m_state->bead_types.size();
@@ -101,7 +121,7 @@ private:
     {
         unsigned n=1;
         for(unsigned i=0;i<3;i++){
-            n *= m_lengths[i];
+            n *= m_dims[i];
         }
         return n;
     }
@@ -110,22 +130,20 @@ private:
     {
         vec3i_t res;
         for(unsigned i=0; i<3; i++){
-            res[i] = floor(pos[i] - m_origins[i]);
-            assert(0<=res[i] && res[i] < m_lengths[i]);
+            res[i] = (int)floor(pos[i]);
+            assert(0<=res[i] && res[i] < m_dims[i]);
         }
         return res;
     }
 
     unsigned cell_pos_to_index(vec3i_t pos) const
     {
-        unsigned index=0;
-        unsigned last_dim=0;
-        for(unsigned i=0; i<3; i++){
-            assert(0<= pos[i] && pos[i] < m_lengths[i] );
-            index = index * last_dim + pos[i];
-            last_dim = m_lengths[i];
-        }
-        return index;
+        return pos[0]*m_dims[1]*m_dims[2] + pos[1] * m_dims[2] + pos[2];
+    }
+
+    vec3i_t index_to_cell_pos(unsigned index) const
+    {
+        return { (int)(index/(m_dims[1]*m_dims[2])) , (int)((index/m_dims[2])%m_dims[1]) , (int)(index%m_dims[2]) };
     }
 
     unsigned world_pos_to_cell_index(const vec3r_t &pos) const
@@ -144,7 +162,7 @@ private:
             int base_is_left = raw < 0;
             int base_is_right = raw == m_lengths[i];
 
-            pos[i] = raw + (base_is_left - base_is_right) * m_lengths[i];
+            pos[i] = raw + (base_is_left - base_is_right) * m_dims[i];
 
             delta[i] = (base_is_right - base_is_left) * m_lengths[i];
         }
@@ -168,6 +186,8 @@ private:
     {
         m_t_hash = get_t_hash(m_state->t, m_state->seed);
 
+        m_seen_pairs.clear();
+
         if(ForceLogging::logger()){
             ForceLogging::logger()->SetTime(m_state->t);
             ForceLogging::logger()->LogProperty("dt", 1, &m_state->dt);
@@ -180,14 +200,14 @@ private:
             ForceLogging::logger()->LogProperty("t_hash_lo", 1, &t_hash_low);
             ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
             for(auto &b : m_state->beads){
-                double h=b.get_hash_code();
-                ForceLogging::logger()->LogBeadProperty(b.bead_id, "b_hash", 1, &h);
+                double h=b.get_hash_code().hash;
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(), "b_hash", 1, &h);
                 double x[3]={b.x[0],b.x[1],b.x[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"x",3,x);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x",3,x);
                 double v[3]={b.v[0],b.v[1],b.v[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"v",3,v);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"v",3,v);
                 double f[3]={b.f[0],b.f[1],b.f[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"f",3,f);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f",3,f);
             }
         }
 
@@ -195,8 +215,13 @@ private:
 
         // Clear all cell information
         m_cells.resize(calc_num_cells());
+        unsigned ci=0;
         for(auto &c : m_cells){
-            c.clear();
+            c.index=ci;
+            c.pos=index_to_cell_pos(ci);
+            assert(c.index==cell_pos_to_index(c.pos));
+            c.beads.clear();
+            ++ci;
         }
 
         m_forces.assign(m_state->beads.size(), vec3r_t{0,0,0});
@@ -204,15 +229,18 @@ private:
         // Move the beads, and then assign to cells based on x(t+dt)
         for(auto &b : m_state->beads){
             update_bead_pos(&b);
-            auto &cell = m_cells.at( world_pos_to_cell_index(b.x) );
-            cell.push_back(&b);
-            if(cell.size() >= 16){
-                std::cerr<<"  b="<<b.x<<", cell size="<<cell.size()<<"\n";
+            auto bpos=world_pos_to_cell_pos(b.x);
+            auto bindex=cell_pos_to_index(bpos);
+            auto &cell = m_cells.at( bindex );
+            assert(cell.pos==bpos);
+            cell.beads.push_back(&b);
+            if(cell.beads.size() >= 16){
+                std::cerr<<"  b="<<b.x<<", cell size="<<cell.beads.size()<<"\n";
             }
 
             if(ForceLogging::logger()){
                 double x[3]={b.x[0],b.x[1],b.x[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"x_next",3,x);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x_next",3,x);
             }
         }
 
@@ -234,14 +262,14 @@ private:
         for(auto &b : m_state->beads){
             double ff[3]={m_forces[b.bead_id][0], m_forces[b.bead_id][1], m_forces[b.bead_id][2]};
             if(ForceLogging::logger()){
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"f_now",3,ff);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_now",3,ff);
             }
             update_bead_mom(&b);
             if(ForceLogging::logger()){
                 double v[3]={b.v[0],b.v[1],b.v[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"v_next",3,v);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"v_next",3,v);
                 double f[3]={b.f[0],b.f[1],b.f[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"f_next",3,f);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_next",3,f);
             }
         }
 
@@ -259,16 +287,17 @@ private:
                 for(dir[2]=-1; dir[2]<=+1; dir[2]++){
                     auto [other_pos,other_delta] = make_relative_cell_pos(pos, dir);
                     const auto &other=m_cells[cell_pos_to_index(other_pos)];
-                    if(!home.empty() && !other.empty()){
+                    assert(other.pos==other_pos);
+                    if(!home.beads.empty() && !other.beads.empty()){
                         //std::cerr<<"  base="<<pos<<", dir="<<dir<<", pos="<<other_pos<<", delta="<<other_delta<<"\n";
-                        update_cell_forces(home, other, other_delta);
+                        update_cell_forces(home.beads, other.beads, other_delta);
                     }
                 }
             }
         }
     }
 
-    void update_cell_forces(std::vector<Bead*> &home, const std::vector<Bead*> &other, const vec3r_t &other_delta)
+    void __attribute__((noinline)) update_cell_forces(std::vector<Bead*> &home, const std::vector<Bead*> &other, const vec3r_t &other_delta)
     {
         for(Bead *hb : home){
             for(const Bead *ob : other)
@@ -294,6 +323,9 @@ private:
         return res;
     }
 
+    double RandSym(const  BeadHash &s1, const BeadHash &s2) const
+    { return RandSym(s1.hash, s2.hash); }
+
     double RandSym(uint32_t s1, uint32_t s2) const
     {
         uint32_t ru=hash_rng_sym(m_t_hash, s1,s2);
@@ -301,7 +333,8 @@ private:
         //const double scale=ldexp(2.0,-32) / sqrt(1/3.0); // gives stddev of 1 (same as groot-warren paper)
         const double scale=ldexp(1.0, -32); // Gives range of [-0.5,0.5]  (same as Osprey-DPD)
         double u = rs * scale; 
-        /*
+        
+        #if 0
         static double u_sum_sqr=0, u_sum=0;
         static unsigned u_count=0;
         u_sum_sqr += u*u;
@@ -310,7 +343,8 @@ private:
         if((u_count % 10000)==0){
             std::cerr<<"ucount="<<u_count<<", mean="<<u_sum/u_count<<", std="<<sqrt(u_sum_sqr/u_count)<<"\n";
         }
-        */
+        #endif
+        
         return u;
     }
 
@@ -391,7 +425,7 @@ private:
             std::cerr<<"  hb="<<hb->bead_id+1<<", ob="<<ob->bead_id+1<<", f_acc="<<m_forces.at(hb->bead_id)<<", f="<<f<<"\n";
         }*/
 
-        if(ForceLogging::logger() && hb->bead_id < ob->bead_id){
+        if(ForceLogging::logger()){
             double ddx[3]={dx[0],dx[1],dx[2]};
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dx",ForceLoggingFlags::SymmetricFlipped, 3,ddx);
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dr",ForceLoggingFlags::SymmetricFlipped, 1,&dr);
@@ -403,9 +437,23 @@ private:
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-diss",ForceLoggingFlags::Symmetric , 1,&dissForce);
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng-scale",ForceLoggingFlags::Symmetric ,1, &randScale);
             ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rand",ForceLoggingFlags::Symmetric ,1, &randForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dx", 3,ddx);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dr", 1,&dr);
+            double dd=interactions.dissipative;
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-diss-strength", 1, &dd);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-invrootdt", 1, &scaled_inv_root_dt);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-gammap", 1, &gammap);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-rng", 1, &u);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-con", 1, &conForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-diss", 1,&dissForce);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-rng-scale",1, &randScale);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-rand",1, &randForce);
             double ff[3]={f[0],f[1],f[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-force",ForceLoggingFlags::SymmetricFlipped, 3,ff);
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"f_next_dpd", 3,ff);
             
+            if(!m_seen_pairs.insert({hb,ob}).second){
+                fprintf(stderr, "  Seen %u %u twice\n", hb->get_hash_code().hash, ob->get_hash_code().hash);
+            }
         }
     
         //std::cerr<<"Ref: t_hash="<<m_t_hash<<", h="<<hb->polymer_id<<", dx="<<rdx<<", dr="<<rdxr<<", f="<<f<<"\n";
@@ -457,10 +505,15 @@ private:
         
         m_forces[head.bead_id] += f;
         m_forces[tail.bead_id] -= f;
-
+        
         if(ForceLogging::logger()){
+            
             double ff[3]={f[0],f[1],f[2]};
-            ForceLogging::logger()->LogBeadPairProperty(p.bead_ids[b.bead_offset_head], p.bead_ids[b.bead_offset_tail], "hookean-f", ForceLoggingFlags::Asymmetric, 3, ff);
+            ForceLogging::logger()->LogBeadPairProperty(head.get_hash_code(), tail.get_hash_code(), "f_next_hookean", 3, ff);
+            for(int i=0;i<3; i++){
+                ff[i]=-ff[i];
+            }
+            ForceLogging::logger()->LogBeadPairProperty(tail.get_hash_code(), head.get_hash_code(), "f_next_hookean", 3, ff);
         }
     }
 
@@ -556,6 +609,12 @@ private:
         m_forces[head_bead.bead_id] += headForce;
         m_forces[tail_bead.bead_id] += tailForce;
         m_forces[middle_bead.bead_id] += middleForce;
+
+        if(ForceLogging::logger()){
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_head", headForce);
+            ForceLogging::logger()->LogBeadTripleProperty(middle_bead.get_hash_code(), head_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_mid", middleForce);
+            ForceLogging::logger()->LogBeadTripleProperty(tail_bead.get_hash_code(), head_bead.get_hash_code(), middle_bead.get_hash_code(), "f_next_angle_tail", tailForce);
+        }
 
         
     }

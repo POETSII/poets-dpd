@@ -6,6 +6,7 @@
 #include "dpd/core/vec3.hpp"
 
 #include <unordered_set>
+#include <unordered_map>
 #include <iostream>
 
 class ValidationFailedError
@@ -115,6 +116,8 @@ inline void validate(const WorldState &s, double max_r=1)
         }
     }
 
+    std::unordered_map<BeadHash,const Bead *> seen_hashes;
+
     // Max speed allowed is half a box per time-step
     double max_v = 0.5 / s.dt;
     // Max force would cause speed to increase by max_v in one time-step
@@ -135,6 +138,12 @@ inline void validate(const WorldState &s, double max_r=1)
 
             REQUIRE( -max_f <= b.f[i] && b.f[i] <= max_f );
         }
+
+        auto it=seen_hashes.find(b.get_hash_code());
+        if(it!=seen_hashes.end()){
+            std::cerr<<"  hash collision : "<<it->second->bead_id<<", "<<b.bead_id<<"\n";
+        }
+        REQUIRE( seen_hashes.insert({b.get_hash_code(),&b}).second);
     }
 
 

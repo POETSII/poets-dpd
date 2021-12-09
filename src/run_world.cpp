@@ -7,19 +7,26 @@
 #include "dpd/core/dpd_state_validator.hpp"
 
 #include "dpd/core/logging.hpp"
+#include "dpd/core/logging_impl.hpp"
 
 #include <random>
 #include <fstream>
 
+#include <tbb/global_control.h>
+
+
 void usage()
 {
-    fprintf(stderr, "run_world : engine-name src-file output-base-name interval_count interval_size \n");
+    fprintf(stderr, "run_world : engine-name src-file output-base-name interval_count state_interval_size [vtk_interval_size] \n");
     fprintf(stderr, "  engine names:\n");
     for(auto s : DPDEngineFactory::ListFactories()){
         fprintf(stderr, "    %s\n", s.c_str());
     }
     fprintf(stderr,"  env:\n");
     fprintf(stderr,"     PDPD_LOG=log-path : do full force logging to given file.\n");
+    fprintf(stderr,"     PDPD_NUM_THREADS=n : Limit TBB to using n threads.\n");
+    fprintf(stderr,"\n");
+    fprintf(stderr, "    Either vtk_interval_size must divide state_interval_size, or vice-versa\n");
     exit(1);
 }
 
@@ -41,99 +48,19 @@ double now()
     return ts.tv_sec + 1e-9*ts.tv_nsec;
 }
 
-class FileLogger
-    : public ForceLogging
-{
-public:
-    FileLogger(const std::string &name)
-        : m_dst(name)
-        , m_t(0)
-    {
-        if(!m_dst.is_open()){
-            fprintf(stderr, "Couldnt open force logging file %s\n", name.c_str());
-        }
-    }
-
-    void print(double val)
-    {
-        if(std::round(val)==val && 0<=val && val < ldexp(1, 32)){
-            m_dst<<(uint32_t)val;
-        }else{
-            m_dst<<val;
-        }
-    }
-
-    virtual void SetTime(long t)
-    { m_t=t; }
-
-    virtual void LogProperty(const char *name, int dims, const double *x)
-    {
-        m_dst<<"Prop,"<<m_t<<",,,,"<<name;
-        for(int i=0; i<dims; i++){
-            m_dst<<",";
-            print(x[i]);
-        }
-        for(int i=dims;i<3;i++){
-            m_dst<<",";
-        }
-        m_dst<<"\n";
-    }
-
-    virtual void LogBeadProperty(long bead_id, const char *name, int dims, const double *x)
-    {
-        m_dst<<"Prop,"<<m_t<<","<<bead_id+1<<",,,"<<name;
-        for(int i=0; i<dims; i++){
-            m_dst<<",";
-            print(x[i]);
-        }
-        for(int i=dims;i<3;i++){
-            m_dst<<",";
-        }
-        m_dst<<"\n";
-    }
-
-    virtual void LogBeadPairProperty(long bead_id0,long bead_id1, const char *name, ForceLoggingFlags flags, int dims, const double *x)
-    {
-        bool flip=flags!=Asymmetric && (bead_id0 > bead_id1);
-        if(flip){
-            std::swap(bead_id0, bead_id1);
-        }
-        m_dst<<"Prop,"<<m_t<<","<<bead_id0+1<<","<<bead_id1+1<<",,"<<name;
-        for(int i=0; i<dims; i++){
-            if(flip && (flags==SymmetricFlipped)){
-                m_dst<<",";
-                print(-x[i]);
-            }else{
-                m_dst<<",";
-                print(x[i]);
-            }
-        }
-        for(int i=dims;i<3;i++){
-            m_dst<<",";
-        }
-        m_dst<<"\n";
-    }
-
-    virtual void LogBeadTripleProperty(long bead_id0, long bead_id1, long bead_id2, const char *name, int dims, const double *x)
-    {
-        m_dst<<"Prop,"<<m_t<<","<<bead_id0+1<<","<<bead_id1+1<<","<<bead_id2+1<<","<<name;
-        for(int i=0; i<dims; i++){
-            m_dst<<",";
-            print(x[i]);
-        }
-        for(int i=dims;i<3;i++){
-            m_dst<<",";
-        }
-        m_dst<<"\n";
-    }
-private:
-    std::ofstream m_dst;
-    long m_t;
-};
 
 int main(int argc, const char *argv[])
 {
     try{
+      int max_parallelism=tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism);
+
+      if(getenv("PDPD_NUM_THREADS")){
+	max_parallelism=std::atoi(getenv("PDPD_NUM_THREADS"));
+      }
+      std::cerr<<"TBB is using "<<max_parallelism<<" threads.\n";
+      tbb::global_control tbb_control_threads(tbb::global_control::max_allowed_parallelism, max_parallelism);
+      
+
         std::string engine_name;
         if(argc>1){
             engine_name=argv[1];
@@ -167,9 +94,23 @@ int main(int argc, const char *argv[])
             interval_count=std::stoi(argv[4]);
         }
 
-        int interval_size=1;
+        int state_interval_size=1;
         if(argc>5){
-            interval_size=std::stoi(argv[5]);
+            state_interval_size=std::stoi(argv[5]);
+        }
+   
+        int vtk_interval_size=state_interval_size;
+        if(argc>6){
+            vtk_interval_size=std::atoi(argv[6]);
+        }
+
+        int interval_size=std::min(state_interval_size,vtk_interval_size);
+
+        std::cerr<<"interval_count="<<interval_count<<", interval_size="<<interval_size<<", state_interval_size="<<state_interval_size<<", vtk_interval_size="<<vtk_interval_size<<"\n";
+
+        if( ! (((state_interval_size%vtk_interval_size)==0) || ((vtk_interval_size%state_interval_size)==0)) ){
+           fprintf(stderr, "state_interval_size and vtk_interval_size are not compatible.\n");
+           exit(1);
         }
 
         std::ifstream input(srcFile.c_str());
@@ -185,6 +126,12 @@ int main(int argc, const char *argv[])
 
         std::shared_ptr<DPDEngine> engine = DPDEngineFactory::create(engine_name);
 
+        std::string ok=engine->CanSupport(&state);
+        if(!ok.empty()){
+            fprintf(stderr, "Engine can't support world : %s\n", ok.c_str());
+            exit(1);
+        }
+
         int volume=state.box[0]*state.box[1]*state.box[2];
 
         double t0=now();
@@ -193,9 +140,14 @@ int main(int argc, const char *argv[])
 
         double t1=now();
 
+        int state_modulus=state_interval_size / interval_size;
+        int vtk_modulus=vtk_interval_size / interval_size;
+
         unsigned done=0;
         unsigned slice_i=0;
         engine->Run(interval_count, interval_size, [&](){
+	    ++slice_i;
+
             double t2=now();
             done+=interval_size;
 
@@ -203,29 +155,37 @@ int main(int argc, const char *argv[])
                 engine_name.c_str(), srcFile.c_str(), volume, (int)state.beads.size(), done,
                 t1-t0, t2-t1, state.beads.size()/(t2-t0)*done, state.beads.size()/(t2-t1)*interval_size
             );
+            fflush(stdout);
             t1=t2;
 
             std::vector<char> tmp(baseName.size()+100);
-            snprintf(&tmp[0], tmp.size()-1, "%s.%06d.state", baseName.c_str(), slice_i);
-            std::ofstream output(&tmp[0]);
-            if(!output.is_open()){
-                fprintf(stderr, "Couldnt create file %s\n", &tmp[0]);
-                exit(1);
-            }
-            write_world_state(output, state);
-            output.close();
+            std::ofstream output;
 
-            snprintf(&tmp[0], tmp.size()-1, "%s.%06d.vtk", baseName.c_str(), slice_i);
-            output.open(&tmp[0]);
-            if(!output.is_open()){
-                fprintf(stderr, "Couldnt create file %s\n", &tmp[0]);
-                exit(1);
-            }
-            write_to_vtk(output, state);
-            output.close();
+            if( (slice_i%state_modulus) == 0 ){
+        	    snprintf(&tmp[0], tmp.size()-1, "%s.%09d.state", baseName.c_str(), state.t);
+		    output.open(&tmp[0]);
+
+	            if(!output.is_open()){
+        	        fprintf(stderr, "Couldnt create file %s\n", &tmp[0]);
+                	exit(1);
+	            }
+        	    write_world_state(output, state);
+	            output.close();
+	    }
+
+            if( (slice_i%vtk_modulus) == 0){
+             snprintf(&tmp[0], tmp.size()-1, "%s.%09d.vtk", baseName.c_str(), state.t);
+             output.open(&tmp[0]);
+             if(!output.is_open()){
+                 fprintf(stderr, "Couldnt create file %s\n", &tmp[0]);
+                 exit(1);
+             }
+             write_to_vtk(output, state);
+             output.close();
+	   }
 
 
-            ++slice_i;
+
             return true;
         });
 

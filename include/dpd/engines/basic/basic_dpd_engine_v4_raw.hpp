@@ -26,7 +26,7 @@ public:
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
-    static constexpr size_t MAX_BEAD_TYPES=12;
+    static constexpr size_t MAX_BEAD_TYPES=8;
 
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
 
@@ -43,23 +43,12 @@ public:
     
     std::string CanSupport(const WorldState *s) const override
     {
-        if(s->bead_types.size()>1){
-            double diss=s->interactions.at(1).dissipative;
-            for(unsigned i=0; i<s->bead_types.size(); i++){
-                for(unsigned j=0; j<s->bead_types.size(); j++){
-                    if( s->interactions[i*s->bead_types.size()+j].dissipative!=diss){
-                        return "Dissipative strength must be uniform";
-                    }
-                }
-            }
-        }
 
         return BasicDPDEngine::CanSupport(s);
     }
 
     virtual void Run(unsigned nSteps) override
     {
-
         import_beads();
 
         // Create shadow device states
@@ -73,15 +62,15 @@ public:
             m_box.extract(dst.box);
             dst.dt=m_state->dt;
             dst.t=m_state->t;
-            dst.inv_root_dt=recip_pow_half(m_state->dt);
+            dst.inv_root_dt=pow_half(24 * dpd_maths_core_half_step::kT / m_state->dt);
             dst.bond_r0=m_bond_r0;
             dst.bond_kappa=m_bond_kappa;
             for(unsigned i=0; i<m_state->bead_types.size(); i++){
                 for(unsigned j=0; j<m_state->bead_types.size(); j++){
-                    dst.conservative[i*MAX_BEAD_TYPES+j]=m_state->interactions[i*m_state->bead_types.size()+j].conservative;
+                    dst.interactions[i*MAX_BEAD_TYPES+j].conservative=m_state->interactions[i*m_state->bead_types.size()+j].conservative;
+                    dst.interactions[i*MAX_BEAD_TYPES+j].sqrt_dissipative=sqrt(m_state->interactions[i*m_state->bead_types.size()+j].dissipative);
                 }
             }
-            dst.sqrt_dissipative=pow_half(m_state->interactions[0].dissipative);
             dst.t_hash = m_t_hash;
             dst.t_seed = m_state->seed;
             src.location.extract(dst.location);
@@ -105,6 +94,7 @@ public:
 
         for(unsigned i=0; i<nSteps; i++){
             step(states, neighbour_map);
+            m_state->t += 1;
         }
 
         //////////////////////////////////////////////
@@ -129,15 +119,26 @@ public:
             }
         }
 
-        for(unsigned i=0; i<nSteps; i++){
-            m_state->t += 1;
-        }
-
         export_beads();
     }
 
     void step(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map)
     {
+        if(ForceLogging::logger()){
+            step_impl<true>(states, neighbour_map);
+        }else{
+            step_impl<false>(states, neighbour_map);
+        }
+    }
+
+
+    template<bool EnableLogging>
+    void step_impl(std::vector<device_state_t> &states, std::unordered_map<device_state_t*,std::vector<device_state_t*>> &neighbour_map)
+    {
+        if(EnableLogging && ForceLogging::logger()){
+            ForceLogging::logger()->SetTime(m_state->t);
+        }
+
         //////////////////////////////////////////////////////////////
         // Move the beads, and then assign to cells based on x(t+dt)
         for(auto &c : states){
@@ -183,12 +184,24 @@ public:
                         raw_bead_view_t transfer;
                         Handlers::on_send_share(cell, transfer);
                         for(auto ni : neighbour_map[&cell]){
-                            Handlers::on_recv_share(*ni, transfer);
+                            Handlers::on_recv_share<EnableLogging>(*ni, transfer);
                         }
                         idle=false;
                     }else{
                         assert(false);
                     }
+                }
+            }
+        }
+
+        if(EnableLogging && ForceLogging::logger()){
+            for(auto &c : m_cells){
+                for(auto &b : c.beads){
+                    double h=b.get_hash_code().hash;
+                    double x[3]={b.x[0],b.x[1],b.x[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x_next",3,x);
+                    double f[3]={b.f[0],b.f[1],b.f[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_next",3,f);
                 }
             }
         }

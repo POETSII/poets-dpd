@@ -25,9 +25,11 @@ public:
     static constexpr size_t MAX_CACHED_BONDS_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
-    static constexpr size_t MAX_BEAD_TYPES=12;
+    static constexpr size_t MAX_BEAD_TYPES=8;
 
     static constexpr size_t MAX_ANGLE_BONDS_PER_BEAD=1;
+
+    static constexpr bool EnableLogging = false;
 
     using Handlers = BasicDPDEngineV5RawHandlers;
 
@@ -51,15 +53,6 @@ public:
             if(s->bead_types.size() > MAX_BEAD_TYPES){
                 return "Too many bead types.";
             }
-
-            double diss=s->interactions.at(1).dissipative;
-            for(unsigned i=0; i<s->bead_types.size(); i++){
-                for(unsigned j=0; j<s->bead_types.size(); j++){
-                    if( s->interactions[i*s->bead_types.size()+j].dissipative!=diss){
-                        return "Dissipative strength must be uniform";
-                    }
-                }
-            }
         }
 
         return BasicDPDEngine::CanSupport(s);
@@ -68,11 +61,11 @@ public:
     std::vector<device_state_t> m_devices;
     std::unordered_map<vec3i_t,device_state_t*> m_location_to_device;
     std::unordered_map<device_state_t*,std::vector<device_state_t*>> m_neighbour_map;
-    std::unordered_map<uint32_t,uint32_t> m_bead_hash_to_original_id;
+    std::unordered_map<BeadHash,uint32_t> m_bead_hash_to_original_id;
 
     void set_bead_id(raw_bead_resident_t &b, bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
     {
-        b.id=bead_hash_construct(bead_type, is_monomer, polymer_id, polymer_offset);
+        b.id=BeadHash::construct(bead_type, is_monomer, polymer_id, polymer_offset).hash;
     }
 
     void Attach(WorldState *state) override
@@ -100,10 +93,10 @@ public:
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){
                     for(unsigned j=0; j<m_state->bead_types.size(); j++){
-                        dst.conservative[i*MAX_BEAD_TYPES+j]=m_state->interactions[i*m_state->bead_types.size()+j].conservative;
+                        dst.interactions[i*MAX_BEAD_TYPES+j].conservative=m_state->interactions[i*m_state->bead_types.size()+j].conservative;
+                        dst.interactions[i*MAX_BEAD_TYPES+j].sqrt_dissipative=sqrt(m_state->interactions[i*m_state->bead_types.size()+j].dissipative);
                     }
                 }
-                dst.sqrt_dissipative=pow_half(m_state->interactions[0].dissipative);
                 dst.t=m_state->t;
                 dst.t_hash = m_t_hash;
                 dst.t_seed = m_state->seed;
@@ -128,12 +121,12 @@ public:
         unsigned time;
         unsigned num_seen;
         std::vector<raw_bead_resident_t> beads;
-        std::unordered_map<uint32_t,uint32_t> *bead_hash_to_id;
+        std::unordered_map<BeadHash,uint32_t> *bead_hash_to_id;
 
         output_slice(output_slice &&) = default;
         output_slice &operator=(output_slice &&) = default;
 
-        output_slice(unsigned _time, std::unordered_map<uint32_t,uint32_t> &_bead_hash_to_id)
+        output_slice(unsigned _time, std::unordered_map<BeadHash,uint32_t> &_bead_hash_to_id)
             : time(_time)
             , num_seen(0)
             , bead_hash_to_id(&_bead_hash_to_id)
@@ -327,7 +320,7 @@ public:
                     Handlers::on_recv_force(*message.dst, std::get<raw_force_input_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_view_t>(message.payload)){
                     assert(message.dst);
-                    Handlers::on_recv_share(*message.dst, std::get<raw_bead_view_t>(message.payload));
+                    Handlers::on_recv_share<EnableLogging>(*message.dst, std::get<raw_bead_view_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_resident_t>(message.payload)){
                     if(message.dst==0){
                         bool carry_on=callback(std::get<raw_bead_resident_t>(message.payload));

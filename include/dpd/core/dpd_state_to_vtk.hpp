@@ -37,6 +37,8 @@ std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
     for(unsigned i=0; i<beads.size(); i++){
         dst<<(int)(beads[i]->bead_type)<<"\n";
     }
+
+/*
     
     dst<<"VECTORS v double\n";
     for(unsigned i=0; i<beads.size(); i++){
@@ -49,6 +51,7 @@ std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
         const auto &b=*beads[i];
         dst<<b.f[0]<<" "<<b.f[1]<<" "<<b.f[2]<<"\n";
     }
+*/
 
     return dst;
 }

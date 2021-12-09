@@ -20,25 +20,27 @@
 class NaiveDPDEngineHalfStepTBBV2
     : public NaiveDPDEngineHalfStep
 {
+    constexpr static bool EnableLogging = false;
+
     // This is a 32-byte structure, so we get two per cache line
     struct BeadView
     {
-        uint32_t hash;
+        BeadHash hash;
         uint32_t bead_id;
         vec3f_t x;
         vec3f_t v;
 
-        uint32_t get_hash_code() const
+        BeadHash get_hash_code() const
         { return hash; }
 
         unsigned get_bead_type() const
-        { return bead_hash_get_bead_type(hash); }
+        { return BeadHash(hash).get_bead_type(); }
 
         unsigned get_polymer_id() const
-        { return bead_hash_get_polymer_id(hash); }
+        { return BeadHash{hash}.get_polymer_id(); }
 
         unsigned get_polymer_offset() const
-        { return bead_hash_get_polymer_offset(hash); }
+        { return BeadHash{hash}.get_polymer_offset(); }
     };
     static_assert(sizeof(BeadView)==32);
 
@@ -256,7 +258,7 @@ class NaiveDPDEngineHalfStepTBBV2
         return false;
     }
 
-    void update_cell_forces_inter(std::vector<BeadView> &home, std::vector<BeadView> &other, const vec3f_t &other_delta) const
+    void __attribute__((noinline)) update_cell_forces_inter(std::vector<BeadView> &home, std::vector<BeadView> &other, const vec3f_t &other_delta) const
     {
         for(BeadView & hb : home){
             for(const BeadView &ob : other)
@@ -276,7 +278,7 @@ class NaiveDPDEngineHalfStepTBBV2
 
                 Bead &hbb=m_state->beads[hb.bead_id];
                 
-                dpd_maths_core_half_step::calc_force<float,vec3f_t>(
+                dpd_maths_core_half_step::calc_force<EnableLogging,float,vec3f_t>(
                     m_inv_sqrt_dt,
                     [&](unsigned a, unsigned b){ return m_interactions[a*m_numBeadTypes+b].con; },
                     [&](unsigned a, unsigned b){ return m_interactions[a*m_numBeadTypes+b].sqrt_diss; },

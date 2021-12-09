@@ -9,12 +9,11 @@ template<class T, unsigned MAX_N>
 struct bag_storage_concept
 {
     T elements[MAX_N];
-    uint16_t n=0;
-    uint16_t lost=0;
+    uint32_t n;
 };
 
 
-template<class TStorage>
+template<class TStorage, bool TUnsafe=false>
 struct bag_wrapper
 {
     using T = typename std::remove_reference<decltype(TStorage::elements[0])>::type;
@@ -67,7 +66,7 @@ struct bag_wrapper
     void resize(unsigned new_n)
     {
         assert(new_n <= MAX_N);
-        if(new_n < MAX_N){
+        if(TUnsafe || new_n < MAX_N){
             storage.n=new_n;
         }else{
             #ifdef TINSEL
@@ -75,40 +74,36 @@ struct bag_wrapper
             #else
             assert(false);
             #endif
-            storage.lost += new_n-storage.n;
         }
     }
 
     void push_back(const T &x)
     {
-        if(storage.n<MAX_N){
+        if(TUnsafe || storage.n<MAX_N){
             // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
             storage.elements[storage.n]=x;
             storage.n=storage.n+1;
         }else{
             #ifdef TINSEL
-            printf("Lost\n");
+            //printf("Lost\n");
             #else
             assert(false);
             #endif
-            
-            storage.lost++;
         }
     }
 
     //! Allocate a new entry, but leave it unitinialised
     void alloc_back()
     {
-        if(storage.n<MAX_N){
+        if(TUnsafe || storage.n<MAX_N){
             // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
             storage.n=storage.n+1;
         }else{
             #ifdef TINSEL
-            printf("Lost");
+            //printf("Lost");
             #else
             assert(false);
             #endif
-            storage.lost++;
         }
     }
 

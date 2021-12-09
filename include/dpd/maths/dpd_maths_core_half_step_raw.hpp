@@ -50,6 +50,50 @@ namespace dpd_maths_core_half_step_raw
         vec3_clear(b.f);
     }
 
+    // Assumes that x is an integer with 22 fractional bits
+    template<class TScalar, class TBead>
+    void update_pos_f22(
+        TScalar dt,
+        const int32_t dims_f22[3],
+        TBead &b
+    )
+    {
+        // x(t+dt) = x(t) + v(t)*dt + f(t)*dt*dt
+        // v(t+dt/2) = v(t) + dt*f(t)/2
+
+
+        // auto x = b.x + b.v*dt + b.f*half(dt*dt);
+        // auto x = b.x + dt * ( b.v + b.f*half(dt) );
+        float dx[3];
+        vec3_mul(dx, b.f, half(dt));
+        vec3_add(dx, b.v);
+        vec3_mul(dx, dt);
+
+        int32_t orig[3];
+        vec3_copy(orig, b.x_f22);
+
+        int32_t nx[3];
+        for(int i=0; i<3; i++){
+            nx[i] = b.x_f22[i] + round_impl( dx[i] * float(1<<22) );
+        }
+
+        
+        for(int i=0; i<3; i++){
+            nx[i] += (nx[i]<0 ? dims_f22[i] : 0);
+            nx[i] -= (nx[i]>=dims_f22[i] ? dims_f22[i] : 0);
+            if(nx[i] < 0){
+                printf("<\n");
+            }
+            if(nx[i] >= dims_f22[i]){
+                printf(">\n");
+            }
+        }
+        vec3_copy(b.x_f22, nx);
+        
+        vec3_add_mul(b.v, b.f, half(dt));
+        vec3_clear(b.f);
+    }
+
 template<class TScalar, class TBead>
 void update_mom(
     TScalar dt,
@@ -63,7 +107,7 @@ void update_mom(
 }
 
 template<
-    class TScalar, class TVector, class TForce
+    bool EnableLogging, class TScalar, class TVector, class TForce
 >
 void calc_force(
     TScalar scale_inv_sqrt_dt,
@@ -74,8 +118,8 @@ void calc_force(
 
     TScalar conStrength,
     TScalar sqrtDissStrength,
-    uint32_t home_hash,
-    uint32_t other_hash,
+    BeadHash home_hash,
+    BeadHash other_hash,
     const TVector &home_v,
     const TVector &other_v,
 
@@ -93,6 +137,8 @@ void calc_force(
         
     TScalar conForce = conStrength*wr;
 
+    float dx_orig[3]={dx[0],dx[1],dx[2]};
+
     vec3_mul(dx, inv_dr);
         
     TScalar rdotv = dx[0]*dv[0] + dx[1]*dv[1] + dx[2]*dv[2];
@@ -108,14 +154,41 @@ void calc_force(
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
 #ifndef TINSEL
-    //std::cerr<<"  DUT: home="<<home_hash<<", other="<<other_hash<<", t_hash="<<t_hash<<", dx=("<<(dx[0]*dr)<<","<<(dx[1]*dr)<<","<<(dx[2]*dr)<<"), r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook="<<hookeanForce<<"\n";
+    //std::cerr<<"  DUT: home="<<home_hash.hash<<", other="<<other_hash.hash<<", t_hash="<<t_hash<<", dx=("<<(dx[0]*dr)<<","<<(dx[1]*dr)<<","<<(dx[2]*dr)<<"), r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook="<<hookeanForce<<"\n";
     //std::cerr<<"     sqrt_gammap="<<sqrt_gammap<<", rdotv="<<rdotv<<", pow_half(dissStrength)="<<sqrtDissStrength<<"\n";
 #endif
 
     vec3_mul(force_home, dx , scaled_force);
 
     for(int i=0; i<3; i++){
-        assert(abs(force_home[i])<100);
+        assert(abs(force_home[i])<1000);
+    }
+
+    if(EnableLogging){
+        if(ForceLogging::logger()){
+           
+            double ddx[3]={dx_orig[0],dx_orig[1],dx_orig[2]};
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dx", 3,ddx);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dr", 1,&dr);
+            double dd=sqrtDissStrength*sqrtDissStrength;
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-diss-strength", 1, &dd);
+            double tt=scale_inv_sqrt_dt;
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-invrootdt", 1, &tt);
+            double gammap=sqrt_gammap*sqrt_gammap;
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-gammap", 1, &gammap);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rng", 1, &u);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-con",1, &conForce);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-diss", 1,&dissForce);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rng-scale",1, &randScale);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rand",1, &randForce);
+            double dpd_force=conForce + dissForce + randForce;
+            double ff[3]={dx[0]*dpd_force,dx[1]*dpd_force,dx[2]*dpd_force};
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"f_next_dpd", 3,ff);
+            if(kappa!=0){
+                double fh[3]={dx[0]*hookeanForce,dx[1]*hookeanForce,dx[2]*hookeanForce};
+                ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"f_next_hookean", 3,fh);
+            }
+        }
     }
 }
 

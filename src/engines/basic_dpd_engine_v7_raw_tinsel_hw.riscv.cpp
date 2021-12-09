@@ -3,7 +3,8 @@
 #include <tinsel.h>
 #include <POLite.h>
 
-using Thread = typename BasicDPDEngineV7RawTinsel<POLiteHW<>>::Thread;
+constexpr bool USE_X_CACHE=false;
+using Thread = typename BasicDPDEngineV7RawTinsel<POLiteHW<>,USE_X_CACHE>::Thread;
 
 using f2i_t = union{
         float f;
@@ -74,23 +75,6 @@ float pow_half(float x) {
 #endif
 
    return u.x;
-}
-
-#if 0
-extern "C" void * memcpy ( void * destination, const void * source, size_t num )
-{
-    for(size_t i=0; i<num; i++){
-        ((char*)destination)[i] = ((const char*)source)[i];
-    }
-    return destination;
-}
-#endif
-
-void memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
-{
-    for(unsigned i=0; i<n; i++){
-        a[i]=b[i];
-    }
 }
 
 
