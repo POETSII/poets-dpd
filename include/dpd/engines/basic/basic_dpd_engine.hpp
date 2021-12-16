@@ -22,19 +22,6 @@
 #endif
 
 
-// Calculate checksum except for the last 4 bytes (assumed to be the checksum field).
-    template<class T>
-    static uint32_t calc_checksum(const T &x)
-    {
-        static_assert( (sizeof(T) % 4) == 0 );
-        const uint32_t *src=(const uint32_t*)&x;
-        uint32_t res=0;
-        for(unsigned i=0; i<sizeof(T)/4-1; i++){
-            res = res + (res>>16) + src[i];
-        }
-        return res;
-    }
-
 /*
     This is a minimal engine which models the data requirements of working
     in POETS. So it is split into cells, where each call contains all
@@ -604,19 +591,6 @@ protected:
             for(auto &b : cell.beads){
                 dpd_maths_core_half_step::update_mom(dt, b);
                 b.checksum=calc_checksum(b);
-            }
-        }
-
-        if(ForceLogging::logger()){
-            for(unsigned cell_index=0; cell_index<m_cells.size(); cell_index++){
-                const cell_t &c = m_cells.at(cell_index);
-
-                for(const auto &bb : c.beads){
-                    auto bead_id=m_state->polymers.at(bb.id.get_polymer_id()).bead_ids.at(bb.id.get_polymer_offset());
-                    auto &b=m_state->beads.at(bead_id);
-                    double x[3]={bb.x[0],bb.x[1],bb.x[2]};
-                    ForceLogging::logger()->LogBeadProperty(b.bead_id,"x_next",3,x);
-                }
             }
         }
 

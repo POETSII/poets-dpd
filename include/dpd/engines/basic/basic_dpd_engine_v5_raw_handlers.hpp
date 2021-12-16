@@ -7,6 +7,7 @@
 #include <iterator>
 #include <cstring>
 #include <fstream>
+#include <array>
 
 inline void tinsel_require(bool cond, const char *msg)
 {
@@ -74,41 +75,82 @@ struct BasicDPDEngineV5RawHandlers
     static BeadHash get_hash_code(uint32_t bead_id)
     { return BeadHash{bead_id}; }
 
-
-    
-    template<class A, class B>
-    static void copy_bead_view(A *dst, const B *src)
-    {
-        static_assert(offsetof(A,id)==0);
-        static_assert(offsetof(A,id)==offsetof(B,id));
-        static_assert(offsetof(A,x)==sizeof(A::id));
-        static_assert(offsetof(A,x)==offsetof(B,x));
-        static_assert(offsetof(A,v)==offsetof(A,x)+sizeof(A::x));
-        static_assert(offsetof(A,v)==offsetof(B,v));
-        static_assert( (offsetof(A,v)+sizeof(A::v)) % 4 == 0 );
-        memcpy32((uint32_t*)dst, (const uint32_t*)src, (offsetof(A,v)+sizeof(A::v))/4);
-    }
-
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
     // TODO : g++ correctly complains, as BasicDPDEngine::bead_resident_t is not strictly POD
-    template<class A, class B>
-    static void copy_bead_resident(A *dst, const B *src)
+
+    template<class A>
+    static constexpr bool is_bead_view()
     {
-        static_assert(sizeof(A)==sizeof(B));
-        static_assert(offsetof(A,id)==offsetof(B,id));
-        static_assert(offsetof(A,x)==offsetof(B,x));
-        static_assert(offsetof(A,v)==offsetof(B,v));
-        static_assert(offsetof(A,f)==offsetof(B,f));
-        static_assert(offsetof(A,bond_partners)==offsetof(B,bond_partners));
-        static_assert(offsetof(A,angle_bonds)==offsetof(B,angle_bonds));
-        static_assert(offsetof(A,t)==offsetof(B,t));
-        static_assert(offsetof(A,checksum)==offsetof(B,checksum));
-        static_assert(sizeof(A)%4==0);
-        memcpy32((uint32_t*)dst, (const uint32_t*)src, sizeof(A)/4);
+        constexpr size_t OidA=offsetof(A,id);
+        return
+            ((OidA%4)==0)
+            && (offsetof(A,x)==OidA+4)
+            && (offsetof(A,v)==OidA+16)
+            && (sizeof(A::v)==12);
     }
-#pragma GCC diagnostic pop
+
+
+    template<class A>
+    static constexpr bool is_bead_resident()
+    {
+        constexpr size_t OidA=offsetof(A,id);
+        return is_bead_view<A>()
+            && (offsetof(A,bond_partners)==OidA+10*4)
+            && (offsetof(A,angle_bonds)==OidA+10*4+4)
+            && (offsetof(A,t)==offsetof(A,angle_bonds)+4)
+            && (offsetof(A,checksum)==offsetof(A,t)+4
+            && (sizeof(A::checksum)==4)
+        );
+    }
+    
+   template<class A>
+    static constexpr bool is_force_input()
+    {
+        constexpr size_t O=offsetof(A,target_hash);
+        return ((O%4)==0) && (offsetof(A,f)==O+4) && (sizeof(A::f)==12);
+    }
+
+    struct copy_bead_view
+    {
+        template<class A, class B>
+        static void copy(A *dst, const B *src)
+        {
+            static_assert(is_bead_view<A>());
+            static_assert(is_bead_view<B>());
+
+            memcpy32(&dst->id, &src->id,(1+3+3));
+        }
+    };
+
+
+
+    struct copy_bead_resident
+    {
+        template<class A, class B>
+        static void copy(A *dst, const B *src)
+        {
+            static_assert(is_bead_resident<A>());
+            static_assert(is_bead_resident<B>());
+            static_assert(offsetof(A,checksum)-offsetof(A,id)==13*4);
+            memcpy32((uint32_t*)&dst->id, (uint32_t*)&src->id, (1+3+3+3+4));
+        }
+    };
+
+    #pragma GCC diagnostic pop
+
+
+    struct copy_cached_bond
+    {
+        template<class A, class B>
+        static void copy(A *dst, const B *src)
+        {
+            dst->id=src->id;
+            for(int i=0; i<3; i++){
+                dst->x[i]=src->x[i];
+            }
+        }
+    };
 
 
     struct raw_bead_view_t
@@ -177,7 +219,7 @@ struct BasicDPDEngineV5RawHandlers
 
         void operator=(const raw_bead_resident_t &x)
         {
-            copy_bead_resident(this, &x);
+            copy_bead_resident::copy(this, &x);
         }
 
         template<class Visitor>
@@ -211,6 +253,7 @@ struct BasicDPDEngineV5RawHandlers
         }
     };
 
+
     struct raw_force_input_t
     {
         uint32_t target_hash;
@@ -232,17 +275,15 @@ struct BasicDPDEngineV5RawHandlers
     template<class A, class B>
     static void copy_force_input(A *dst, const B *src)
     {
-        static_assert(sizeof(A)==sizeof(B));
-        static_assert(offsetof(A,target_hash)==offsetof(B,target_hash));
-        static_assert( std::is_same<decltype(A::f),decltype(B::f)>::value );
-        static_assert( (sizeof(A)%4) == 0 );
-        memcpy32((uint32_t*)dst, (const uint32_t*)src, sizeof(B)/4);
+        static_assert(is_force_input<A>());
+        static_assert(is_force_input<B>());
+        memcpy32(&dst->target_hash, &src->target_hash, sizeof(B)/4);
     }
 
     struct device_state_t
     {
-
         int32_t box[3];
+        int32_t location[3];
         float dt;
         float scaled_inv_root_dt;
         float bond_r0;
@@ -263,8 +304,7 @@ struct BasicDPDEngineV5RawHandlers
         uint64_t t_seed;
         uint32_t interval_size;
         uint32_t output_reps;  // Used to get around lost output packets. Each packet sent this many times
-
-        int32_t location[3];
+        
 
         int32_t phase;  // of type Phase
         uint32_t rts;
@@ -338,8 +378,9 @@ struct BasicDPDEngineV5RawHandlers
         void walk(Visitor &vv)
         {
             vv("box", box, std::size(box));
+            vv("location", location, std::size(location));
             vv("dt", dt);
-            vv("inv_root_dt", inv_root_dt);
+            vv("scaled_inv_root_dt", scaled_inv_root_dt);
             vv("bond_r0", bond_r0);
             vv("bond_kappa", bond_kappa);
             vv("interactions", interactions, std::size(interactions));
@@ -348,7 +389,7 @@ struct BasicDPDEngineV5RawHandlers
             vv("t_seed", t_seed);
             vv("interval_size", interval_size);
             vv("output_reps", output_reps);
-            vv("location", location, std::size(location));
+            
             vv("phase", phase);
             vv("rts", rts);
             vv("intervals_todo", intervals_todo);
@@ -470,7 +511,7 @@ struct BasicDPDEngineV5RawHandlers
                 }
 
                 // Movement is fairly unlikely
-                migrate_outgoing.push_back(b);
+                migrate_outgoing.template push_back_copier<copy_bead_resident>(b);
 
                 std::swap(resident.back(), b); // A waste if this is the last bead, but makes code simpler and smaller
                 resident.pop_back();
@@ -491,9 +532,8 @@ struct BasicDPDEngineV5RawHandlers
     {
         auto migrate_outgoing=make_bag_wrapper(cell.migrate_outgoing);
         assert(!migrate_outgoing.empty());
-        
-        outgoing=migrate_outgoing.back();
-        migrate_outgoing.pop_back();
+
+        migrate_outgoing.template pop_back<copy_bead_resident>(outgoing);
 
         cell.rts=migrate_outgoing.empty() ? 0 : RTS_FLAG_migrate;
     }
@@ -512,8 +552,10 @@ struct BasicDPDEngineV5RawHandlers
         int32_t incoming_loc[3];
         vec3_floor_nn(incoming_loc, incoming.x);
         if(vec3_equal(incoming_loc , cell.location)){
-            resident.push_back(incoming);
+            //printf("  recv_migrate : accept.\n");
+            resident.template push_back_copier<copy_bead_resident>(incoming);
         }else{
+            //printf("  recv_migrate, loc=[%d,%d,%d], point=[%d,%d,%d] : reject.\n", cell.location[0], cell.location[1], cell.location[2], incoming_loc[0], incoming_loc[1], incoming_loc[2]);
             if(DO_CHECKSUM){
                 for(int i=0; i<3; i++){
                     if(incoming_loc[i] < 0){
@@ -557,7 +599,8 @@ struct BasicDPDEngineV5RawHandlers
         assert(cell.share_todo>0);
         --cell.share_todo;
         const auto &b = resident[cell.share_todo];
-        outgoing=b;
+
+        copy_bead_view::copy(&outgoing, &b);
         outgoing.id = b.id;
 
         if(cell.share_todo==0){
@@ -565,7 +608,7 @@ struct BasicDPDEngineV5RawHandlers
         }
     }
 
-    template<bool EnableLogging, class TDeviceState=device_state_t, class TRawBeadView=raw_bead_view_t>
+    template<bool EnableLogging=false, class TDeviceState=device_state_t, class TRawBeadView=raw_bead_view_t>
     static void on_recv_share(TDeviceState &cell, const TRawBeadView &incoming)
     {
         //std::cerr<<"  Recv: ("<<cell.location[0]<<","<<cell.location[1]<<","<<cell.location[2]<<"), p="<<&cell<<", nres="<<cell.resident.n<<", other="<<get_hash_code(incoming.id)<<"\n";
@@ -642,10 +685,9 @@ struct BasicDPDEngineV5RawHandlers
             if(kappa!=0.0f){
                 //std::cerr<<"K: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
                 if(!cached){
-                    raw_cached_bond_t tmp;
+                    auto &tmp=cached_bonds.alloc_back();
                     tmp.bead_hash=get_hash_code(incoming.id).hash;
                     vec3_copy(tmp.x, neighbour_x);
-                    cached_bonds.push_back(tmp);
                     //std::cerr<<" caching, bead_i="<<bead_i<<", bead_id="<<get_hash_code(bead.id)<<" target="<<get_hash_code(incoming.id)<<"\n";
                     cached=true;
                 }
@@ -725,8 +767,8 @@ struct BasicDPDEngineV5RawHandlers
     }
 
 
-    template<class TDeviceState=device_state_t>
-    static void on_send_force(TDeviceState &cell,raw_force_input_t &outgoing)
+    template<class TDeviceState=device_state_t, class TRawForceInput=raw_force_input_t>
+    static void on_send_force(TDeviceState &cell,TRawForceInput &outgoing)
     {
         auto force_outgoing=make_bag_wrapper(cell.force_outgoing);
 
@@ -739,8 +781,8 @@ struct BasicDPDEngineV5RawHandlers
         }
     }
 
-    template<class TDeviceState=device_state_t>
-    static void on_recv_force(TDeviceState &cell, const raw_force_input_t &incoming)
+    template<class TDeviceState=device_state_t, class TRawForceInput=raw_force_input_t>
+    static void on_recv_force(TDeviceState &cell, const TRawForceInput &incoming)
     {
         auto resident=make_bag_wrapper(cell.resident);
 
@@ -759,7 +801,7 @@ struct BasicDPDEngineV5RawHandlers
         assert(cell.output_reps_todo>0);
         
         cell.outputs_todo--;
-        outgoing = cell.resident.elements[cell.outputs_todo];
+        copy_bead_resident::copy(&outgoing, cell.resident.elements+cell.outputs_todo);
 
         if(cell.outputs_todo==0){
             cell.output_reps_todo -= 1;

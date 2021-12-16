@@ -427,16 +427,6 @@ private:
 
         if(ForceLogging::logger()){
             double ddx[3]={dx[0],dx[1],dx[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dx",ForceLoggingFlags::SymmetricFlipped, 3,ddx);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dr",ForceLoggingFlags::SymmetricFlipped, 1,&dr);
-            double ddd[3]={other_delta[0],other_delta[1],other_delta[2]};
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-invrootdt",ForceLoggingFlags::Symmetric, 1, &scaled_inv_root_dt);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-gammap",ForceLoggingFlags::Symmetric, 1, &gammap);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng",ForceLoggingFlags::Symmetric, 1, &u);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-con",ForceLoggingFlags::Symmetric ,1, &conForce);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-diss",ForceLoggingFlags::Symmetric , 1,&dissForce);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rng-scale",ForceLoggingFlags::Symmetric ,1, &randScale);
-            ForceLogging::logger()->LogBeadPairProperty(hb->bead_id,ob->bead_id,"dpd-rand",ForceLoggingFlags::Symmetric ,1, &randForce);
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dx", 3,ddx);
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dr", 1,&dr);
             double dd=interactions.dissipative;

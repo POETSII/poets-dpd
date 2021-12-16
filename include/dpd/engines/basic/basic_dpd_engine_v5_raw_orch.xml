@@ -37,30 +37,72 @@
     </MessageTypes>
 
     <DeviceTypes>
+        <DeviceType id="reaper"> 
+            <Properties><![CDATA[
+            uint32_t numBeads;
+            uint32_t expectedFinalTime;
+            ]]></Properties>
+            <State><![CDATA[
+            uint32_t beadsSeen;
+            uint32_t combinedHash;
+            ]]></State>
+
+            <SharedCode />
+
+            <InputPin name="output_in" messageTypeId="migrate">
+                <Properties />
+                <State />
+                <OnReceive><![CDATA[
+                handler_log(2, "bead id %x, t=%x, x=[%x,%x,%x] (fix23.8)", message->id, message->t, (int)(256*message->x[0]), (int)(256*message->x[1]),(int)(256* message->x[2]));
+                deviceState->beadsSeen++;
+                deviceState->combinedHash += calc_checksum(*message);
+                handler_log(2, "  beads seen=%x, total=%x", deviceState->beadsSeen, deviceProperties->numBeads);
+                if(deviceState->beadsSeen==deviceProperties->numBeads){
+                    handler_log(1, "Final checksum = %x", deviceState->combinedHash);
+                    fake_handler_exit(0);
+                }
+                ]]></OnReceive>
+            </InputPin>
+
+            <ReadyToSend />
+            <OnInit />
+            <OnDeviceIdle />
+            <OnHardwareIdle />
+        </DeviceType>
+
         <DeviceType id="cell"> 
             <Properties />
             <State><![CDATA[
                 __DEVICE_STATE_C__
             ]]></State>
+            <SharedCode/>
             <InputPin name="share_in" messageTypeId="share">
+                <Properties/>
+                <State/>
                 <OnReceive><![CDATA[
                     BasicDPDEngineV5RawHandlers::on_recv_share(*deviceState, *message);
                 ]]></OnReceive>
             </InputPin>
 
             <InputPin name="migrate_in" messageTypeId="migrate">
+                <Properties/>
+                <State/>
                 <OnReceive><![CDATA[
                     BasicDPDEngineV5RawHandlers::on_recv_migrate(*deviceState, *message);
                 ]]></OnReceive>
             </InputPin>
 
             <InputPin name="force_in" messageTypeId="force">
+                <Properties/>
+                <State/>
                 <OnReceive><![CDATA[
                     BasicDPDEngineV5RawHandlers::on_recv_force(*deviceState, *message);
                 ]]></OnReceive>
             </InputPin>
 
             <OutputPin name="migrate_out" messageTypeId="migrate">
+                <Properties/>
+                <State/>
                 <OnSend><![CDATA[
                     BasicDPDEngineV5RawHandlers::on_send_migrate(*deviceState, *message);
                 ]]></OnSend>
@@ -74,7 +116,13 @@
 
             <OutputPin name="force_out" messageTypeId="force">
                 <OnSend><![CDATA[
-                    BasicDPDEngineV5RawHandlers::on_send_share(*deviceState, *message);
+                    BasicDPDEngineV5RawHandlers::on_send_force(*deviceState, *message);
+                ]]></OnSend>
+            </OutputPin>
+
+            <OutputPin name="output_out" messageTypeId="migrate">
+                <OnSend><![CDATA[
+                    BasicDPDEngineV5RawHandlers::on_send_output(*deviceState, *message);
                 ]]></OnSend>
             </OutputPin>
 
@@ -86,9 +134,12 @@
                 BasicDPDEngineV5RawHandlers::on_init(*deviceState);
             ]]></OnInit>
 
+            <OnDeviceIdle />
+
             <OnHardwareIdle><![CDATA[
                 BasicDPDEngineV5RawHandlers::on_barrier(*deviceState);
             ]]></OnHardwareIdle>
-        <DeviceType>
+        </DeviceType>
     </DeviceTypes>
 </GraphType>
+</Graphs>

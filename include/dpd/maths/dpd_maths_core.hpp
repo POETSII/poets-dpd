@@ -5,6 +5,8 @@
 #include "dpd/core/vec3.hpp"
 #include "dpd/core/hash.hpp"
 
+#include "dpd/core/dpd_state.hpp"
+
 #include "dpd/core/dpd_maths_primitives.hpp"
 
 #ifndef TINSEL

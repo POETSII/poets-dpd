@@ -4,6 +4,7 @@
 #include "dpd/maths/dpd_maths_core.hpp"
 
 #include "dpd/core/hash.hpp"
+#include "dpd/core/logging.hpp"
 
 #ifndef TINSEL
 #include <iostream>
@@ -179,7 +180,6 @@ void calc_force(
             ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rng", 1, &u);
             ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-con",1, &conForce);
             ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-diss", 1,&dissForce);
-            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rng-scale",1, &randScale);
             ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rand",1, &randForce);
             double dpd_force=conForce + dissForce + randForce;
             double ff[3]={dx[0]*dpd_force,dx[1]*dpd_force,dx[2]*dpd_force};

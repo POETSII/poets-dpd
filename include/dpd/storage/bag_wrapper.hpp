@@ -76,7 +76,6 @@ struct bag_wrapper
             #endif
         }
     }
-
     void push_back(const T &x)
     {
         if(TUnsafe || storage.n<MAX_N){
@@ -92,8 +91,24 @@ struct bag_wrapper
         }
     }
 
+    template<class TCopier,class TIn>
+    void push_back_copier(const TIn &x)
+    {
+        if(TUnsafe || storage.n<MAX_N){
+            // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
+            TCopier::copy(storage.elements+storage.n, &x);
+            storage.n=storage.n+1;
+        }else{
+            #ifdef TINSEL
+            //printf("Lost\n");
+            #else
+            assert(false);
+            #endif
+        }
+    }
+
     //! Allocate a new entry, but leave it unitinialised
-    void alloc_back()
+    T &alloc_back()
     {
         if(TUnsafe || storage.n<MAX_N){
             // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
@@ -105,12 +120,21 @@ struct bag_wrapper
             assert(false);
             #endif
         }
+        return storage.elements[storage.n-1];
     }
 
     void pop_back()
     {
         assert(!empty());
         --storage.n;
+    }
+
+    template<class TCopier, class TOut>
+    void pop_back(TOut &dst)
+    {
+        assert(!empty());
+        --storage.n;
+        TCopier::copy(&dst, storage.elements+storage.n);
     }
 
     void erase(iterator it)

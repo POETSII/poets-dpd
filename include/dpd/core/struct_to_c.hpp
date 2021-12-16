@@ -131,6 +131,76 @@ struct StructToC
     }
 };
 
+struct c_init
+{
+    std::string name;
+    // value.empty() != parts.empty(). Either it is a branch or a leaf.
+    std::string value;
+    std::vector<c_init> parts;
+};
+
+void render_c_init(const c_init &x, std::ostream &dst, const std::string &indent="", bool newLine=false)
+{
+    if(!x.value.empty()){
+        dst<<indent<<x.value;  // "+x.name<<"\n";
+    }else{
+        dst<<indent<<"{"; // "+x.name+"\n";
+        for(unsigned i=0; i<x.parts.size(); i++){
+            if(i!=0){
+                dst<<indent<<",";
+            }
+            render_c_init(x.parts[i], dst, newLine ? indent+"  " : indent, newLine);
+        }
+        dst<<indent<<"}";
+    }
+}
+
+struct StructToCInit
+{
+    c_init res;
+
+    template<class T>
+    void operator()(const char *name, T &x)
+    {
+        if constexpr(is_primitive<T>()){
+            if(x==0){
+                res.parts.push_back({name,"0", {}});
+            }else{
+                res.parts.push_back({name, std::to_string(x), {}});
+            }
+        }else{
+            StructToCInit rec{ {name, {}, {}} };
+            x.walk(rec);
+
+            res.parts.push_back(std::move(rec.res));
+        }
+    }
+
+    template<class T>
+    void operator()(const char *name, T *x, unsigned n)
+    {
+        c_init init{name, {}, {}};
+        
+        if constexpr(is_primitive<T>()){
+            for(unsigned i=0; i<n; i++){
+                if(x[i]==0){
+                    init.parts.push_back({ std::string(name)+"["+std::to_string(i)+"]", "0", {} });
+                }else{
+                    init.parts.push_back({ std::string(name)+"["+std::to_string(i)+"]", std::to_string(x[i]), {} });
+                }
+            }
+        }else{
+            for(unsigned i=0; i<n; i++){
+                StructToCInit rec{ {std::string(name)+"["+std::to_string(i)+"]", {}, {}} };
+                x[i].walk(rec);
+                init.parts.push_back(std::move(rec.res));
+            }
+        }
+
+        res.parts.push_back(std::move(init));
+    }
+};
+
 template<class T>
 std::string struct_to_c_body()
 {
@@ -142,6 +212,30 @@ std::string struct_to_c_body()
 }
 
 template<class T>
+std::string struct_to_c_init(const T &x, bool newLine=false)
+{
+    StructToCInit s2c{"", {}, {}};
+    const_cast<T&>(x).walk(s2c);
+    std::stringstream dst;
+    assert(s2c.res.value.empty());
+    dst<<"{";
+    if(newLine){
+        dst<<"\n";
+    }
+    for(unsigned i=0; i<s2c.res.parts.size(); i++){
+        if(i!=0){
+            dst<<",";
+        }
+        render_c_init(s2c.res.parts[i], dst, newLine ? "    " : "", newLine);
+    }
+    dst<<"}";
+    if(newLine){
+        dst<<"\n";
+    }
+    return dst.str();
+}
+
+template<class T>
 std::string struct_to_c(const std::string &name)
 {
     T x;
@@ -149,8 +243,9 @@ std::string struct_to_c(const std::string &name)
     dst<<"struct "<<name<<"{\n";
     StructToC s2c{dst, "  "};
     x.walk(s2c);
-    dst<<"};\n";
+    dst<<"}\n";
     return dst.str();
 }
+
 
 #endif

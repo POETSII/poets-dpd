@@ -80,4 +80,17 @@ inline uint32_t hash_rng_sym_crappy(uint64_t t_hash, uint32_t a, uint32_t b)
     return aa * 0xed85aebful;
 }
 
+// Calculate checksum except for the last 4 bytes (assumed to be the checksum field).
+    template<class T>
+    static uint32_t calc_checksum(const T &x)
+    {
+        static_assert( (sizeof(T) % 4) == 0 );
+        const uint32_t *src=(const uint32_t*)&x;
+        uint32_t res=0;
+        for(unsigned i=0; i<sizeof(T)/4-1; i++){
+            res = res + (res>>16) + src[i];
+        }
+        return res;
+    }
+
 #endif

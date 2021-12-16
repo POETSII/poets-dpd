@@ -1,4 +1,4 @@
-#include "dpd/engines/basic/basic_dpd_engine_v5_raw_tinsel.hpp"
+#include "dpd/engines/basic/basic_dpd_engine_v5_raw_orch.hpp"
 
 #include "dpd/core/struct_to_c.hpp"
 
@@ -7,7 +7,7 @@
 
 int main(int argc, const char *argv[])
 {
-    std::string header_path=BasicDPDEngineV5RawHandlers::THIS_HEADER;
+    /*std::string header_path=BasicDPDEngineV5RawHandlers::THIS_HEADER;
     std::string template_path=std::regex_replace(
         header_path,
         std::regex("_raw_handlers[.]hpp"),
@@ -45,6 +45,9 @@ int main(int argc, const char *argv[])
             graph_type, std::regex(name), value
         );
     }
+    */
+
+    auto graph_type=BasicDPDEngineV5RawOrch::create_graph_type_xml();
 
     std::cout << graph_type;
     

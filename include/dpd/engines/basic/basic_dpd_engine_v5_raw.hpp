@@ -155,11 +155,9 @@ public:
         { return num_seen==beads.size(); }
     };
 
-    virtual unsigned Run(
-        int interval_count,
-        unsigned interval_size,
-        std::function<bool()> interval_callback
-    ) {
+protected:
+    void PreRun(int interval_count, unsigned interval_size)
+    {
         assert(interval_count*interval_size>0);
 
         import_beads();
@@ -180,7 +178,7 @@ public:
         for(auto &cell : m_cells){
             for(auto &b : cell.beads){
                 raw_bead_resident_t bb;
-                Handlers::copy_bead_resident(&bb, &b);
+                Handlers::copy_bead_resident::copy(&bb, &b);
                 bb.t=0;
 
                 // Pre-correct one-step backwards in time, as handlers will do one too many
@@ -194,6 +192,14 @@ public:
                 resident.push_back(bb);
             }
         }
+    }
+
+    virtual unsigned Run(
+        int interval_count,
+        unsigned interval_size,
+        std::function<bool()> interval_callback
+    ) {
+        PreRun(interval_count, interval_size);
 
         unsigned nBeads=m_state->beads.size();
 
