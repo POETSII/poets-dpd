@@ -128,6 +128,14 @@ struct Bead
     {
         return BeadHash::construct(bead_type, is_monomer, polymer_id, polymer_offset);
     }
+
+    void set_hash_code(BeadHash h)
+    {
+        bead_type=h.get_bead_type();
+        is_monomer=h.is_monomer();
+        polymer_id=h.get_polymer_id();
+        polymer_offset=h.get_polymer_offset();
+    }
 };
 
 struct BeadType

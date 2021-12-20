@@ -194,6 +194,7 @@ protected:
         }
     }
 
+public:
     virtual unsigned Run(
         int interval_count,
         unsigned interval_size,
@@ -293,6 +294,7 @@ protected:
         Run(1, nSteps, []() -> bool { return false; });
     }
 
+protected:
     virtual void step_all(
         std::vector<device_state_t> &states,
         std::unordered_map<device_state_t*, std::vector<device_state_t*>> &neighbour_map,

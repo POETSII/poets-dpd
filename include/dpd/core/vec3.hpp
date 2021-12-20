@@ -192,6 +192,23 @@ inline vec3g_t<T> vec_wrap(const vec3g_t<T> &x, const vec3g_t<T> &bounds)
     };
 }
 
+template<class T, class TC>
+inline T vec3_wrapped_distance(const vec3g_t<T> &a, const vec3g_t<T> &b, const vec3g_t<TC> &box)
+{
+    T dist_sqr=0;
+    for(unsigned i=0; i<3; i++){
+        T dist=a[i]-b[i];
+        if(dist<0){
+            dist=-dist;
+        }
+        if(2*dist > box[i]){
+            dist -= box[i];
+        }
+        dist_sqr += dist*dist;
+    }
+    return sqrt(dist_sqr);
+}
+
 namespace std
 {
     template<>

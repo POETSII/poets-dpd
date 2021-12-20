@@ -41,6 +41,14 @@
             <Properties><![CDATA[
             uint32_t numBeads;
             uint32_t expectedFinalTime;
+            uint32_t expectedCheckSum;
+            float checkBeadMaxDistSqr;
+            float half_box[3];    
+            uint32_t checkBeadCount;
+            struct{
+                uint32_t id; 
+                float x[3];  
+            }checkBeads[16];
             ]]></Properties>
             <State><![CDATA[
             uint32_t beadsSeen;
@@ -53,13 +61,58 @@
                 <Properties />
                 <State />
                 <OnReceive><![CDATA[
-                handler_log(2, "bead id %x, t=%x, x=[%x,%x,%x] (fix23.8)", message->id, message->t, (int)(256*message->x[0]), (int)(256*message->x[1]),(int)(256* message->x[2]));
+                auto raw=[](float x) -> uint32_t
+                {
+                    union{
+                        uint32_t i;
+                        float f;
+                    }tt;
+                    tt.f=x;
+                    return tt.i;
+                };
+
+                if(deviceState->beadsSeen==0){
+                    handler_log(2, "a8f23f7c94100804_BEGIN[t=%x,numBeads=%x]", message->t, deviceProperties->numBeads);
+                }
+                handler_log(2, "a8f23f7c94100804_BEAD[id=%x,t=%x,x=[%x,%x,%x],v=[%x,%x,%x],f=[%x,%x,%x]]", message->id, message->t,
+                    raw(message->x[0]), raw(message->x[1]), raw(message->x[2]),
+                    raw(message->v[0]), raw(message->v[1]), raw(message->v[2]),
+                    raw(message->f[0]), raw(message->f[1]), raw(message->f[2])
+                );
                 deviceState->beadsSeen++;
-                deviceState->combinedHash += calc_checksum(*message);
-                handler_log(2, "  beads seen=%x, total=%x", deviceState->beadsSeen, deviceProperties->numBeads);
+
+                for(unsigned i=0; i<deviceProperties->checkBeadCount;i++){
+                    if(deviceProperties->checkBeads[i].id==message->id){
+                        float dist_sqr=0;
+                        for(unsigned d=0; d<3; d++){
+                            float dist=deviceProperties->checkBeads[i].x[d] - message->x[d];
+                            if(dist < 0){
+                                dist=-dist;
+                            }
+                            if(dist > deviceProperties->half_box[i]){
+                                dist -= 2*deviceProperties->half_box[i];
+                            }
+                            dist_sqr += dist*dist;
+                        }
+                        handler_log(1, "  dist=%g, exp=%f,%f,%f, got=%f,%f,%f", sqrtf(dist_sqr), deviceProperties->checkBeads[i].x[0],deviceProperties->checkBeads[i].x[1],deviceProperties->checkBeads[i].x[2], message->x[0], message->x[1], message->x[2]);
+                        if(dist_sqr > deviceProperties->checkBeadMaxDistSqr){
+                            handler_log(0, "Bead id %x is too far from expected position.", message->id);
+                            fake_handler_exit(1);
+                        }
+                        handler_log(2, "Bead id %x passes position check.", message->id);
+                    }
+                }
+
+                deviceState->combinedHash += message->id;
+                handler_log(6, "  bbeads seen=%x, total=%x", deviceState->beadsSeen, deviceProperties->numBeads);
                 if(deviceState->beadsSeen==deviceProperties->numBeads){
-                    handler_log(1, "Final checksum = %x", deviceState->combinedHash);
-                    fake_handler_exit(0);
+                    handler_log(2, "a8f23f7c94100804_END[checksum=%x]", deviceState->combinedHash);
+                    handler_log(1, "Final checksum = %x, expected= %x", deviceState->combinedHash, deviceProperties->expectedCheckSum);
+                    if(deviceProperties->expectedCheckSum!=0){
+                        fake_handler_exit( deviceProperties->expectedCheckSum != deviceState->combinedHash );
+                    }else{
+                        fake_handler_exit(0);
+                    }
                 }
                 ]]></OnReceive>
             </InputPin>

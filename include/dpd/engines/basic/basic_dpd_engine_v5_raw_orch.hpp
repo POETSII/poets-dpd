@@ -84,12 +84,16 @@ public:
         return graph_type;
     }
 
-    void write_instance_xml(std::ostream &dst, std::string id, unsigned numTimeSteps)
+    void write_instance_xml(std::ostream &dst, std::string id, unsigned numTimeSteps, const std::vector<Bead> &check_beads)
     {
         unsigned intervalCount=1;
         PreRun(intervalCount, numTimeSteps);
 
         unsigned expectedFinalTime=m_state->t + numTimeSteps;
+        uint32_t bead_check_sum=0;
+        for(const Bead &b : m_state->beads){
+            bead_check_sum += b.get_hash_code().hash;
+        }
 
         dst<<"<GraphInstance id='"<<id<<"' graphTypeId='basic_dpd_engine_v5'\n";
         dst<<"   P='{}' >\n";
@@ -107,7 +111,23 @@ public:
             dst<<"    <DevI id='"<<id<<"' type='cell' P='{}' S='"<<state_init<<"' />\n";
         }
 
-        dst<<"    <DevI id='rr' type='reaper' P='{ "<<m_state->beads.size()<<", "<<expectedFinalTime<<"}' S='' />\n";
+        float max_dist=0.05;
+        float max_dist_squared=max_dist*max_dist;
+        dst<<"    <DevI id='rr' type='reaper' P='{ "<<m_state->beads.size()<<", "<<expectedFinalTime<<", "<<bead_check_sum<<", ";
+        dst<<max_dist_squared<<", ";
+        dst<<"{"<<m_state->box[0]<<","<<m_state->box[1]<<","<<m_state->box[2]<<"},";
+        dst<<check_beads.size()<<",{";
+        for(unsigned i=0; i<16; i++){
+            if(i!=0){
+                dst<<",";
+            }
+            if(i < check_beads.size()){
+                dst<<"{"<<check_beads[i].get_hash_code().hash<<",{"<<check_beads[i].x[0]<<","<<check_beads[i].x[1]<<","<<check_beads[i].x[2]<<"}}";
+            }else{
+                dst<<"{0,0,0,0}";
+            }
+        }
+        dst<<"}}' S='' />\n";
         dst<<"  </DeviceInstances>\n";
         dst<<"  <EdgeInstances>\n";
 
@@ -133,14 +153,14 @@ public:
         dst<<"</GraphInstance>\n";
     }
 
-    void write_xml(std::ostream &dst, unsigned numSteps)
+    void write_xml(std::ostream &dst, unsigned numSteps, const std::vector<Bead> &check_beads={})
     {
         std::string graph_type=create_graph_type_xml();
 
         auto it=graph_type.find("</Graphs>");
         dst<<(graph_type.substr(0, it));
 
-        write_instance_xml(dst, "blurble", numSteps);
+        write_instance_xml(dst, "blurble", numSteps, check_beads);
 
         dst<<"\n";
         dst<<"</Graphs>\n";

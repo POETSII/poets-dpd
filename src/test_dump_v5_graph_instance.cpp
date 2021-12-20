@@ -1,68 +1,175 @@
 #include "dpd/engines/basic/basic_dpd_engine_v5_raw_orch.hpp"
 #include "dpd/core/dpd_state_builder.hpp"
+#include "dpd/core/dpd_state_io.hpp"
+
+#include "dpd/engines/naive/naive_dpd_engine.hpp"
 
 #include "dpd/core/struct_to_c.hpp"
 
 #include <random>
 #include <regex>
 #include <cmath>
+#include <vector>
+
+struct BeadBondingInfo{
+public:
+    enum BeadBondingFlags : uint32_t{
+        IsAngleBondCentre = 1,
+        IsAngleBondHead = 2,
+        IsAngleBondTail = 4,
+        AngleBondMask = IsAngleBondCentre | IsAngleBondHead | IsAngleBondTail,
+        IsHookeanHead = 8,
+        IsHookeanTail = 16,
+        HookeanMask = IsHookeanHead | IsHookeanTail
+    };
+private:
+    unsigned nPolymerTypes;
+    std::vector<BeadBondingFlags> m_interestingness;
+
+    uint32_t get_polymer_offset_index(unsigned polymer_type, unsigned polymer_offset) const
+    {
+        return polymer_offset*nPolymerTypes+polymer_type;
+    }
+
+    uint32_t get_polymer_offset_index(const Bead &b) const
+    {
+        return get_polymer_offset_index(b.polymer_type, b.polymer_offset);
+    }
+
+    void add_polymer_offset_index_flags(unsigned polymer_type, unsigned polymer_offset, BeadBondingFlags flags)
+    {
+        unsigned index=get_polymer_offset_index(polymer_type, polymer_offset);
+        if(index >= m_interestingness.size()){
+            m_interestingness.resize(index+1, BeadBondingFlags(0));
+        }
+        m_interestingness[index] = BeadBondingFlags(m_interestingness[index] | flags);
+    }
+
+    void build_polymer_index_to_interest(const WorldState &state)
+    {
+        nPolymerTypes=state.polymer_types.size();
+
+        for(const PolymerType &pt : state.polymer_types){
+            for(unsigned i=0; i<pt.bead_types.size(); i++){
+                add_polymer_offset_index_flags(pt.polymer_id, i, BeadBondingFlags(0));
+            }
+
+            for(const Bond &b : pt.bonds){
+                add_polymer_offset_index_flags(pt.polymer_id,  b.bead_offset_head, BeadBondingFlags::IsHookeanHead);
+                add_polymer_offset_index_flags(pt.polymer_id,  b.bead_offset_tail, BeadBondingFlags::IsHookeanTail);
+            }
+            for(const BondPair &bp : pt.bond_pairs){
+                const auto head=pt.bonds.at(bp.bond_offset_head).bead_offset_head;
+                const auto centre=pt.bonds.at(bp.bond_offset_head).bead_offset_tail;
+                const auto tail=pt.bonds.at(bp.bond_offset_tail).bead_offset_tail;
+
+                add_polymer_offset_index_flags(pt.polymer_id, head, BeadBondingFlags::IsAngleBondHead);
+                add_polymer_offset_index_flags(pt.polymer_id, centre, BeadBondingFlags::IsAngleBondCentre);
+                add_polymer_offset_index_flags(pt.polymer_id, tail, BeadBondingFlags::IsAngleBondTail);
+            }
+        }
+    }
+public:
+    BeadBondingInfo(const WorldState &state)
+    {
+        build_polymer_index_to_interest(state);
+    }
+
+
+    BeadBondingFlags get_bonding_info(const Bead &b) const
+    {
+        unsigned index=get_polymer_offset_index(b);
+        return m_interestingness.at(index);
+    }
+};
 
 int main(int argc, const char *argv[])
 {
-    WorldState state;
-
-    vec3r_t dims{8,8,8};
-
-    WorldStateBuilder builder(dims);
-
-    double density=3;
-    double w=dims[0], h=dims[1], d=dims[2];
-    double volume=w*h*d;
-    unsigned n=volume*density;
-
-    const double g = 1.22074408460575947536;
-    const double a1 = 1.0/g;
-    const double a2 = 1.0/(g*g);
-    const double a3 = 1.0/(g*g*g);
-
-    builder.add_bead_type("A");
-    builder.add_bead_type("B");
-    builder.set_interaction_strength("A", "A", 20.0, 1.0);
-    builder.set_interaction_strength("B", "B", 20.0, 1.0);
-    builder.set_interaction_strength("A", "B", 30.0, 1.0);
-    builder.add_polymer_type("P", {"A","B"}, {{10,1,0,1}}, {});
-
-    auto round_vec=[](const vec3r_t &x)
-    {
-        return vec3r_t{
-            ldexp(round(ldexp(x[0],10)),-10),
-            ldexp(round(ldexp(x[1],10)),-10),
-            ldexp(round(ldexp(x[2],10)),-10)
-        };
-    };
-
-    for(unsigned i=1; i<=n/2; i++){
-        // http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
-        vec3r_t x{
-            fmod(0.5+i*a1, 1.0)*w,
-            fmod(0.5+i*a2, 1.0)*h,
-            fmod(0.5+i*a3, 1.0)*d
-        };
-        vec3r_t dx{
-            fmod(0.1+i*a1, 1.0),
-            fmod(0.1+i*a2, 1.0),
-            fmod(0.1+i*a3, 1.0)
-        };
-        vec3r_t x0=vec_wrap(round_vec(x+dx*0.3), dims);
-        vec3r_t x1=vec_wrap(round_vec(x-dx*0.3), dims);
-        builder.add_polymer("P", {{x0},{x1}}, true);
+    unsigned nSteps=1;
+    if(argc>1){
+        nSteps=std::atoi(argv[1]);
     }
 
-    state=builder.extract();
+    int line_no=0;
+    WorldState state=read_world_state(std::cin, line_no);
+
+    double bead_steps=nSteps*state.beads.size();
+
+    bool do_check_beads = nSteps <= 1000;
+
+    std::vector<Bead> check_beads;
+    if(do_check_beads){
+        WorldState state2=state;
+
+        BasicDPDEngineV5Raw native;
+        native.Attach(&state2);
+
+        native.Run(nSteps);
+
+        unsigned nCheckSumBeads=std::min<unsigned>(16u, state.beads.size());
+
+        std::vector<unsigned> selected;
+
+        if(nCheckSumBeads<16){
+            for(const auto &b : state.beads){
+                selected.push_back(b.bead_id);
+            }
+        }else{
+            BeadBondingInfo bi(state);
+
+            std::vector<std::pair<double,unsigned>> distances;
+            std::vector<std::pair<double,unsigned>> speeds;
+            std::vector<unsigned> angle_centre, hookean_only;
+            for(const auto &b : state2.beads){
+                distances.push_back({vec3_wrapped_distance(b.x, state.beads.at(b.bead_id).x, state.box), b.bead_id});
+                speeds.push_back({b.v.l2_norm(), b.bead_id});
+
+                auto bonding=bi.get_bonding_info(b);
+                if( bonding & (BeadBondingInfo::IsAngleBondCentre) ){
+                    angle_centre.push_back(b.bead_id);
+                }
+                if( (bonding & BeadBondingInfo::HookeanMask) & !(bonding & BeadBondingInfo::AngleBondMask)){
+                    hookean_only.push_back(b.bead_id);
+                }
+            }
+
+            std::sort(distances.begin(), distances.end());
+            std::sort(speeds.begin(), speeds.end());
+
+            for(unsigned i=0; i<4; i++){
+                selected.push_back( (distances.end()-i-1)->second );
+                selected.push_back( (speeds.end()-i-1)->second );
+            }
+
+            std::mt19937_64 urng;
+
+            std::sample(angle_centre.begin(), angle_centre.end(), std::back_inserter(selected), 4, urng);
+            std::sample(hookean_only.begin(), hookean_only.end(), std::back_inserter(selected), 4, urng);
+            
+            while(selected.size() < nCheckSumBeads){
+                selected.push_back(urng() % state.beads.size());
+            }
+
+            for(unsigned i=0; i<selected.size(); i++){
+                check_beads.push_back( state2.beads.at(selected[i]));
+            }
+        }
+
+        double max_dist=0, sum_dist=0;
+        for(unsigned i=0; i<check_beads.size(); i++){
+            const auto &begin_pos=state.beads.at(check_beads[i].bead_id).x;
+            const auto &end_pos=check_beads[i].x;
+            double dist=vec3_wrapped_distance(begin_pos, end_pos, state.box);
+
+            max_dist=std::max(max_dist, dist);
+            sum_dist += dist;
+        }
+        fprintf(stderr, "Max check bead movement = %g\n", max_dist);
+        fprintf(stderr, "Mean check bead movement = %g\n", sum_dist/check_beads.size());
+    }
 
     BasicDPDEngineV5RawOrch engine;
     engine.Attach(&state);
 
-    unsigned numSteps=100;
-    engine.write_xml(std::cout, numSteps);
+    engine.write_xml(std::cout, nSteps, check_beads);
 }
