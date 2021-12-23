@@ -228,8 +228,8 @@ public:
             return carry_on;
         };
 
-        unsigned final_slice_t=interval_size*interval_count;
-        unsigned next_slice_t=interval_size; // time of the next slice to be added to slices
+        unsigned final_slice_t=m_state->t + interval_size*interval_count;
+        unsigned next_slice_t=m_state->t + interval_size; // time of the next slice to be added to slices
         int finished_slice_t=-1;
 
         auto process_output=[&](raw_bead_resident_t &output) -> bool

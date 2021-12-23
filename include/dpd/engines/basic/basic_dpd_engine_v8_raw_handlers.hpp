@@ -130,7 +130,7 @@ struct BasicDPDEngineV8RawHandlers
 
         float incoming_vv[3]={incoming_v[0],incoming_v[1],incoming_v[2]};
         dpd_maths_core_half_step_raw::calc_force<EnableLogging,float,float[3],float*>(
-            cell.inv_root_dt,
+            cell.scaled_inv_root_dt,
             cell.t_hash,
             dx, dr,
             kappa, r0, 

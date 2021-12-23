@@ -164,6 +164,7 @@ protected:
 
         for(auto &device : m_devices){
             device.phase=Handlers::PreMigrate;
+            device.t=m_state->t;
             device.interval_size=interval_size;
             device.intervals_todo=interval_count;
             device.interval_offset=interval_size;
@@ -179,7 +180,7 @@ protected:
             for(auto &b : cell.beads){
                 raw_bead_resident_t bb;
                 Handlers::copy_bead_resident::copy(&bb, &b);
-                bb.t=0;
+                bb.t=m_state->t;
 
                 // Pre-correct one-step backwards in time, as handlers will do one too many
                 dpd_maths_core_half_step_raw::update_mom((float)-m_state->dt, bb);
@@ -238,8 +239,8 @@ public:
             return carry_on;
         };
 
-        unsigned final_slice_t=interval_size*interval_count;
-        unsigned next_slice_t=interval_size; // time of the next slice to be added to slices
+        unsigned final_slice_t=m_state->t + interval_size*interval_count;
+        unsigned next_slice_t=m_state->t + interval_size; // time of the next slice to be added to slices
         int finished_slice_t=-1;
 
         auto process_output=[&](raw_bead_resident_t &output) -> bool

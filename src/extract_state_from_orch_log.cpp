@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
         throw std::runtime_error("Num beads in state does not match num beads in log.");
     }
     if(time<state.t){
-        throw std::runtime_error("Bead batch is from a time earlier than state.");
+        throw std::runtime_error("Bead batch is from a time "+std::to_string(time)+" earlier than state "+std::to_string(state.t)+".");
     }
 
     std::cerr<<"FOund header, numBeads="<<numBeads<<"=0x"<<std::hex<<numBeads<<std::dec<<"\n";

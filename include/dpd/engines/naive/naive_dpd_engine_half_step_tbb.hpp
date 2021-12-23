@@ -55,6 +55,7 @@ class NaiveDPDEngineHalfStepTBB
 
     std::vector<Polymer*> m_polymers_with_angles;
 
+public:
     void Attach(WorldState *s) override
     {
         m_locked_cells.clear();
@@ -70,6 +71,7 @@ class NaiveDPDEngineHalfStepTBB
             }
         }
     }
+protected:
 
     void step() override
     {
@@ -189,7 +191,7 @@ class NaiveDPDEngineHalfStepTBB
         if(ForceLogging::logger()){
             for(auto &b : m_state->beads){
                 double x[3]={b.x[0],b.x[1],b.x[2]};
-                ForceLogging::logger()->LogBeadProperty(b.bead_id,"x_next",3,x);
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x_next",3,x);
             }
         }
 

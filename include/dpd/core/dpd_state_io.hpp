@@ -330,7 +330,7 @@ void read_polymer_type(std::istream &src, int &line_no, WorldState &state)
             //dst<<"Bond "<<b.bead_offset_a<<" "<<b.bead_offset_b<<" "<<b.kappa<<" "<<b.r0<<"\n";
             res.bonds[i].bead_offset_head=p.unsigned_at(1);
             res.bonds[i].bead_offset_tail=p.unsigned_at(2);
-            res.bonds[i].kappa=p.unsigned_at(3);
+            res.bonds[i].kappa=p.double_at(3);
             res.bonds[i].r0=p.double_at(4);
 
             if(res.bonds[i].bead_offset_head >= res.bead_types.size()){

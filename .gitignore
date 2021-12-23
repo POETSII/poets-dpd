@@ -3,6 +3,7 @@ obj
 .vscode
 *.vtk.*
 *.o
+*.so
 *.s
 /eb-ref/*.vtk
 *.vtk
@@ -10,7 +11,18 @@ obj
 *.s
 *.state
 *.vtk
+*.gz
+*.mp4
+*.aux
+*.fdb_latemk
+*.pdf
+*.fls
+*.csv
 
+test_results
 working
 working2
 *.out
+.*/
+tmp.*
+poems_sim

@@ -61,8 +61,10 @@ test_results/%.txt : bin/%
 
 test : $(patsubst bin/%,test_results/%.txt,$(TEST_BIN))
 
+obj/%.d: src/%.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MT '$(patsubst src/%.cpp,obj/%.o,$<)' $< -MF $@
 
-obj/%.o : src/%.cpp
+obj/%.o : src/%.cpp obj/%.d
 	mkdir -p obj/$(dir $*)
 	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
 
@@ -130,6 +132,7 @@ bin/engines/%.riscv.data.v: bin/engines/%.riscv.elf
 	$(RV_OBJCOPY) -O verilog --remove-section=.text \
                 --set-section-flags .bss=alloc,load,contents $< $@ 
 
+
 ###############################################################
 
 bin/% : obj/%.o
@@ -149,3 +152,7 @@ bin/benchmark_engine_intervals : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 bin/run_world : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
 bin/engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+
+
+-include $(ALL_ENGINE_OBJS:%.o=%.d)
+-include $($(wildcard src/*.cpp):src/%.cpp=obj/%.d)

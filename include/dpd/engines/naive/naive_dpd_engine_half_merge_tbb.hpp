@@ -15,8 +15,33 @@ class NaiveDPDEngineHalfMergeTBB
     : public NaiveDPDEngineHalfMerge
 {
 public:
+    std::string CanSupport(const WorldState *s) const override
+    {
+        std::string base=NaiveDPDEngineHalfMerge::CanSupport(s);
+        if(!base.empty()){
+            return base;
+        }
+
+        if( fmod(s->box[0],4) !=0  ){
+            return "x-dim not a multiple of 4.";
+        }
+        if( fmod(s->box[1],4) !=0  ){
+            return "y-dim not a multiple of 4.";
+        }
+        if( fmod(s->box[2],4) !=0  ){
+            return "z-dim not a multiple of 4.";
+        }
+
+        return "";
+    }
+
     void Attach(WorldState *s) override
     {
+        std::string m=CanSupport(s);
+        if(!m.empty()){
+            throw std::runtime_error("Can't support this world : "+m);
+        }
+
         NaiveDPDEngineHalfMerge::Attach(s);
         if(s){
             make_conflict_groups();
@@ -76,7 +101,7 @@ private:
                                 for(int lx=0; lx<2; lx++){
                                     for(int ly=0; ly<2; ly++){
                                         for(int lz=0; lz<2; lz++){
-                                            unsigned index=cell_pos_to_index({ix+lx,iy+ly,iz+lz});
+                                            unsigned index=cell_pos_to_index({int(ix+lx),int(iy+ly),int(iz+lz)});
                                             if(!seen.insert(index).second){
                                                 throw std::runtime_error("Duplicate");
                                             }

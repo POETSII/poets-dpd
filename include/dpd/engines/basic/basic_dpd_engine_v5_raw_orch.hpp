@@ -95,7 +95,7 @@ public:
             bead_check_sum += b.get_hash_code().hash;
         }
 
-        dst<<"<GraphInstance id='"<<id<<"' graphTypeId='basic_dpd_engine_v5'\n";
+        dst<<"<GraphInstance id='"<<id<<"' graphTypeId='basic_dpd_engine_v5_r0'\n";
         dst<<"   P='{}' >\n";
         dst<<"  <DeviceInstances>\n";
 
@@ -111,7 +111,7 @@ public:
             dst<<"    <DevI id='"<<id<<"' type='cell' P='{}' S='"<<state_init<<"' />\n";
         }
 
-        float max_dist=0.05;
+        float max_dist=0.01;
         float max_dist_squared=max_dist*max_dist;
         dst<<"    <DevI id='rr' type='reaper' P='{ "<<m_state->beads.size()<<", "<<expectedFinalTime<<", "<<bead_check_sum<<", ";
         dst<<max_dist_squared<<", ";
