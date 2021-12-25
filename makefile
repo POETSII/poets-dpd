@@ -25,12 +25,10 @@ LDFLAGS += -L ~/local/lib
 LDLIBS += -ltbb
 
 
-TEST_BIN := bin/test_naive_engine \
-	bin/test_naive_engine_core bin/test_naive_engine_core_diff \
-	bin/test_naive_engine_half_step bin/test_naive_engine_half_step_diff \
-	bin/test_basic_engine bin/test_basic_engine_diff  \
-	bin/test_basic_engine_v2  bin/test_basic_engine_v2_diff \
-	bin/test_basic_engine_v3  bin/test_basic_engine_v3_diff \
+TEST_BIN := bin/test/test_engine bin/test/test_engine_diff \
+	bin/extract_state_from_orch_log
+
+CREATE_STATE_BIN := $(patsubst src/create_state/%.cpp,bin/create_state/%,$(wildcard src/create_state/*.cpp))
 
 
 ENGINES := $(filter-out %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp)))
@@ -47,12 +45,13 @@ endif
 
 ENGINES := $(filter-out basic_dpd_engine_v6% ,$(ENGINES))
 
-all : $(TEST_BIN)
-
 ALL_ENGINE_OBJS := $(foreach e,$(ENGINES),obj/engines/$(e).o)
 ALL_ENGINE_RISCV := $(foreach e,$(ENGINES_RISCV),bin/engines/$(e).code.v bin/engines/$(e).data.v )
+ALL_ENGINE_BATS := $(foreach e,$(ENGINES),obj/engines/$(e).bats)
 
-all_engines : $(ALL_ENGINES_OBJS) $(ALL_ENGINE_RISCV)
+all_engines : $(ALL_ENGINES_OBJS) $(ALL_ENGINE_RISCV) $(ALL_ENGINE_BATS)
+
+all : $(TEST_BIN) $(CREATE_STATE_BIN) all_engines
 
 test_results/%.txt : bin/%
 	mkdir -p test_results
@@ -62,6 +61,7 @@ test_results/%.txt : bin/%
 test : $(patsubst bin/%,test_results/%.txt,$(TEST_BIN))
 
 obj/%.d: src/%.cpp
+	mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MT '$(patsubst src/%.cpp,obj/%.o,$<)' $< -MF $@
 
 obj/%.o : src/%.cpp obj/%.d
@@ -69,8 +69,13 @@ obj/%.o : src/%.cpp obj/%.d
 	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
 
 src/%.S : src/%.cpp
-	mkdir -p obj
+	mkdir -p $(dir $@)
 	$(CXX) -S $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+
+obj/engines/%.bats : src/engines/%.o src/engines/dpd_engine.bats.template
+	sed -e "s/__ENGINE__/$*/g" src/engines/dpd_engine.bats.template > $@
+
 
 RISCV_TOOLS = /local/orchestrator-common/orchestrator_dependencies_7/riscv32-compile-driver/bin
 
@@ -117,11 +122,11 @@ obj/engines/memcpy.riscv.o : src/engines/memcpy.riscv.cpp
 	$(RV_CPPC) $(filter-out -fvisibility=hidden -fwhole-program,$(RV_CFLAGS)) -W -Wall -c -o $@ src/engines/memcpy.riscv.cpp
 
 obj/engines/%.riscv.o : src/engines/%.riscv.cpp
-	mkdir -p obj/engines
+	mkdir -p  $(dir $@)
 	$(RV_CPPC) $(RV_CFLAGS) -W -Wall -c -DTINSEL -o $@  src/engines/$*.riscv.cpp
 
 bin/engines/%.riscv.elf : obj/engines/%.riscv.o obj/engines/entry.riscv.o obj/engines/memcpy.riscv.o obj/engines/link.riscv.ld
-	mkdir -p bin/engines
+	mkdir -p $(dir $@)
 	$(RV_LD) $(RV_LDFLAGS) -T obj/engines/link.riscv.ld -o $@ obj/engines/entry.riscv.o obj/engines/memcpy.riscv.o obj/engines/$*.riscv.o $(TINSEL_ROOT)/lib/lib.o
 
 bin/engines/%.riscv.code.v :  bin/engines/%.riscv.elf
@@ -136,14 +141,14 @@ bin/engines/%.riscv.data.v: bin/engines/%.riscv.elf
 ###############################################################
 
 bin/% : obj/%.o
-	mkdir -p bin
+	mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(filter-out %.v,$^) -o $@ $(LDFLAGS) $(LDLIBS)
 
-bin/test_hash : LDLIBS += -ltestu01
+bin/test/test_hash : LDLIBS += -ltestu01
 
-bin/test_engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+bin/test/test_engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
-bin/test_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+bin/test/test_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
 bin/benchmark_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 

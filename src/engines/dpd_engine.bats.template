@@ -1,0 +1,13 @@
+
+
+[[ "__ENGINE__" != "" ]] || { >&2 echo "# ENGINE not set."  ; exit 1 ; }
+
+@test "__ENGINE____test_engine" { 
+    mkdir -p test_results/__ENGINE__
+    bin/test/test_engine __ENGINE__ > test_results/__ENGINE__/__ENGINE____test_engine.log
+}
+
+@test "__ENGINE____test_engine_diff" { 
+    mkdir -p test_results/__ENGINE__
+    bin/test/test_engine __ENGINE__ > test_results/__ENGINE__/__ENGINE____test_engine_diff.log
+}

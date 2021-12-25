@@ -7,47 +7,16 @@ struct BasicDPDEngineV5F22RawHandlers
     : BasicDPDEngineV5RawHandlers
 {   
 
-    
-    
-    template<class A, class B>
-    static void copy_bead_view(A *dst, const B *src)
-    {
-        static_assert(offsetof(A,id)==0);
-        static_assert(offsetof(A,id)==offsetof(B,id));
-        static_assert(offsetof(A,x_f22)==sizeof(A::id));
-        static_assert(offsetof(A,x_f22)==offsetof(B,x_f22));
-        static_assert(offsetof(A,v)==offsetof(A,x_f22)+sizeof(A::x_f22));
-        static_assert(offsetof(A,v)==offsetof(B,v));
-        static_assert( (offsetof(A,v)+sizeof(A::v)) % 4 == 0 );
-        memcpy32((uint32_t*)dst, (const uint32_t*)src, (offsetof(A,v)+sizeof(A::v))/4);
-    }
-
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
-    // TODO : g++ correctly complains, as BasicDPDEngine::bead_resident_t is not strictly POD
-    template<class A, class B>
-    static void copy_bead_resident(A *dst, const B *src)
-    {
-        static_assert(sizeof(A)==sizeof(B));
-        static_assert(offsetof(A,id)==offsetof(B,id));
-        static_assert(offsetof(A,x_f22)==offsetof(B,x_f22));
-        static_assert(offsetof(A,v)==offsetof(B,v));
-        static_assert(offsetof(A,f)==offsetof(B,f));
-        static_assert(offsetof(A,bond_partners)==offsetof(B,bond_partners));
-        static_assert(offsetof(A,angle_bonds)==offsetof(B,angle_bonds));
-        static_assert(offsetof(A,t)==offsetof(B,t));
-        static_assert(offsetof(A,checksum)==offsetof(B,checksum));
-        static_assert(sizeof(A)%4==0);
-        memcpy32((uint32_t*)dst, (const uint32_t*)src, sizeof(A)/4);
-    }
+
 
     template<class A, class B>
     static void copy_bead_resident_plain_to_f22(A *dst, const B *src)
     {
         static_assert(sizeof(A)==sizeof(B));
         static_assert(offsetof(A,id)==offsetof(B,id));
-        static_assert(offsetof(A,x_f22)==offsetof(B,x));
+        static_assert(offsetof(A,x)==offsetof(B,x));
         static_assert(offsetof(A,v)==offsetof(B,v));
         static_assert(offsetof(A,f)==offsetof(B,f));
         static_assert(offsetof(A,bond_partners)==offsetof(B,bond_partners));
@@ -66,7 +35,10 @@ struct BasicDPDEngineV5F22RawHandlers
     struct raw_bead_view_f22_t
     {
         uint32_t id;
-        int32_t x_f22[3];
+        union{
+            int32_t x_f22[3];
+            float x[3];
+        };
         float v[3];
 
         template<class T>
@@ -91,7 +63,10 @@ struct BasicDPDEngineV5F22RawHandlers
     {
         // raw_bead_view_t
         uint32_t id;
-        int32_t x_f22[3];
+        union{
+            int32_t x_f22[3];
+            float x[3];
+        };
         float v[3];
 
         // Extras
@@ -114,7 +89,7 @@ struct BasicDPDEngineV5F22RawHandlers
 
         void operator=(const raw_bead_resident_f22_t &x)
         {
-            copy_bead_resident(this, &x);
+            copy_bead_resident::copy(this, &x);
         }
     };
     static_assert(sizeof(raw_bead_resident_f22_t)==56);
@@ -318,8 +293,6 @@ struct BasicDPDEngineV5F22RawHandlers
             }else if(cell.location_f0[d]==cell.box[d]-1 && neighbour_cell_pos_f0==0){
                 neighbour_x[d] += (cell.box[d]<<22);
             }
-
-            neighbour_x[d] += 1<<(22-14-1); // This is a pre-bias for truncation in sqr_f22_to_f28
         }
 
         bool cached=false;
@@ -330,19 +303,14 @@ struct BasicDPDEngineV5F22RawHandlers
 
             //fprintf(stderr, "    Recv : bead_i=%u, home=%u, other=%u\n", bead_i, get_hash_code(bead.id), get_hash_code(incoming.id));
 
-            auto sqr_f22_to_f28=[](int32_t x)
-            {
-                // This is not quite symmetric...
-                int32_t tmp=(x >>(22-14));
-                return tmp*tmp; // Square to f28
-            };
-
             // This implicitly interacts each bead with itself, which is handled with a
             // distance check in calc_force.
             int32_t dx_f22[3];
             vec3_sub(dx_f22, bead.x_f22, neighbour_x);
+
+            int64_t acc=int64_t(dx_f22[0])*dx_f22[0] + int64_t(dx_f22[1])*dx_f22[1] + int64_t(dx_f22[2])*dx_f22[2];
             
-            int32_t dr_sqr_f28=sqr_f22_to_f28(dx_f22[0]) + sqr_f22_to_f28(dx_f22[1]) + sqr_f22_to_f28(dx_f22[2]);
+            int32_t dr_sqr_f28=(acc + (1ll<<(44-28-1)))>>(44-28);
             if(dr_sqr_f28 >= (1<<28)){
                 continue;
             }

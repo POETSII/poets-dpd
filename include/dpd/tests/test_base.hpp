@@ -135,18 +135,20 @@ protected:
 
     void require_close(const vec3r_t &ref, const vec3r_t &got, const char *msg)
     {
-        if( (ref-got).l2_norm() > 1e-6 ){
+        double dist=(ref-got).l2_norm() ;
+        if( dist > 1e-6 ){
             std::stringstream acc;
-            acc<<msg<<", ref="<<ref<<", got="<<got;
+            acc<<msg<<", ref="<<ref<<", got="<<got<<", dist="<<dist;
             require(false, acc.str());
         }
     }
 
     void require_close(const vec3r_t &ref, const vec3r_t &got, double tol, const char *msg)
     {
-        if( (ref-got).l2_norm() > tol ){
+        double dist=(ref-got).l2_norm() ;
+        if( dist > tol ){
             std::stringstream acc;
-            acc<<msg<<", ref="<<ref<<", got="<<got<<", tol="<<tol;
+            acc<<msg<<", ref="<<ref<<", got="<<got<<", dist="<<dist<<", tol="<<tol;
             require(false, acc.str());
         }
     }

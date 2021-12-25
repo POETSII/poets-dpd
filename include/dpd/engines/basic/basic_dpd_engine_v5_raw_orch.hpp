@@ -12,6 +12,34 @@
 class BasicDPDEngineV5RawOrch
     : public BasicDPDEngineV5Raw
 {
+private:
+    static std::string get_shared_code()
+    {
+        std::string path=BasicDPDEngineV5RawHandlers::THIS_HEADER;
+        std::string cmd="pcpp -I . -I include "+path;
+
+        FILE *f=popen(cmd.c_str(), "r"); 
+
+        std::string acc;
+        char buffer[1024];
+        while(1){
+            auto done=fread(buffer, 1, sizeof(buffer), f);
+            if(done==0){
+                if(feof(f)){
+                    break;
+                }else{
+                    throw std::runtime_error("Problem while pre-processing with pcpp (is it installed?)");
+                }
+            }
+
+            acc.insert(acc.end(), buffer, buffer+done);
+        }
+
+        pclose(f);
+
+        return acc;
+    }
+
 public:
     using Handlers = BasicDPDEngineV5RawHandlers;
 
@@ -67,7 +95,7 @@ public:
             {"__DEVICE_STATE_C__",
             struct_to_c_body<BasicDPDEngineV5RawHandlers::device_state_t>()
             },
-            {"__SHARED_CODE_C__", "#include \""+header_path+"\"" }
+            {"__SHARED_CODE_C__", get_shared_code() }
         };
 
         std::ifstream ifs(template_path);

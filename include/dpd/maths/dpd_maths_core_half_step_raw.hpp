@@ -1,13 +1,8 @@
 #ifndef dpd_maths_core_half_step_raw_hpp
 #define dpd_maths_core_half_step_raw_hpp
 
-#pragma POETS EMBED_HEADER
 #include "dpd/maths/dpd_maths_core.hpp"
-
-#pragma POETS EMBED_HEADER
 #include "dpd/core/hash.hpp"
-
-#pragma POETS EMBED_HEADER
 #include "dpd/core/logging.hpp"
 
 #ifndef TINSEL

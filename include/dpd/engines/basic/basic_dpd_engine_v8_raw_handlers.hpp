@@ -72,7 +72,7 @@ struct BasicDPDEngineV8RawHandlers
         while(cell.share_todo && begin!=end){
             --cell.share_todo;
             const auto &b = resident[cell.share_todo];
-            copy_bead_view( begin, &b );
+            copy_bead_view::copy( begin, &b );
             begin++;
         }
         while(begin!=end){

@@ -88,7 +88,7 @@ public:
 
                 m_box.extract(dst.box);
                 dst.dt=m_state->dt;
-                dst.inv_root_dt=pow_half(24/m_state->dt);
+                dst.scaled_inv_root_dt=pow_half(24/m_state->dt);
                 dst.bond_r0=m_bond_r0;
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -177,8 +177,8 @@ public:
         for(auto &cell : m_cells){
             for(auto &b : cell.beads){
                 raw_bead_resident_t bb;
-                Handlers::copy_bead_resident(&bb, &b);
-                bb.t=0;
+                Handlers::copy_bead_resident::copy(&bb, &b);
+                bb.t=m_state->t;
 
                 // Pre-correct one-step backwards in time, as handlers will do one too many
                 dpd_maths_core_half_step_raw::update_mom((float)-m_state->dt, bb);

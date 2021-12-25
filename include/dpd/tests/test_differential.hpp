@@ -58,6 +58,7 @@ std::pair<bool,std::string> test_differential(
             
 
             double maxDiff= 0.001;
+            maxDiff *= sqrt(todo);
 
             double xdiff=0;
             int xdiff_index=-1;
@@ -87,14 +88,14 @@ std::pair<bool,std::string> test_differential(
                     fdiff_index=i;
                 }
             }
-            if(fdiff>10*maxDiff){ // Forces can be large, so allow more slack
-                std::cerr<<"At time "<<state1.t<<" the f values have diverged.\n";
+            if(fdiff>10*maxDiff){ // Forces can be large, so allow lots of slack - particularly needed for fixed-point...
+                std::cerr<<"At time "<<state1.t<<" after "<<todo<<" steps the f values have diverged.\n";
                 
 
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);
 
-                std::cerr<<"  fdiff_max at bead "<<fdiff_index<<", diff="<<fdiff<<"\n";
+                std::cerr<<"  fdiff_max at bead "<<fdiff_index<<", diff="<<fdiff<<", steps="<<todo<<"\n";
                 std::cerr<<"      ref="<<state1.beads[fdiff_index].f<<"\n";
                 std::cerr<<"      got="<<state2.beads[fdiff_index].f<<"\n";
 
@@ -102,7 +103,7 @@ std::pair<bool,std::string> test_differential(
             }
 
             if(xdiff>maxDiff){
-                std::cerr<<"At time "<<state1.t<<" the x values have diverged.\n";
+                std::cerr<<"At time "<<state1.t<<" after "<<todo<<" steps the x values have diverged.\n";
 
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);
@@ -114,7 +115,7 @@ std::pair<bool,std::string> test_differential(
                 return {false, "Position divergence."};
             }
             if(vdiff>maxDiff){
-                std::cerr<<"At time "<<state1.t<<" the v values have diverged.\n";
+                std::cerr<<"At time "<<state1.t<<" after "<<todo<<" steps the v values have diverged.\n";
 
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);

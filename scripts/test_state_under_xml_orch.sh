@@ -23,9 +23,9 @@ fi
 
 {
 
-    make bin/test_dump_v5_graph_instance bin/extract_state_from_orch_log
+    make bin/create_xml_v5_graph_instance bin/extract_state_from_orch_log
 
-    bin/test_dump_v5_graph_instance $NSTEPS < ${STATE_FILE} > ${WORKING}/in.xml
+    bin/create_xml_v5_graph_instance $NSTEPS < ${STATE_FILE} > ${WORKING}/in.xml
 
     graph_type_id=$( ${GRAPH_SCHEMA_DIR}/tools/print_graph_type_id.py ${WORKING}/in.xml )
 
@@ -37,9 +37,7 @@ fi
             --release \
             --working-dir ${WORKING} \
             --output-dir ${WORKING} \
-            -std=c++17 \
-            -I . \
-            -I include
+            -std=c++17
         mv -b -f ${WORKING}/${graph_type_id}.graph.so providers/${graph_type_id}.graph.so
     fi
 
@@ -58,7 +56,7 @@ fi
             ${WORKING}/in.xml
     fi 
 
-    providers/${graph_type_id}.poems ${WORKING}/in.xml 2> ${WORKING}/poems.out.log
+    providers/${graph_type_id}.poems --log-level 4 ${WORKING}/in.xml 2> ${WORKING}/poems.out.log
     bin/extract_state_from_orch_log ${STATE_FILE} < ${WORKING}/poems.out.log > ${WORKING}/poems.out.state
 
 } | tee ${WORKING}/build.log

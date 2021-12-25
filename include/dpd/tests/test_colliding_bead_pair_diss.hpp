@@ -162,7 +162,7 @@ public:
             asymmetries will build up due to quantisation, so eventually all implementations
             will see this behaviour.
         */
-        if(m_reversals < 3){
+        if(m_reversals < 2){
             m_steps_done += m_step_dist;
             return m_step_dist;
         }else{

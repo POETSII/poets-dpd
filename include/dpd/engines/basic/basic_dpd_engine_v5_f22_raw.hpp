@@ -178,7 +178,7 @@ public:
             for(auto &b : cell.beads){
                 raw_bead_resident_f22_t bb;
                 Handlers::copy_bead_resident_plain_to_f22(&bb, &b);
-                bb.t=0;
+                bb.t=m_state->t;
 
                 // Pre-correct one-step backwards in time, as handlers will do one too many
                 dpd_maths_core_half_step_raw::update_mom((float)-m_state->dt, bb);
@@ -253,6 +253,9 @@ public:
                     next_slice_t += interval_size;
                 }
                 output_slice &s = slices.at(slice_i);
+                if(output.t < s.time){
+                    fprintf(stderr, "  Bead %u, Slice %u, time=%u, size=%u\n", output.t, slice_i, s.time, s.num_seen);
+                }
                 require(output.t >= s.time, "Time does not match a slice time.");
                 if(output.t == s.time){
                     //fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
