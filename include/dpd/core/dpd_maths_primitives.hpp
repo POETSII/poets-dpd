@@ -16,75 +16,28 @@ inline double recip(double x)
 inline float recip(float x)
 { return 1.0f/x; }
 
-// These wierd names are to stop magic from the C library and compiler getting in the way
-
-#ifdef TINSEL
 double recip_pow_half(double x);
-#else
-inline double recip_pow_half(double x)
-{ return 1.0/sqrt(x); }
-#endif
-
-
-#ifdef TINSEL
 float recip_pow_half(float x);
-#else
-inline float recip_pow_half(float x)
-{ return 1.0f/sqrtf(x); }
-#endif
 
-
-#ifdef TINSEL
 double pow_half(double x);
-#else
-inline double pow_half(double x)
-{ return sqrt(x); }
-#endif
-
-
-#ifdef TINSEL
 float pow_half(float x);
-#else
-inline float pow_half(float x)
-{ return sqrtf(x); }
-#endif
 
-inline float absolute(float x)
-#ifdef TINSEL
-;
-#else
-{ return fabsf(x); }
-#endif
+float absolute(float x);
+double absolute(double x);
 
-inline double absolute(double x)
-#ifdef TINSEL
-;
-#else
-{ return fabs(x); }
-#endif
+int floor_nn(double x);
+int floor_nn(float x);
 
-inline int floor_nn(double x)
-#ifdef TINSEL
-;
-#else
-{ return (int)floor(x); }
-#endif
+inline int round_impl(float x);
 
-inline int floor_nn(float x)
-#ifdef TINSEL
-;
-#else
-{ return (int)floor(x); }
-#endif
-
-#ifdef TINSEL
 void memcpy32(uint32_t *a, const uint32_t *b, unsigned n);
-#else
-inline void memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
-{
-    memcpy(a, b, n*4);
-}
-#endif
 
+// https://github.com/riscv-non-isa/riscv-toolchain-conventions
+#if defined(__riscv) || defined (TINSEL)
+#define PDPD_TINSEL
+#include "dpd_maths_primitives_tinsel.hpp"
+#else
+#include "dpd_maths_primitives_native.hpp"
+#endif
 
 #endif

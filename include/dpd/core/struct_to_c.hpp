@@ -160,14 +160,24 @@ struct StructToCInit
     c_init res;
 
     template<class T>
+    std::string prim_to_string(const T &x)
+    {
+        if(x==0){
+            return "0";
+        }else if(std::is_same<T,uint64_t>::value){
+            return std::to_string(x)+"ull";
+        }else if(std::is_same<T,int64_t>::value){
+            return std::to_string(x)+"ll";
+        }else{
+            return std::to_string(x);
+        }
+    }
+
+    template<class T>
     void operator()(const char *name, T &x)
     {
         if constexpr(is_primitive<T>()){
-            if(x==0){
-                res.parts.push_back({name,"0", {}});
-            }else{
-                res.parts.push_back({name, std::to_string(x), {}});
-            }
+            res.parts.push_back({name, prim_to_string(x), {}});
         }else{
             StructToCInit rec{ {name, {}, {}} };
             x.walk(rec);
@@ -182,12 +192,8 @@ struct StructToCInit
         c_init init{name, {}, {}};
         
         if constexpr(is_primitive<T>()){
-            for(unsigned i=0; i<n; i++){
-                if(x[i]==0){
-                    init.parts.push_back({ std::string(name)+"["+std::to_string(i)+"]", "0", {} });
-                }else{
-                    init.parts.push_back({ std::string(name)+"["+std::to_string(i)+"]", std::to_string(x[i]), {} });
-                }
+            for(unsigned i=0; i<n; i++){    
+                init.parts.push_back({ std::string(name)+"["+std::to_string(i)+"]", prim_to_string(x[i]), {} });
             }
         }else{
             for(unsigned i=0; i<n; i++){

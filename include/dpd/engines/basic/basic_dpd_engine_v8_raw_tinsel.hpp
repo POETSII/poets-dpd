@@ -3,7 +3,7 @@
 
 #include "dpd/engines/basic/basic_dpd_engine_v8_raw.hpp"
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include "POLiteSWSim_PGraph.h"
 #include <iostream>
 #include <unistd.h>
@@ -134,7 +134,7 @@ public:
           1
         >;
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
     std::shared_ptr<typename Impl::HostLink> m_hostlink;
     std::shared_ptr<typename Impl::template PGraph<Device, State, None, Message>> m_graph;
     int m_meshLenX;

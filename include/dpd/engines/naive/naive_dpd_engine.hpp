@@ -639,7 +639,7 @@ private:
             assert(xa[i] < m_state->box[i]);
         }
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
         //std::cerr<<"  ref: x="<<xa<<", x'="<<b->x<<", v="<<b->v<<"\n";
 #endif
 

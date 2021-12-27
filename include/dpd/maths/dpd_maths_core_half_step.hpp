@@ -7,7 +7,7 @@
 
 #include "dpd/core/logging.hpp"
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include <iostream>
 #endif
 
@@ -34,7 +34,7 @@ namespace dpd_maths_core_half_step
             x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
             assert(0<=x[i] && x[i] < dims[i]);
         }
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
         //std::cerr<<"  alt: x="<<x<<", b.x'="<<b.x<<", v="<<b.v<<"\n";
 #endif
         b.x = x;
@@ -110,13 +110,13 @@ void calc_force(
     TScalar dr0=r0-dr;
     TScalar hookeanForce=kappa*dr0;
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
     //std::cerr<<"  fhook="<<dx*hookeanForce<<", dx="<<dx<<",  xh="<<home.x<<", xt="<<other.x<<"\n";
     #endif
 
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
     //std::cerr<<"  "<<home.get_hash_code()<<" -> "<<other.get_hash_code()<<" : "<<conForce<<", "<<dissForce<<", "<<randForce<<", "<<hookeanForce<<"\n";
 #endif
 

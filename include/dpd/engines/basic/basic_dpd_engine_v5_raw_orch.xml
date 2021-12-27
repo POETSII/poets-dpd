@@ -3,6 +3,8 @@
   <GraphType id="basic_dpd_engine_v5_r0">
     <Properties/>
     <SharedCode><![CDATA[
+    #define NDEBUG 1
+
     #ifdef POETS_LEGACY_HAS_HANDLER_EXIT
         #define _do_handler_exit(code) handler_exit(code)
         #else
@@ -19,7 +21,11 @@
             _do_handler_exit(code); \
         }   
 
+        #include <cmath>
+
         __SHARED_CODE_C__
+
+        
     ]]></SharedCode>
     <MessageTypes>
         <MessageType id="share"><Message><![CDATA[
@@ -94,7 +100,7 @@
                             }
                             dist_sqr += dist*dist;
                         }
-                        handler_log(1, "  dist=%g, exp=%f,%f,%f, got=%f,%f,%f", sqrtf(dist_sqr), deviceProperties->checkBeads[i].x[0],deviceProperties->checkBeads[i].x[1],deviceProperties->checkBeads[i].x[2], message->x[0], message->x[1], message->x[2]);
+                        handler_log(1, "  dist_sqr=%g, exp=%f,%f,%f, got=%f,%f,%f", dist_sqr, deviceProperties->checkBeads[i].x[0],deviceProperties->checkBeads[i].x[1],deviceProperties->checkBeads[i].x[2], message->x[0], message->x[1], message->x[2]);
                         if(dist_sqr > deviceProperties->checkBeadMaxDistSqr){
                             handler_log(0, "Bead id %x is too far from expected position.", message->id);
                             fake_handler_exit(1);
@@ -154,8 +160,6 @@
             </InputPin>
 
             <OutputPin name="migrate_out" messageTypeId="migrate">
-                <Properties/>
-                <State/>
                 <OnSend><![CDATA[
                     BasicDPDEngineV5RawHandlers::on_send_migrate(*deviceState, *message);
                 ]]></OnSend>

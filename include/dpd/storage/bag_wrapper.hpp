@@ -69,7 +69,7 @@ struct bag_wrapper
         if(TUnsafe || new_n < MAX_N){
             storage.n=new_n;
         }else{
-            #ifdef TINSEL
+            #ifdef PDPD_TINSEL
             printf("Lost");
             #else
             assert(false);
@@ -83,7 +83,7 @@ struct bag_wrapper
             storage.elements[storage.n]=x;
             storage.n=storage.n+1;
         }else{
-            #ifdef TINSEL
+            #ifdef PDPD_TINSEL
             //printf("Lost\n");
             #else
             assert(false);
@@ -99,7 +99,7 @@ struct bag_wrapper
             TCopier::copy(storage.elements+storage.n, &x);
             storage.n=storage.n+1;
         }else{
-            #ifdef TINSEL
+            #ifdef PDPD_TINSEL
             //printf("Lost\n");
             #else
             assert(false);
@@ -114,7 +114,7 @@ struct bag_wrapper
             // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
             storage.n=storage.n+1;
         }else{
-            #ifdef TINSEL
+            #ifdef PDPD_TINSEL
             //printf("Lost");
             #else
             assert(false);

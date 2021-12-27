@@ -16,7 +16,7 @@ private:
     static std::string get_shared_code()
     {
         std::string path=BasicDPDEngineV5RawHandlers::THIS_HEADER;
-        std::string cmd="pcpp -I . -I include "+path;
+        std::string cmd="pcpp --passthru-defines --passthru-unknown-exprs -I . -I include "+path;
 
         FILE *f=popen(cmd.c_str(), "r"); 
 
@@ -124,7 +124,7 @@ public:
         }
 
         dst<<"<GraphInstance id='"<<id<<"' graphTypeId='basic_dpd_engine_v5_r0'\n";
-        dst<<"   P='{}' >\n";
+        dst<<"   P=\"{}\" >\n";
         dst<<"  <DeviceInstances>\n";
 
         std::vector<std::string> index_to_id;
@@ -136,12 +136,12 @@ public:
 
             auto state_init=struct_to_c_init(dev);
 
-            dst<<"    <DevI id='"<<id<<"' type='cell' P='{}' S='"<<state_init<<"' />\n";
+            dst<<"    <DevI id='"<<id<<"' type='cell' P=\"{}\" S=\""<<state_init<<"\" />\n";
         }
 
         float max_dist=0.01;
         float max_dist_squared=max_dist*max_dist;
-        dst<<"    <DevI id='rr' type='reaper' P='{ "<<m_state->beads.size()<<", "<<expectedFinalTime<<", "<<bead_check_sum<<", ";
+        dst<<"    <DevI id='rr' type='reaper' P=\"{ "<<m_state->beads.size()<<", "<<expectedFinalTime<<", "<<bead_check_sum<<", ";
         dst<<max_dist_squared<<", ";
         dst<<"{"<<m_state->box[0]<<","<<m_state->box[1]<<","<<m_state->box[2]<<"},";
         dst<<check_beads.size()<<",{";
@@ -155,7 +155,7 @@ public:
                 dst<<"{0,0,0,0}";
             }
         }
-        dst<<"}}' S='' />\n";
+        dst<<"}}\" S=\"\" />\n";
         dst<<"  </DeviceInstances>\n";
         dst<<"  <EdgeInstances>\n";
 
@@ -170,11 +170,11 @@ public:
             auto *device=&m_devices[i];
             for(auto nb : m_neighbour_map[device]){
                 std::string target=get_device_id(nb);
-                dst<<"   <EdgeI path='"<<target<<":migrate_in-"<<index_to_id[i]<<":migrate_out' />\n";
-                dst<<"   <EdgeI path='"<<target<<":share_in-"<<index_to_id[i]<<":share_out' />\n";
-                dst<<"   <EdgeI path='"<<target<<":force_in-"<<index_to_id[i]<<":force_out' />\n";
+                dst<<"   <EdgeI path=\""<<target<<":migrate_in-"<<index_to_id[i]<<":migrate_out\" />\n";
+                dst<<"   <EdgeI path=\""<<target<<":share_in-"<<index_to_id[i]<<":share_out\" />\n";
+                dst<<"   <EdgeI path=\""<<target<<":force_in-"<<index_to_id[i]<<":force_out\" />\n";
             }
-            dst<<"    <EdgeI path='rr:output_in-"<<index_to_id[i]<<":output_out' />\n";
+            dst<<"    <EdgeI path=\"rr:output_in-"<<index_to_id[i]<<":output_out\" />\n";
         }
 
         dst<<"  </EdgeInstances>\n";

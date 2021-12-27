@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 
-BINARIES=bin/create_state/create_state_stationary_water
-BINARIES+=bin/create_state/create_state_moving_water
-BINARIES+=bin/create_state/create_state_dimers
-BINARIES+=bin/create_xml_v5_graph_instance
-BINARIES+=bin/extract_state_from_orch_log
+BINARIES=bin/create_state/create_state_stationary_water \
+          bin/create_state/create_state_moving_water \
+          bin/create_state/create_state_dimers \
+          bin/create_xml_v5_graph_instance \
+          bin/extract_state_from_orch_log
 
 function setup_file {
     >&2 echo "Making binaries"

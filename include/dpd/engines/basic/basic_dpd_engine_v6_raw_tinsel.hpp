@@ -3,7 +3,7 @@
 
 #include "dpd/engines/basic/basic_dpd_engine_v6_raw.hpp"
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include "POLiteSWSim_PGraph.h"
 #include <iostream>
 #include <unistd.h>
@@ -138,7 +138,7 @@ public:
           Message    // Message,
         >;
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
     std::shared_ptr<typename Impl::HostLink> m_hostlink;
 
     BasicDPDEngineV6RawTinsel()

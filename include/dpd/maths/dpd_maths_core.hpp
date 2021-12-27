@@ -9,7 +9,7 @@
 
 #include "dpd/core/dpd_maths_primitives.hpp"
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include <iostream>
 #endif
 

@@ -17,7 +17,7 @@
 #include <array>
 #include <cstdint>
 #include <math.h>
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include <iostream>
 #endif
 
@@ -163,13 +163,13 @@ public:
                     bond_r0=b.r0;
                 }else{
                     if(! (float(b.kappa) == bond_kappa) ){
-                        #ifndef TINSEL
+                        #ifndef PDPD_TINSEL
                         std::cerr<<" b.kappa="<<b.kappa<<", "<<bond_kappa<<"\n";
                         #endif
                         return "All bonds must have same kappa.";
                     }
                     if( !(float(b.r0) == bond_r0) ){
-                        #ifndef TINSEL
+                        #ifndef PDPD_TINSEL
                         std::cerr<<" b.r0="<<b.kappa<<", "<<bond_r0<<"\n";
                         #endif
                         return "All bonds must have same r0.";

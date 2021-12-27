@@ -5,7 +5,7 @@
 #include "dpd/core/hash.hpp"
 #include "dpd/core/logging.hpp"
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include <iostream>
 #endif
 
@@ -153,7 +153,7 @@ void calc_force(
 
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
     //std::cerr<<"  DUT: home="<<home_hash.hash<<", other="<<other_hash.hash<<", t_hash="<<t_hash<<", dx=("<<(dx[0]*dr)<<","<<(dx[1]*dr)<<","<<(dx[2]*dr)<<"), r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook="<<hookeanForce<<"\n";
     //std::cerr<<"     sqrt_gammap="<<sqrt_gammap<<", rdotv="<<rdotv<<", pow_half(dissStrength)="<<sqrtDissStrength<<"\n";
 #endif

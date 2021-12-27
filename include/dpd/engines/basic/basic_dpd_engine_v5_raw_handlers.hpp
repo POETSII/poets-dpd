@@ -9,10 +9,17 @@
 #include <fstream>
 #include <array>
 
+// Work around lack of c++17 in Orchestrator
+template <class T, std::size_t N>
+constexpr std::size_t std_size(const T (&array)[N]) noexcept
+{
+    return N;
+}
+
 inline void tinsel_require(bool cond, const char *msg)
 {
     if(!cond){
-        #ifdef TINSEL
+        #ifdef PDPD_TINSEL
         puts(msg);
         #else
         throw std::runtime_error(msg);
@@ -169,8 +176,8 @@ struct BasicDPDEngineV5RawHandlers
         void walk(Visitor &vv)
         {
             vv("id", id);
-            vv("x", x, std::size(x));
-            vv("v", v, std::size(v));
+            vv("x", x, std_size(x));
+            vv("v", v, std_size(v));
         };
     };
     static_assert(sizeof(raw_bead_view_t)==28);
@@ -226,11 +233,11 @@ struct BasicDPDEngineV5RawHandlers
         void walk(Visitor &vv)
         {
             vv("id", id);
-            vv("x", x, std::size(x));
-            vv("v", v, std::size(v));
-            vv("f", f, std::size(f));
-            vv("bond_partners", bond_partners, std::size(bond_partners));
-            vv("angle_bonds", angle_bonds, std::size(angle_bonds));
+            vv("x", x, std_size(x));
+            vv("v", v, std_size(v));
+            vv("f", f, std_size(f));
+            vv("bond_partners", bond_partners, std_size(bond_partners));
+            vv("angle_bonds", angle_bonds, std_size(angle_bonds));
             vv("t", t);
             vv("checksum", checksum);
         }
@@ -249,7 +256,7 @@ struct BasicDPDEngineV5RawHandlers
         void walk(Visitor &vv)
         {
             vv("bead_hash", bead_hash);
-            vv("x", x, std::size(x));
+            vv("x", x, std_size(x));
         }
     };
 
@@ -268,7 +275,7 @@ struct BasicDPDEngineV5RawHandlers
         void walk(Visitor &vv)
         {
             vv("target_hash", target_hash);
-            vv("f", f, std::size(f));
+            vv("f", f, std_size(f));
         }
     };
 
@@ -323,7 +330,7 @@ struct BasicDPDEngineV5RawHandlers
             template<class Visitor>
             void walk(Visitor &vv)
             {
-                vv("elements", elements, std::size(elements));
+                vv("elements", elements, std_size(elements));
                 vv("n", n);
                 vv("lost", lost);
             }
@@ -336,7 +343,7 @@ struct BasicDPDEngineV5RawHandlers
             template<class Visitor>
             void walk(Visitor &vv)
             {
-                vv("elements", elements, std::size(elements));
+                vv("elements", elements, std_size(elements));
                 vv("n", n);
                 vv("lost", lost);
             }
@@ -350,7 +357,7 @@ struct BasicDPDEngineV5RawHandlers
             template<class Visitor>
             void walk(Visitor &vv)
             {
-                vv("elements", elements, std::size(elements));
+                vv("elements", elements, std_size(elements));
                 vv("n", n);
                 vv("lost", lost);
             }
@@ -364,7 +371,7 @@ struct BasicDPDEngineV5RawHandlers
             template<class Visitor>
             void walk(Visitor &vv)
             {
-                vv("elements", elements, std::size(elements));
+                vv("elements", elements, std_size(elements));
                 vv("n", n);
                 vv("lost", lost);
             }
@@ -377,13 +384,13 @@ struct BasicDPDEngineV5RawHandlers
         template<class Visitor>
         void walk(Visitor &vv)
         {
-            vv("box", box, std::size(box));
-            vv("location", location, std::size(location));
+            vv("box", box, std_size(box));
+            vv("location", location, std_size(location));
             vv("dt", dt);
             vv("scaled_inv_root_dt", scaled_inv_root_dt);
             vv("bond_r0", bond_r0);
             vv("bond_kappa", bond_kappa);
-            vv("interactions", interactions, std::size(interactions));
+            vv("interactions", interactions, std_size(interactions));
             vv("t", t);
             vv("t_hash", t_hash);
             vv("t_seed", t_seed);
@@ -401,7 +408,7 @@ struct BasicDPDEngineV5RawHandlers
             vv("migrate_outgoing", migrate_outgoing);
             vv("force_outgoing", force_outgoing);
             vv("cached_bonds", cached_bonds);
-            vv("cached_bond_indices", cached_bond_indices, std::size(cached_bond_indices));
+            vv("cached_bond_indices", cached_bond_indices, std_size(cached_bond_indices));
         }
     };
 
