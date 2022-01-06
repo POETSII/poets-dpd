@@ -10,6 +10,9 @@ CPPFLAGS += -O3 -march=native -ffast-math
 
 TINSEL_ROOT = tinsel
 
+GRAPH_SCHEMA_DIR=../graph_schema
+CPPFLAGS += -I $(GRAPH_SCHEMA_DIR)/include
+
 CPPFLAGS += -I $(TINSEL_ROOT)/include
 CPPFLAGS += -I $(TINSEL_ROOT)/hostlink
 CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
@@ -110,6 +113,8 @@ RV_CFLAGS := $(RV_CFLAGS) -I include
 RV_CFLAGS := $(RV_CFLAGS) -std=c++17 -DNDEBUG=1 -fwhole-program -Wdouble-promotion -g -ffast-math -Wno-unused-variable \
 	 -Wno-unused-parameter
 
+RV_CFLAGS += -I $(GRAPH_SCHEMA_DIR)/include
+
 obj/engines/link.riscv.ld :
 	TINSEL_ROOT=$(TINSEL_ROOT) \
     $(TINSEL_ROOT)/apps/POLite/util/genld.sh > $@ 
@@ -158,6 +163,6 @@ bin/run_world : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
 bin/engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
-
+# TODO : This deps don't work properly, some stuff is missing
 -include $(ALL_ENGINE_OBJS:%.o=%.d)
 -include $($(wildcard src/*.cpp):src/%.cpp=obj/%.d)

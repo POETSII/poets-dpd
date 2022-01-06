@@ -232,7 +232,7 @@ public:
             for(unsigned i=0; i<m_devices.size(); i++){
                 uint32_t thread = graph.getThreadIdFromDeviceId(i);
                 
-                uint32_t core = (thread >> Impl::TinselLogThreadsPerCore) << Impl::TinselLogThreadsPerCore;
+                uint32_t core = (thread >> Impl::LogThreadsPerCore) << Impl::LogThreadsPerCore;
                 
                 unsigned weight=device_weights[i];
 
@@ -242,7 +242,7 @@ public:
             }
 
             for(const auto &kcs : thread_sums){
-                fprintf(tmp, "%u,%u,%u,%u\n", kcs.first, (kcs.first>>Impl::TinselLogThreadsPerCore) << Impl::TinselLogThreadsPerCore, kcs.second.first, kcs.second.second);
+                fprintf(tmp, "%u,%u,%u,%u\n", kcs.first, (kcs.first>>Impl::LogThreadsPerCore) << Impl::LogThreadsPerCore, kcs.second.first, kcs.second.second);
             }
             fclose(tmp);
         }

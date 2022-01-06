@@ -7,6 +7,7 @@ cat > tmp.bat <<HERE
     load /app = "$SRC"
     tlink /app = *
     place /tfill = *
+    compose /args = *,"-g"
     compose /app = *
 
      exit /at = "end"

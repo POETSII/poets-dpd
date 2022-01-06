@@ -192,7 +192,7 @@ public:
         m_meshLenX=Impl::BoxMeshXLen;
         m_meshLenY=Impl::BoxMeshYLen;
         if(getenv("PDPD_BOX_MESH_X")){
-            int v=atoi(getenv(PDPD_BOX_MESH_X));
+            int v=atoi(getenv("PDPD_BOX_MESH_X"));
             if(v<1 || v>m_meshLenX){
                 throw std::runtime_error("Invalid PDPD_BOX_MESH_X");
             }
@@ -200,7 +200,7 @@ public:
             fprintf(stderr, "Setting boxMeshLenX to %d\n", m_meshLenX);
         }
         if(getenv("PDPD_BOX_MESH_Y")){
-            int v=atoi(getenv(PDPD_BOX_MESH_Y));
+            int v=atoi(getenv("PDPD_BOX_MESH_Y"));
             if(v<1 || v>m_meshLenY){
                 throw std::runtime_error("Invalid PDPD_BOX_MESH_Y");
             }

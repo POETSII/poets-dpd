@@ -38,12 +38,8 @@ namespace dpd_maths_core_half_step_raw
         for(int i=0; i<3; i++){
             x[i] += (x[i]<0 ? dims[i] : 0);
             x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
-            if(x[i] < 0){
-                printf("<\n");
-            }
-            if(x[i] >= dims[i]){
-                printf(">\n");
-            }
+            assert(x[i] >= 0);
+            assert(x[i] < dims[i]);
         }
         vec3_copy(b.x, x);
         vec3_add_mul(b.v, b.f, half(dt));
@@ -81,12 +77,8 @@ namespace dpd_maths_core_half_step_raw
         for(int i=0; i<3; i++){
             nx[i] += (nx[i]<0 ? dims_f22[i] : 0);
             nx[i] -= (nx[i]>=dims_f22[i] ? dims_f22[i] : 0);
-            if(nx[i] < 0){
-                printf("<\n");
-            }
-            if(nx[i] >= dims_f22[i]){
-                printf(">\n");
-            }
+            assert(nx[i] >= 0);
+            assert(nx[i] < dims_f22[i]);
         }
         vec3_copy(b.x_f22, nx);
         
