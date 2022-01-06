@@ -1,6 +1,10 @@
 #ifndef basic_dpd_engine_v5_raw_handlers_hpp
 #define basic_dpd_engine_v5_raw_handlers_hpp
 
+// Add orchestrator specific-patch to allow values in handler_log
+// No effect for other platforms.
+#include "mini_printf.hpp"
+
 #include "dpd/storage/bag_wrapper.hpp"
 #include "dpd/maths/dpd_maths_core_half_step_raw.hpp"
 

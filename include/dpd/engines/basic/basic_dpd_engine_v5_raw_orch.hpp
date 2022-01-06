@@ -16,9 +16,14 @@ private:
     static std::string get_shared_code()
     {
         std::string path=BasicDPDEngineV5RawHandlers::THIS_HEADER;
-        std::string cmd="pcpp --passthru-defines --passthru-unknown-exprs -I . -I include "+path;
+        // TODO : less hacky way of getting graph-schema include dir
+        std::string cmd="pcpp --passthru-defines --passthru-unknown-exprs -I . -I include -I ../graph_schema/include "+path;
 
+        fprintf(stderr, "Cmd = %s\n", cmd.c_str());
         FILE *f=popen(cmd.c_str(), "r"); 
+        if(!f){
+            throw std::runtime_error("Problem while pre-processing with pcpp (is it installed?)");
+        }
 
         std::string acc;
         char buffer[1024];
@@ -152,7 +157,7 @@ public:
             if(i < check_beads.size()){
                 dst<<"{"<<check_beads[i].get_hash_code().hash<<",{"<<check_beads[i].x[0]<<","<<check_beads[i].x[1]<<","<<check_beads[i].x[2]<<"}}";
             }else{
-                dst<<"{0,0,0,0}";
+                dst<<"{0,{0,0,0}}";
             }
         }
         dst<<"}}\" S=\"\" />\n";

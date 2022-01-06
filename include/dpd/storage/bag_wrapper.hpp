@@ -70,7 +70,7 @@ struct bag_wrapper
             storage.n=new_n;
         }else{
             #ifdef PDPD_TINSEL
-            printf("Lost");
+            //puts("Lost");
             #else
             assert(false);
             #endif

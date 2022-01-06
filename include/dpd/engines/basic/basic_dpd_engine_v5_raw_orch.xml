@@ -78,9 +78,9 @@
                 };
 
                 if(deviceState->beadsSeen==0){
-                    handler_log(2, "a8f23f7c94100804_BEGIN[t=%x,numBeads=%x]", message->t, deviceProperties->numBeads);
+                    handler_log(1, "a8f23f7c94100804_BEGIN[t=%x,numBeads=%x]", message->t, deviceProperties->numBeads);
                 }
-                handler_log(2, "a8f23f7c94100804_BEAD[id=%x,t=%x,x=[%x,%x,%x],v=[%x,%x,%x],f=[%x,%x,%x]]", message->id, message->t,
+                handler_log(3, "a8f23f7c94100804_BEAD[id=%x,t=%x,x=[%x,%x,%x],v=[%x,%x,%x],f=[%x,%x,%x]]", message->id, message->t,
                     raw(message->x[0]), raw(message->x[1]), raw(message->x[2]),
                     raw(message->v[0]), raw(message->v[1]), raw(message->v[2]),
                     raw(message->f[0]), raw(message->f[1]), raw(message->f[2])
@@ -100,7 +100,7 @@
                             }
                             dist_sqr += dist*dist;
                         }
-                        handler_log(1, "  dist_sqr=%g, exp=%f,%f,%f, got=%f,%f,%f", dist_sqr, deviceProperties->checkBeads[i].x[0],deviceProperties->checkBeads[i].x[1],deviceProperties->checkBeads[i].x[2], message->x[0], message->x[1], message->x[2]);
+                        handler_log(3, "  dist_sqr=%g, exp=%f,%f,%f, got=%f,%f,%f", dist_sqr, deviceProperties->checkBeads[i].x[0],deviceProperties->checkBeads[i].x[1],deviceProperties->checkBeads[i].x[2], message->x[0], message->x[1], message->x[2]);
                         if(dist_sqr > deviceProperties->checkBeadMaxDistSqr){
                             handler_log(0, "Bead id %x is too far from expected position.", message->id);
                             fake_handler_exit(1);
@@ -110,9 +110,9 @@
                 }
 
                 deviceState->combinedHash += message->id;
-                handler_log(6, "  bbeads seen=%x, total=%x", deviceState->beadsSeen, deviceProperties->numBeads);
+                handler_log(6, "  beads seen=%x, total=%x", deviceState->beadsSeen, deviceProperties->numBeads);
                 if(deviceState->beadsSeen==deviceProperties->numBeads){
-                    handler_log(2, "a8f23f7c94100804_END[checksum=%x]", deviceState->combinedHash);
+                    handler_log(1, "a8f23f7c94100804_END[checksum=%x]", deviceState->combinedHash);
                     handler_log(1, "Final checksum = %x, expected= %x", deviceState->combinedHash, deviceProperties->expectedCheckSum);
                     if(deviceProperties->expectedCheckSum!=0){
                         fake_handler_exit( deviceProperties->expectedCheckSum != deviceState->combinedHash );
