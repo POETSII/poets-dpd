@@ -26,3 +26,5 @@ working2
 .*/
 tmp.*
 poems_sim
+*.poems
+*.graph.so
