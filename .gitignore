@@ -26,6 +26,9 @@ working2
 .*/
 tmp.*
 poems_sim
+*.poems
+*.graph.so
+poems_sim
 experiments/orch-scaling/inputs
 experiments/orch-scaling/outputs
 experiments/orch-scaling/outputs-safe

@@ -196,7 +196,7 @@ get SA to work.
 The dual of bead-steps-per-second is run-time, though it is less useful
 here as you have to reconise the amount of work done is changing with the volume:
 
-![total-time-steps8192.png](total-time-steps8192.pnt)
+![total-time-steps8192.png](total-time-steps8192.png)
 
 Compilation time
 ----------------
