@@ -12,6 +12,7 @@
 #include <random>
 #include <fstream>
 
+#define TBB_PREVIEW_GLOBAL_CONTROL 1
 #include <tbb/global_control.h>
 
 

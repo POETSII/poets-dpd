@@ -2,7 +2,7 @@ SHELL=/bin/bash
 
 POETS_DPD_DIR ?= ../..
 
-NS:=$(shell seq 4 28)
+NS:=$(shell seq 4 2 80)
 SIZES:=$(foreach n,$(NS),$(n)x$(n)x$(n))
 GENERATORS=stationary_water
 STEPS:=1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192
