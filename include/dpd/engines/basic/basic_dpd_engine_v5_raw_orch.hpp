@@ -132,18 +132,6 @@ public:
         dst<<"   P=\"{}\" >\n";
         dst<<"  <DeviceInstances>\n";
 
-        std::vector<std::string> index_to_id;
-        for(unsigned i=0; i<m_devices.size(); i++){
-            auto &dev=m_devices[i];
-            auto &loc=dev.location;
-            std::string id="c_"+std::to_string(loc[0])+"_"+std::to_string(loc[1])+"_"+std::to_string(loc[2]);
-            index_to_id.push_back(id);
-
-            auto state_init=struct_to_c_init(dev);
-
-            dst<<"    <DevI id='"<<id<<"' type='cell' P=\"{}\" S=\""<<state_init<<"\" />\n";
-        }
-
         float max_dist=0.01;
         float max_dist_squared=max_dist*max_dist;
         dst<<"    <DevI id='rr' type='reaper' P=\"{ "<<m_state->beads.size()<<", "<<expectedFinalTime<<", "<<bead_check_sum<<", ";
@@ -161,6 +149,19 @@ public:
             }
         }
         dst<<"}}\" S=\"\" />\n";
+
+        std::vector<std::string> index_to_id;
+        for(unsigned i=0; i<m_devices.size(); i++){
+            auto &dev=m_devices[i];
+            auto &loc=dev.location;
+            std::string id="c_"+std::to_string(loc[0])+"_"+std::to_string(loc[1])+"_"+std::to_string(loc[2]);
+            index_to_id.push_back(id);
+
+            auto state_init=struct_to_c_init(dev);
+
+            dst<<"    <DevI id='"<<id<<"' type='cell' P=\"{}\" S=\""<<state_init<<"\" />\n";
+        }
+
         dst<<"  </DeviceInstances>\n";
         dst<<"  <EdgeInstances>\n";
 
