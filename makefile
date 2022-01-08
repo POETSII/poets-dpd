@@ -25,7 +25,7 @@ CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 CPPFLAGS += -I ~/local/include
 LDFLAGS += -L ~/local/lib
 
-LDLIBS += -ltbb
+LDLIBS += -ltbb -lscotch
 
 
 TEST_BIN := bin/test/test_engine bin/test/test_engine_diff \
