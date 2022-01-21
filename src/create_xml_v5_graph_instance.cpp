@@ -90,6 +90,11 @@ int main(int argc, const char *argv[])
         nSteps=std::atoi(argv[1]);
     }
 
+    int no_bonds=0;
+    if(argc>2){
+        no_bonds=std::atoi(argv[2]);
+    }
+
     int line_no=0;
     WorldState state=read_world_state(std::cin, line_no);
 
@@ -143,8 +148,12 @@ int main(int argc, const char *argv[])
 
             std::mt19937_64 urng;
 
-            std::sample(angle_centre.begin(), angle_centre.end(), std::back_inserter(selected), 4, urng);
-            std::sample(hookean_only.begin(), hookean_only.end(), std::back_inserter(selected), 4, urng);
+            if(!angle_centre.empty()){
+                std::sample(angle_centre.begin(), angle_centre.end(), std::back_inserter(selected), 4, urng);
+            }
+            if(!hookean_only.empty()){
+                std::sample(hookean_only.begin(), hookean_only.end(), std::back_inserter(selected), 4, urng);
+            }
             
             while(selected.size() < nCheckSumBeads){
                 selected.push_back(urng() % state.beads.size());
@@ -168,8 +177,13 @@ int main(int argc, const char *argv[])
         fprintf(stderr, "Mean check bead movement = %g\n", sum_dist/check_beads.size());
     }
 
-    BasicDPDEngineV5RawOrch engine;
-    engine.Attach(&state);
-
-    engine.write_xml(std::cout, nSteps, check_beads);
+    if(!no_bonds){
+        BasicDPDEngineV5RawOrch engine;
+        engine.Attach(&state);
+        engine.write_xml(std::cout, nSteps, check_beads);
+    }else{
+        BasicDPDEngineV5RawNoBondsOrch engine;
+        engine.Attach(&state);
+        engine.write_xml(std::cout, nSteps, check_beads);
+    }
 }

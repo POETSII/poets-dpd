@@ -31,7 +31,8 @@ inline void tinsel_require(bool cond, const char *msg)
     }
 }
 
-struct BasicDPDEngineV5RawHandlers
+template<bool NoBonds=false>
+struct BasicDPDEngineV5RawHandlersImpl
 {
     static constexpr const char *THIS_HEADER=__FILE__;
 
@@ -42,6 +43,8 @@ struct BasicDPDEngineV5RawHandlers
     static constexpr size_t MAX_OUTGOING_FORCES_PER_CELL = MAX_BEADS_PER_CELL * 3; // TODO : This seems very pessimistic
 
     static constexpr size_t MAX_BEAD_TYPES=8;
+
+    static constexpr bool NO_BONDS=NoBonds;
 
     static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
 
@@ -661,14 +664,17 @@ struct BasicDPDEngineV5RawHandlers
             float dr=pow_half(dr_sqr);
 
             float kappa=0.0f;
-            float r0=cell.bond_r0;
-            if(!(is_monomer(incoming.id) || is_monomer(bead.id))){
-                if(get_polymer_id(bead.id) == get_polymer_id(incoming.id) ){
-                    auto other_polymer_offset=get_polymer_offset(incoming.id);
-                    for(unsigned i=0; i<MAX_BONDS_PER_BEAD; i++){
-                        if(other_polymer_offset==bead.bond_partners[i]){
-                            kappa=cell.bond_kappa;
-                            break;
+            float r0=0.0f;
+            if constexpr(!NO_BONDS){
+                r0 = cell.bond_r0;
+                if(!(is_monomer(incoming.id) || is_monomer(bead.id))){
+                    if(get_polymer_id(bead.id) == get_polymer_id(incoming.id) ){
+                        auto other_polymer_offset=get_polymer_offset(incoming.id);
+                        for(unsigned i=0; i<MAX_BONDS_PER_BEAD; i++){
+                            if(other_polymer_offset==bead.bond_partners[i]){
+                                kappa=cell.bond_kappa;
+                                break;
+                            }
                         }
                     }
                 }
@@ -693,30 +699,32 @@ struct BasicDPDEngineV5RawHandlers
 
             vec3_add(bead.f, f);
 
-            if(kappa!=0.0f){
-                //std::cerr<<"K: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
-                if(!cached){
-                    auto &tmp=cached_bonds.alloc_back();
-                    tmp.bead_hash=get_hash_code(incoming.id).hash;
-                    vec3_copy(tmp.x, neighbour_x);
-                    //std::cerr<<" caching, bead_i="<<bead_i<<", bead_id="<<get_hash_code(bead.id)<<" target="<<get_hash_code(incoming.id)<<"\n";
-                    cached=true;
-                }
+            if constexpr(!NO_BONDS){
+                if(kappa!=0.0f){
+                    //std::cerr<<"K: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
+                    if(!cached){
+                        auto &tmp=cached_bonds.alloc_back();
+                        tmp.bead_hash=get_hash_code(incoming.id).hash;
+                        vec3_copy(tmp.x, neighbour_x);
+                        //std::cerr<<" caching, bead_i="<<bead_i<<", bead_id="<<get_hash_code(bead.id)<<" target="<<get_hash_code(incoming.id)<<"\n";
+                        cached=true;
+                    }
 
-                static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
-                bool hit = get_polymer_offset(incoming.id) == bead.angle_bonds[0].partner_head || get_polymer_offset(incoming.id) == bead.angle_bonds[0].partner_tail;
-                if(hit){
-                    //std::cerr<<"  CB: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
-                    if(cell.cached_bond_indices[bead_i]==0xFF){
-                        //std::cerr<<"  S\n";
-                        cell.cached_bond_indices[bead_i] = cached_bond_index;
-                    }else{
-                        // Once both partners have arrived, we calculate force and push onto outgoing_forces
-                        //std::cerr<<"Force!`\n";
-                        assert(bead.id == resident[bead_i].id);
-                        calc_angle_force_for_middle_bead(cell, bead, cell.cached_bond_indices[bead_i], cached_bond_index);
-                        cell.rts |= RTS_FLAG_force;
-                        //std::cerr<<"DoenFr\n";
+                    static_assert(MAX_ANGLE_BONDS_PER_BEAD==1);
+                    bool hit = get_polymer_offset(incoming.id) == bead.angle_bonds[0].partner_head || get_polymer_offset(incoming.id) == bead.angle_bonds[0].partner_tail;
+                    if(hit){
+                        //std::cerr<<"  CB: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
+                        if(cell.cached_bond_indices[bead_i]==0xFF){
+                            //std::cerr<<"  S\n";
+                            cell.cached_bond_indices[bead_i] = cached_bond_index;
+                        }else{
+                            // Once both partners have arrived, we calculate force and push onto outgoing_forces
+                            //std::cerr<<"Force!`\n";
+                            assert(bead.id == resident[bead_i].id);
+                            calc_angle_force_for_middle_bead(cell, bead, cell.cached_bond_indices[bead_i], cached_bond_index);
+                            cell.rts |= RTS_FLAG_force;
+                            //std::cerr<<"DoenFr\n";
+                        }
                     }
                 }
             }
@@ -781,25 +789,33 @@ struct BasicDPDEngineV5RawHandlers
     template<class TDeviceState=device_state_t, class TRawForceInput=raw_force_input_t>
     static void on_send_force(TDeviceState &cell,TRawForceInput &outgoing)
     {
-        auto force_outgoing=make_bag_wrapper(cell.force_outgoing);
+        if constexpr(NO_BONDS){
+            assert(0);
+        }else{
+            auto force_outgoing=make_bag_wrapper(cell.force_outgoing);
 
-        assert(!force_outgoing.empty());
-        copy_force_input(&outgoing, &force_outgoing.back());
-        force_outgoing.pop_back();
+            assert(!force_outgoing.empty());
+            copy_force_input(&outgoing, &force_outgoing.back());
+            force_outgoing.pop_back();
 
-        if(force_outgoing.empty()){
-            cell.rts &= ~RTS_FLAG_force;
+            if(force_outgoing.empty()){
+                cell.rts &= ~RTS_FLAG_force;
+            }
         }
     }
 
     template<class TDeviceState=device_state_t, class TRawForceInput=raw_force_input_t>
     static void on_recv_force(TDeviceState &cell, const TRawForceInput &incoming)
     {
-        auto resident=make_bag_wrapper(cell.resident);
+        if constexpr(NO_BONDS){
+            assert(0);
+        }else{
+            auto resident=make_bag_wrapper(cell.resident);
 
-        for(auto &b : resident){
-            if( BeadHash{b.id}.reduced_equals( BeadHash{incoming.target_hash})){
-                vec3_add(b.f, incoming.f);
+            for(auto &b : resident){
+                if( BeadHash{b.id}.reduced_equals( BeadHash{incoming.target_hash})){
+                    vec3_add(b.f, incoming.f);
+                }
             }
         }
     }
@@ -810,6 +826,7 @@ struct BasicDPDEngineV5RawHandlers
         assert(cell.phase == Outputting);
         assert(cell.interval_offset==cell.interval_size && cell.outputs_todo>0);
         assert(cell.output_reps_todo>0);
+        assert(cell.force_outgoing.size==0);
         
         cell.outputs_todo--;
         copy_bead_resident::copy(&outgoing, cell.resident.elements+cell.outputs_todo);
@@ -825,5 +842,8 @@ struct BasicDPDEngineV5RawHandlers
     }
 
 };
+
+using BasicDPDEngineV5RawHandlers = BasicDPDEngineV5RawHandlersImpl<false>;
+using BasicDPDEngineV5RawHandlersNoBonds = BasicDPDEngineV5RawHandlersImpl<true>;
 
 #endif

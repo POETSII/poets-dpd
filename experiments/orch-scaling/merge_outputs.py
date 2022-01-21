@@ -2,7 +2,9 @@
 import glob
 import re
 
-split=re.compile("outputs-safe/(.+)_([0-9]+)x([0-9]+)x([0-9]+)_([0-9]+)[.]([^.]+).*")
+directory="outputs"
+
+split=re.compile(directory+"/(.+)_([0-9]+)x([0-9]+)x([0-9]+)_([0-9]+)[.]([^.]+).*")
 
 orch_line=re.compile("STATS_fba956f3:\s+load:([^,]+), place:([^,]+), compile:([^,]+), run:([^,]+)")
 
@@ -14,7 +16,7 @@ print("algorithm,platform,width,height,depth,steps,volume,beads,bead_steps,statu
 )
 
 # Load orchestrator output log
-for i in glob.glob("outputs-safe/*.orch.log"):
+for i in glob.glob(directory+"/*.orch.log"):
     m=split.match(i)
     assert m
 
@@ -79,9 +81,9 @@ for i in glob.glob("outputs-safe/*.orch.log"):
 
 
 # Load orchestrator output log
-for i in glob.glob("outputs-safe/*.polite*.csv"):
+for i in glob.glob(directory+"/*.polite*.csv"):
     m=split.match(i)
-    assert m
+    assert m, i
 
     generator=m.group(1)
     width=int(m.group(2))

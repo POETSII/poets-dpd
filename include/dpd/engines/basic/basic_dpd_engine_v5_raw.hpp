@@ -16,7 +16,8 @@
     - Multiple time-steps within loop.
     - Output is via message.
 */
-class BasicDPDEngineV5Raw
+template<bool NoBonds>
+class BasicDPDEngineV5RawImpl
     : public BasicDPDEngine
 {
 public:
@@ -31,15 +32,15 @@ public:
 
     static constexpr bool EnableLogging = false;
 
-    using Handlers = BasicDPDEngineV5RawHandlers;
+    using Handlers = BasicDPDEngineV5RawHandlersImpl<NoBonds>;
 
-    using OutputFlags = Handlers::OutputFlags;
-    using raw_bead_view_t = Handlers::raw_bead_view_t;
-    using raw_angle_bond_info_t = Handlers::raw_angle_bond_info_t;
-    using raw_bead_resident_t = Handlers::raw_bead_resident_t;
-    using raw_cached_bond_t = Handlers::raw_cached_bond_t;
-    using raw_force_input_t = Handlers::raw_force_input_t;
-    using device_state_t = Handlers::device_state_t;
+    using OutputFlags = typename Handlers::OutputFlags;
+    using raw_bead_view_t = typename Handlers::raw_bead_view_t;
+    using raw_angle_bond_info_t = typename  Handlers::raw_angle_bond_info_t;
+    using raw_bead_resident_t = typename Handlers::raw_bead_resident_t;
+    using raw_cached_bond_t = typename Handlers::raw_cached_bond_t;
+    using raw_force_input_t = typename Handlers::raw_force_input_t;
+    using device_state_t = typename Handlers::device_state_t;
 
     struct message_t
     {
@@ -52,6 +53,15 @@ public:
         if(s->bead_types.size()>1){
             if(s->bead_types.size() > MAX_BEAD_TYPES){
                 return "Too many bead types.";
+            }
+        }
+
+        if(NoBonds){
+            for(auto p : s->polymers){
+                auto pt = s->polymer_types.at(p.polymer_type);
+                if(pt.bonds.size()>0){
+                    return "This engine does not support bonds (DPD forces only).";
+                }
             }
         }
 
@@ -325,14 +335,14 @@ protected:
         unsigned next_msg_t = interval_size;
         while(1){
             for(auto &message : messages){
-                if(rng()&1){
+                if((rng()&7)==0){
                     messages_next.push_back(message);
                 }else if(std::holds_alternative<raw_force_input_t>(message.payload)){
                     assert(message.dst);
                     Handlers::on_recv_force(*message.dst, std::get<raw_force_input_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_view_t>(message.payload)){
                     assert(message.dst);
-                    Handlers::on_recv_share<EnableLogging>(*message.dst, std::get<raw_bead_view_t>(message.payload));
+                    Handlers::template on_recv_share<EnableLogging>(*message.dst, std::get<raw_bead_view_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_resident_t>(message.payload)){
                     if(message.dst==0){
                         bool carry_on=callback(std::get<raw_bead_resident_t>(message.payload));
@@ -356,7 +366,7 @@ protected:
                     continue;
                 }
                 active=true;
-                if(rng()&1){
+                if((rng()&7)==0){
                     continue;
                 }
                 decltype(message_t::payload) payload;
@@ -414,5 +424,9 @@ protected:
 
 
 };
+
+using BasicDPDEngineV5Raw = BasicDPDEngineV5RawImpl<false>;
+
+using BasicDPDEngineV5RawNoBonds = BasicDPDEngineV5RawImpl<true>;
 
 #endif

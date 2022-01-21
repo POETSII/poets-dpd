@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='ASCII'?>
 <Graphs xmlns="https://poets-project.org/schemas/virtual-graph-schema-v4" formatMinorVersion="0">
-  <GraphType id="basic_dpd_engine_v5_r0">
+  <GraphType id="basic_dpd_engine_v5___NO_BONDS_STR__r0">
     <Properties/>
     <SharedCode><![CDATA[
     #define NDEBUG 1
@@ -25,7 +25,7 @@
 
         __SHARED_CODE_C__
 
-        
+        using DPDHandlers = BasicDPDEngineV5RawHandlersImpl<__NO_BONDS__>;
     ]]></SharedCode>
     <MessageTypes>
         <MessageType id="share"><Message><![CDATA[
@@ -139,7 +139,7 @@
                 <Properties/>
                 <State/>
                 <OnReceive><![CDATA[
-                    BasicDPDEngineV5RawHandlers::on_recv_share(*deviceState, *message);
+                    DPDHandlers::on_recv_share(*deviceState, *message);
                 ]]></OnReceive>
             </InputPin>
 
@@ -147,7 +147,7 @@
                 <Properties/>
                 <State/>
                 <OnReceive><![CDATA[
-                    BasicDPDEngineV5RawHandlers::on_recv_migrate(*deviceState, *message);
+                    DPDHandlers::on_recv_migrate(*deviceState, *message);
                 ]]></OnReceive>
             </InputPin>
 
@@ -155,46 +155,46 @@
                 <Properties/>
                 <State/>
                 <OnReceive><![CDATA[
-                    BasicDPDEngineV5RawHandlers::on_recv_force(*deviceState, *message);
+                    DPDHandlers::on_recv_force(*deviceState, *message);
                 ]]></OnReceive>
             </InputPin>
 
             <OutputPin name="migrate_out" messageTypeId="migrate">
                 <OnSend><![CDATA[
-                    BasicDPDEngineV5RawHandlers::on_send_migrate(*deviceState, *message);
+                    DPDHandlers::on_send_migrate(*deviceState, *message);
                 ]]></OnSend>
             </OutputPin>
 
             <OutputPin name="share_out" messageTypeId="share">
                 <OnSend><![CDATA[
-                    BasicDPDEngineV5RawHandlers::on_send_share(*deviceState, *message);
+                    DPDHandlers::on_send_share(*deviceState, *message);
                 ]]></OnSend>
             </OutputPin>
 
             <OutputPin name="force_out" messageTypeId="force">
                 <OnSend><![CDATA[
-                    BasicDPDEngineV5RawHandlers::on_send_force(*deviceState, *message);
+                    DPDHandlers::on_send_force(*deviceState, *message);
                 ]]></OnSend>
             </OutputPin>
 
             <OutputPin name="output_out" messageTypeId="migrate">
                 <OnSend><![CDATA[
-                    BasicDPDEngineV5RawHandlers::on_send_output(*deviceState, *message);
+                    DPDHandlers::on_send_output(*deviceState, *message);
                 ]]></OnSend>
             </OutputPin>
 
             <ReadyToSend><![CDATA[
-                *readyToSend=BasicDPDEngineV5RawHandlers::calc_rts(*deviceState);
+                *readyToSend=DPDHandlers::calc_rts(*deviceState);
             ]]></ReadyToSend>
 
             <OnInit><![CDATA[
-                BasicDPDEngineV5RawHandlers::on_init(*deviceState);
+                DPDHandlers::on_init(*deviceState);
             ]]></OnInit>
 
             <OnDeviceIdle />
 
             <OnHardwareIdle><![CDATA[
-                BasicDPDEngineV5RawHandlers::on_barrier(*deviceState);
+                DPDHandlers::on_barrier(*deviceState);
             ]]></OnHardwareIdle>
         </DeviceType>
     </DeviceTypes>
