@@ -52,7 +52,8 @@ private:
     friend class BasicDPDEngineV4;
     friend class BasicDPDEngineV3Raw;
     friend class BasicDPDEngineV4Raw;
-    friend class BasicDPDEngineV5Raw;
+    template<bool NoBonds>
+    friend class BasicDPDEngineV5RawImpl;
     friend class BasicDPDEngineV6Raw;
     template<bool USE_X_CACHE>
     friend class BasicDPDEngineV7Raw;
