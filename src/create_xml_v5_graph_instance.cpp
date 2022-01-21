@@ -6,6 +6,9 @@
 
 #include "dpd/core/struct_to_c.hpp"
 
+#include "dpd/core/with_optional_gzip_stream.hpp"
+
+
 #include <random>
 #include <regex>
 #include <cmath>

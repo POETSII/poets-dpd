@@ -17,6 +17,9 @@ public:
     virtual std::string CanSupport(const WorldState *) const
     { return ""; }
 
+    virtual double GetMaxBondLength() const
+    { return 1.0; }
+
     // Attach the given world-state to this engine.
     // Any future methods are relative to this state.
     // Attach(nullptr) will detach the engine.

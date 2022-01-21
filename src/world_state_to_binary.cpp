@@ -36,6 +36,8 @@ double now()
 int main(int argc, const char *argv[])
 {
     try{
+        bool zero_forces=false;
+
         std::string src_file="-";
         if(argc>1){
             src_file=argv[1];
@@ -46,36 +48,23 @@ int main(int argc, const char *argv[])
             dst_file=argv[2];
         }
 
-        std::cerr<<"src_file="<<src_file<<", dst_file="<<dst_file<<"\n";
-
-        std::istream *src=&std::cin;
-        std::ifstream srcf;
-        if(src_file!="-"){
-            srcf.open(src_file.c_str());
-            if(!srcf.is_open()){
-                std::cerr<<"Couldn't open "<<src_file<<"\n";
-                exit(1);
-            }
-            src=&srcf;
+        if(argc>3){
+            zero_forces=atoi(argv[3]);
         }
 
-        int line_no=0;
-        WorldState state=read_world_state(*src, line_no);
+        std::cerr<<"src_file="<<src_file<<", dst_file="<<dst_file<<", zero_forces="<<zero_forces<<"\n";
+
+        WorldState state=read_world_state(src_file);
 
         validate(state, 100);
 
-        std::ostream *dst=&std::cout;
-        std::ofstream dstf;
-        if(dst_file!="-"){
-            dstf.open(dst_file.c_str());
-            if(!dstf.is_open()){
-                std::cerr<<"Couldn't open "<<dst_file<<"\n";
-                exit(1);
+        if(zero_forces){
+            for(Bead &b : state.beads){
+                b.f.clear();
             }
-            dst=&dstf;
         }
-        
-        write_world_state(*dst, state, true);
+
+        write_world_state(dst_file, state, true);
 
     }catch(const std::exception &e){
         print_exception(e);

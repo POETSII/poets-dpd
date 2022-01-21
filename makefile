@@ -1,9 +1,10 @@
-CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall -O0
+CPPFLAGS += -Iinclude -std=c++17 -W -Wall -O0
 CPPFLAGS += -Wno-unused-variable -fmax-errors=2 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable
 CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 LDFLAGS += -fuse-ld=gold
 
+#CPPFLAGS += -g3
 CPPFLAGS += -DNDEBUG=1 
 CPPFLAGS += -O3 -march=native -ffast-math
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
@@ -25,7 +26,8 @@ CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 CPPFLAGS += -I ~/local/include
 LDFLAGS += -L ~/local/lib
 
-LDLIBS += -ltbb -lscotch
+
+ENGINE_LDLIBS += -ltbb -lscotch
 
 
 TEST_BIN := bin/test/test_engine bin/test/test_engine_diff \
@@ -38,9 +40,9 @@ ENGINES := $(filter-out %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/en
 
 ifeq ($(DISABLE_RISCV),)
 ENGINES_RISCV := $(filter %.riscv,$(patsubst src/engines/%.cpp,%, $(filter-out src/engines/memcpy.riscv.cpp, $(wildcard src/engines/*.cpp))))
-LDFLAGS += -L $(TINSEL_ROOT)/hostlink
-LDLIBS += -l:hostlink.a
-LDLIBS += -lmetis
+ENGINE_LDFLAGS += -L $(TINSEL_ROOT)/hostlink
+ENGINE_LDLIBS += -l:hostlink.a
+ENGINE_LDLIBS += -lmetis
 else
 ENGINES_RISCV := 
 ENGINES := $(filter-out %tinsel_hw,$(ENGINES))
@@ -149,19 +151,26 @@ bin/% : obj/%.o
 	mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(filter-out %.v,$^) -o $@ $(LDFLAGS) $(LDLIBS)
 
+define register_engine_user
+bin/$1 : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+
+bin/$1 : LDFLAGS += $(ENGINE_LDFLAGS)
+
+bin/$1 : LDLIBS += $(ENGINE_LDLIBS)
+endef
+
 bin/test/test_hash : LDLIBS += -ltestu01
 
-bin/test/test_engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+$(eval $(call register_engine_user,test_engine_diff))
+$(eval $(call register_engine_user,test_engine))
+$(eval $(call register_engine_user,benchmark_engine))
+$(eval $(call register_engine_user,benchmark_engine_intervals))
+$(eval $(call register_engine_user,run_world))
+$(eval $(call register_engine_user,step_world))
+$(eval $(call register_engine_user,engine_diff))
 
-bin/test/test_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
+bin/create_xml_v5_graph_instance : LDFLAGS += -static
 
-bin/benchmark_engine : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
-
-bin/benchmark_engine_intervals : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
-
-bin/run_world : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
-
-bin/engine_diff : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 
 # TODO : This deps don't work properly, some stuff is missing
 -include $(ALL_ENGINE_OBJS:%.o=%.d)

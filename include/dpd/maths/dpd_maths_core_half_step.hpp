@@ -150,6 +150,24 @@ void calc_force(
         
 }
 
+template<
+    bool EnableLogging,
+    class TScalar, class TVector,
+    class TForce
+>
+void calc_hookean_force(
+    TScalar kappa, TScalar r0,
+    TVector dx, TScalar dr,
+
+    TForce & head_force, TForce &tail_force
+) {
+    TScalar dr0=r0-dr;
+    TScalar hookeanForce=kappa*dr0; 
+
+    head_force = - dx * (hookeanForce / dr);
+    tail_force = - head_force;
+}
+
 template<class TScalar, class TVector, class TForce>
 void calc_angle_force(
     TScalar kappa,

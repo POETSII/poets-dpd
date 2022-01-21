@@ -8,9 +8,16 @@
 
 std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
 {
+    int water_bead=0;
+    for(const BeadType &bt : s.bead_types){
+        if(bt.name=="W"){
+            water_bead=bt.id;
+        }
+    }
+
     auto filter=[&](const Bead &b)
     {
-        return b.bead_type!=0;
+        return b.bead_type!=water_bead;
     };
 
     std::vector<const Bead *> beads;

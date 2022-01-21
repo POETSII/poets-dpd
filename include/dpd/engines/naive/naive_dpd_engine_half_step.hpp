@@ -44,6 +44,7 @@ class NaiveDPDEngineHalfStep
 {
     friend class NaiveDPDEngineHalfStepTBB;
     friend class NaiveDPDEngineHalfStepTBBV2;
+    friend class TolerantDPDEngineHalfStepTBB;
     
 public:
     virtual void Attach(WorldState *state)

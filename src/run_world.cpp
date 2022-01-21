@@ -12,6 +12,8 @@
 #include <random>
 #include <fstream>
 
+#define TBB_PREVIEW_GLOBAL_CONTROL 1
+
 #include <tbb/global_control.h>
 
 
@@ -113,18 +115,11 @@ int main(int argc, const char *argv[])
            exit(1);
         }
 
-        std::ifstream input(srcFile.c_str());
-        if(!input.is_open()){
-            fprintf(stderr, "Couldnt open %s\n", srcFile.c_str());
-            exit(1);
-        }
-
-        int line_no=0;
-        WorldState state=read_world_state(input, line_no);
-
-        validate(state);
+        WorldState state=read_world_state(srcFile);
 
         std::shared_ptr<DPDEngine> engine = DPDEngineFactory::create(engine_name);
+
+        validate(state, engine->GetMaxBondLength());
 
         std::string ok=engine->CanSupport(&state);
         if(!ok.empty()){

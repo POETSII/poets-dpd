@@ -8,6 +8,8 @@
 
 #include <iostream>
 
+#include <ext/stdio_filebuf.h>
+
 std::ostream &write_bead_type(std::ostream &dst, const BeadType &b, const WorldState &)
 {
     return dst<<"BeadType "<<b.id<<" "<<b.name<<" "<<b.r<<"\n";
@@ -420,6 +422,32 @@ std::ostream &write_world_state(std::ostream &dst, const WorldState &state, bool
     return dst;
 }
 
+void write_world_state(std::string dst, const WorldState &state, bool binary=false)
+{
+    if(dst.size()>=4 && dst.substr(dst.size()-3)==".gz"){
+        std::string cmd="gzip -c > "+dst;
+        FILE *f=popen(cmd.c_str(), "w");
+        if(!f){
+            throw std::runtime_error("Error when spawning gzip command '"+cmd+"'");
+        }
+        
+        __gnu_cxx::stdio_filebuf<char> buf(f, std::ios_base::out);
+        std::ostream fs(&buf);
+
+        write_world_state(fs, state, binary);
+
+        fs.flush();
+        pclose(f);
+    }else{
+        std::ofstream ss(dst, std::ios_base::out);
+        if(!ss.is_open()){
+            throw std::runtime_error("Couldn't open file "+dst);
+        }
+
+        write_world_state(ss, state, binary);
+    }
+}
+
 WorldState read_world_state(std::istream &src, int &line_no)
 {
     WorldState res;
@@ -512,6 +540,35 @@ WorldState read_world_state(std::istream &src, int &line_no)
     }
 
     return res;
+}
+
+WorldState read_world_state(std::string src)
+{
+    if(src.size()>=4 && src.substr(src.size()-3)==".gz"){
+        std::string cmd="gunzip -k -c "+src;
+        FILE *f=popen(cmd.c_str(), "r");
+        if(!f){
+            throw std::runtime_error("Error when spawning gunzip command '"+cmd+"'");
+        }
+        
+        __gnu_cxx::stdio_filebuf<char> buf(f, std::ios_base::in);
+        std::istream fs(&buf);
+
+        int line_no=0;
+        WorldState res=read_world_state(fs, line_no);
+
+        pclose(f);
+
+        return res;
+    }else{
+        std::ifstream ss(src, std::ios_base::in);
+        if(!ss.is_open()){
+            throw std::runtime_error("Couldn't open file "+src);
+        }
+
+        int line_no=0;
+        return read_world_state(ss, line_no);
+    }
 }
 
 #endif

@@ -44,6 +44,11 @@ class NaiveDPDEngine
     : public DPDEngine
 {
 public:
+    virtual double GetMaxBondLength() const
+    {
+        return 1000;
+    }
+
     virtual void Attach(WorldState *state)
     {
         m_state=state;
@@ -96,7 +101,7 @@ private:
 
     void check_constraints_and_setup()
     {
-        validate(*m_state);
+        validate(*m_state, 10);
 
         auto require=[](bool cond, const char *msg)
         {
