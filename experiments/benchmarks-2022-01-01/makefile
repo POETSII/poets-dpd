@@ -43,6 +43,27 @@ $1_ALL_STATES += states/$1/$2/$2.state.gz
 
 $1_ALL_STATES_BIN += states_bin/$1/$2/$2.state.gz
 
+
+xml/$1/$2/$2.bonds.xml.gz : states_bin/$1/$2/$2.state.gz
+	>&2 echo "$2 - converting to xml with bond support"
+	mkdir -p xml/$1/$2
+	(cd $(POETS_DPD_DIR) && ls include/dpd/engines/basic/basic_dpd_engine_v5_raw_handlers.hpp )
+	gunzip -k -c $$< | (cd $(POETS_DPD_DIR) && bin/create_xml_v5_graph_instance 10000 ) | gzip -9 -c > $$@
+
+$1_ALL_XML += xml/$1/$2/$2.bonds.xml.gz
+
+ifeq ($5,)
+
+xml/$1/$2/$2.nobonds.xml.gz : states_bin/$1/$2/$2.state.gz
+	>&2 echo "$2 - converting to xml without bond support"
+	mkdir -p xml/$1/$2
+	gunzip -k -c $$< | (cd $(POETS_DPD_DIR) && bin/create_xml_v5_graph_instance 10000 1 ) | gzip -9 -c > $$@
+
+$1_ALL_XML += xml/$1/$2/$2.nobonds.xml.gz
+
+endif
+
+
 endef
 
 include $(wildcard generators/*/*.mk)
@@ -61,7 +82,11 @@ run_% : states/$1/%.state.gz
 
 $1_all_states : $$($1_ALL_STATES)
 
+$1_all_xml : $$($1_ALL_XML)
+
 all_states : $1_all_states
+
+all_xml : $1_all_xml
 
 $1_all_states_bin : $$($1_ALL_STATES_BIN)
 

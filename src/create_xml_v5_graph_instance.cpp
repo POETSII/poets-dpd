@@ -103,7 +103,7 @@ int main(int argc, const char *argv[])
 
     double bead_steps=nSteps*state.beads.size();
 
-    bool do_check_beads = nSteps <= 1000;
+    bool do_check_beads = state.beads.size() <= 1000000 && nSteps <= 300;
 
     std::vector<Bead> check_beads;
     if(do_check_beads){

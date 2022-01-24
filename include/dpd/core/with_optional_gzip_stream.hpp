@@ -2,6 +2,9 @@
 #define with_zip_stream_hpp
 
 #include <memory>
+#include <functional>
+#include <istream>
+#include <ostream>
 
 #ifdef __GLIBCXX__
 #include <ext/stdio_filebuf.h>
@@ -9,7 +12,7 @@
 
 void with_optional_gzip_istream(
     std::string src,
-    std::function<void (istream &)> cb
+    std::function<void (std::istream &)> cb
 ){
     if(src.size()>=4 && src.substr(src.size()-3)==".gz"){
 #ifdef __GLIBCXX__
@@ -19,7 +22,7 @@ void with_optional_gzip_istream(
             throw std::runtime_error("Error when spawning gunzip command '"+cmd+"'");
         }
 
-        std::unique_ptr<FILE*> fholder(f, pclose);
+        std::unique_ptr<FILE,decltype(&pclose)> fholder(f, pclose );
         
         __gnu_cxx::stdio_filebuf<char> buf(f, std::ios_base::in);
         std::istream fs(&buf);
@@ -40,17 +43,17 @@ void with_optional_gzip_istream(
 
 void with_optional_gzip_ostream(
     std::string dst,
-    std::function<void (ostream &)> cb
+    std::function<void (std::ostream &)> cb
 ){
     if(dst.size()>=4 && dst.substr(dst.size()-3)==".gz"){
 #ifdef __GLIBCXX__
-        std::string cmd="gzip -9 -c > "+src;
+        std::string cmd="gzip -9 -c > "+dst;
         FILE *f=popen(dst.c_str(), "w");
         if(!f){
             throw std::runtime_error("Error when spawning gzip command '"+cmd+"'");
         }
 
-        std::unique_ptr<FILE*> fholder(f, pclose);
+        std::unique_ptr<FILE,decltype(&pclose)> fholder(f, pclose);
         
         __gnu_cxx::stdio_filebuf<char> buf(f, std::ios_base::out);
         std::ostream fs(&buf);
