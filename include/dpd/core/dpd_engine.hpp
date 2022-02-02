@@ -10,6 +10,17 @@
 class DPDEngine
 {
 public:
+    struct timings_t
+    {
+        double compile = -1; // Everything todo with translating the in-memory WorldState into a loadable graph
+        double aquire = -1;  // Any extra time taken to aquire resources
+        double configure = -1; // Time taken to move loadable graph into hardware
+        double execute_to_first_bead = -1; // Time taken from start of execution till first bead in first batch
+        double execute_to_last_bead = -1;  // Time taken from start of execution till last bead in last batch
+        double perf_counters = -1;         // Any extra time needed to extract performance counters
+    };
+
+
     /* Check the given world and check it can be attached to this engine.
         Return empty string if ok, otherwise return the reason it can't
         be attached.
@@ -19,6 +30,23 @@ public:
 
     virtual double GetMaxBondLength() const
     { return 1.0; }
+
+    /* If the engine needs to aquire hardware, this tells it to start
+        aquiring resources in the background (if it can).
+    */
+    virtual void PrepareResources()
+    {}
+
+    /*! If the system supports timings, this will export them and return true. Otherwise it returns false.
+        Timings are really only intended to support bench-mark style executions, so
+        something like:
+         Attach();
+         Run();
+    */
+    virtual bool GetTimings(timings_t &timings)
+    {
+        return false;
+    }
 
     // Attach the given world-state to this engine.
     // Any future methods are relative to this state.

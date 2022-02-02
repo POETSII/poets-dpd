@@ -4,7 +4,7 @@ CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 LDFLAGS += -fuse-ld=gold
 
-#CPPFLAGS += -g3
+CPPFLAGS += -g3
 CPPFLAGS += -DNDEBUG=1 
 CPPFLAGS += -O3 -march=native -ffast-math
 #CPPFLAGS += -Og -fsanitize=address -fsanitize=undefined

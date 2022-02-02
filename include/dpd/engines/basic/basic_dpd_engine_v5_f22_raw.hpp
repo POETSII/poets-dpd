@@ -11,6 +11,8 @@
 #include <variant>
 #include <random>
 
+#include "dpd/external/robin_hood.h"
+
 
 class BasicDPDEngineV5F22Raw
     : public BasicDPDEngine
@@ -57,7 +59,7 @@ public:
     std::vector<device_state_f22_t> m_devices;
     std::unordered_map<vec3i_t,device_state_f22_t*> m_location_to_device;
     std::unordered_map<device_state_f22_t*,std::vector<device_state_f22_t*>> m_neighbour_map;
-    std::unordered_map<BeadHash,uint32_t> m_bead_hash_to_original_id;
+    robin_hood::unordered_flat_map<BeadHash,uint32_t> m_bead_hash_to_original_id;
 
     void set_bead_id(raw_bead_resident_f22_t &b, bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
     {
@@ -117,12 +119,12 @@ public:
         unsigned time;
         unsigned num_seen;
         std::vector<raw_bead_resident_f22_t> beads;
-        std::unordered_map<BeadHash,uint32_t> *bead_hash_to_id;
+        robin_hood::unordered_flat_map<BeadHash,uint32_t> *bead_hash_to_id;
 
         output_slice(output_slice &&) = default;
         output_slice &operator=(output_slice &&) = default;
 
-        output_slice(unsigned _time, std::unordered_map<BeadHash,uint32_t> &_bead_hash_to_id)
+        output_slice(unsigned _time, robin_hood::unordered_flat_map<BeadHash,uint32_t> &_bead_hash_to_id)
             : time(_time)
             , num_seen(0)
             , bead_hash_to_id(&_bead_hash_to_id)
@@ -144,7 +146,7 @@ public:
                 // This is a replicate, and should be exactly the same
                 require( memcmp(&b, &dst, sizeof(b))==0, "Replicate bead does not match." );
             }
-            
+            num_seen++;            
         }
 
         bool complete() const

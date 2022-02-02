@@ -826,7 +826,7 @@ struct BasicDPDEngineV5RawHandlersImpl
         assert(cell.phase == Outputting);
         assert(cell.interval_offset==cell.interval_size && cell.outputs_todo>0);
         assert(cell.output_reps_todo>0);
-        assert(cell.force_outgoing.size==0);
+        assert(cell.force_outgoing.n==0);
         
         cell.outputs_todo--;
         copy_bead_resident::copy(&outgoing, cell.resident.elements+cell.outputs_todo);
