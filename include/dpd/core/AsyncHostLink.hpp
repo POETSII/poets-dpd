@@ -202,7 +202,7 @@ private:
 
         uint64_t blocked_read_count=0;
         while(!m_reader_quitting.load()){
-            assert(page.size()==m_page_size);
+            assert(page.size()==(size_t)m_page_size);
 
             if(m_queue_total_bytes >= m_queue_max_bytes){
                 std::unique_lock lk(m_mutex);

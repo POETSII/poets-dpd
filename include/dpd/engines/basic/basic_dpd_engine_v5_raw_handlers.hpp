@@ -298,6 +298,7 @@ struct BasicDPDEngineV5RawHandlersImpl
     {
         int32_t box[3];
         int32_t location[3];
+        uint32_t location_packed;
         float dt;
         float scaled_inv_root_dt;
         float bond_r0;
@@ -633,6 +634,7 @@ struct BasicDPDEngineV5RawHandlersImpl
         float neighbour_x[3];
         vec3_copy(neighbour_x, incoming.x);
         int32_t neighbour_cell_pos[3];
+        
         vec3_floor_nn(neighbour_cell_pos, neighbour_x);
         for(int d=0; d<3; d++){
             if(cell.location[d]==0 && neighbour_cell_pos[d]==cell.box[d]-1){
@@ -641,6 +643,7 @@ struct BasicDPDEngineV5RawHandlersImpl
                 neighbour_x[d] += cell.box[d];
             }
         }
+    
 
         bool cached=false;
 

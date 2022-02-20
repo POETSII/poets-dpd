@@ -15,6 +15,24 @@ namespace dpd_maths_core_half_step_raw
     using dpd_maths_core::default_hash;
 
     // After this method b.f is dead
+    template<class TScalar, class TBead>
+    void update_pos_no_wrap(
+        TScalar dt,
+        TBead &b
+    )
+    {
+        float x[3];
+        vec3_mul(x, b.f, half(dt));
+        vec3_add(x, b.v);
+        vec3_mul(x, dt);
+        vec3_add(x, b.x);
+
+        vec3_copy(b.x, x);
+        vec3_add_mul(b.v, b.f, half(dt));
+        vec3_clear(b.f);
+    }
+
+    // After this method b.f is dead
     template<class TScalar, class TDims, class TBead>
     void update_pos(
         TScalar dt,

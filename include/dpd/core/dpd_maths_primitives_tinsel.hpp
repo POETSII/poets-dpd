@@ -89,12 +89,39 @@ inline int floor_nn(float x)
     return r;
 }
 
-inline void /*__attribute__((noinline)) __attribute__((optimize("no-tree-loop-distribute-patterns")))*/ memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
+void memcpy32(uint32_t *a, const uint32_t *b, unsigned n);
+void memzero32(uint32_t *a, unsigned n);
+
+#define TINSEL_MEMCPY_CROSSOVER 4
+
+template<unsigned N>
+inline void memcpy32(uint32_t *a, const uint32_t *b)
 {
-    for(unsigned i=0; i<n; i++){
-        a[i]=b[i];
+    if constexpr (N<=TINSEL_MEMCPY_CROSSOVER){
+        #pragma GCC unroll 4
+        for(unsigned i=0; i<N; i++){
+            a[i] = b[i];
+        }
+    }else{
+        memcpy32(a,b,N);
     }
 }
+
+#define TINSEL_MEMZERO_CROSSOVER 8
+
+template<unsigned N>
+void memzero32(uint32_t *a)
+{
+    if constexpr (N<=TINSEL_MEMZERO_CROSSOVER){
+        #pragma GCC unroll 8
+        for(unsigned i=0; i<N; i++){
+            a[i] = 0;
+        }
+    }else{
+        memzero32(a,N);
+    }
+}
+
 
 inline int round_impl(float x)
 {

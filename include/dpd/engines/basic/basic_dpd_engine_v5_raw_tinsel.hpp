@@ -5,6 +5,7 @@
 
 #ifndef PDPD_TINSEL
 #include "POLiteSWSim_PGraph.h"
+#include "ParallelFor.h"
 #include <iostream>
 #include <unistd.h>
 #include "dpd/core/AsyncHostLink.hpp"
@@ -243,7 +244,7 @@ public:
             return;
         }
 
-        //std::cerr<<"Building graph\n";
+        std::cerr<<"Building graph\n";
 
         m_graph=std::make_shared<typename Impl::template PGraph<Device, State, None, Message>>(m_meshLenX, m_meshLenY);
         auto &graph=*m_graph;
@@ -255,12 +256,18 @@ public:
             graph.mapVerticesToDRAM=true;
         }
 
-        for(unsigned i=0; i<Base::m_devices.size(); i++){
+        /*for(unsigned i=0; i<Base::m_devices.size(); i++){
             auto id=graph.newDevice();
             if(id!=i){
                 throw std::logic_error("Device ids not sequentials.");
             }
+        }*/
+        auto dev0=graph.newDevices(Base::m_devices.size());
+        if(dev0!=0){
+            throw std::logic_error("Device ids not sequentials.");
         }
+
+
         // PGraph ids are simply the index of the state in states
         auto get_device_id=[&](const typename Base::device_state_t *s)
         {
@@ -273,6 +280,7 @@ public:
         // We only have two types of connectivity:
         // - HostPin : doing output (already setup)
         // - NHoodPin : sending to all neighbours including self
+        #if 0
         for(unsigned i=0; i<Base::m_devices.size(); i++){
             auto &s = Base::m_devices[i];
             for(auto nb : Base::m_neighbour_map[&s]){
@@ -280,9 +288,22 @@ public:
                 graph.addEdge(i, /*PinId*/0, target);
             }
         }
+        #endif
+        std::cerr<<"adding edges\n";
+        parallel_for_with_grain<unsigned>(0, Base::m_devices.size(), 16,
+            [&](unsigned src)
+            {
+                auto &s = Base::m_devices[src];
+                for(auto nb : Base::m_neighbour_map[&s]){
+                    graph.addEdgeLockedDst(src, /*PinId*/0, get_device_id(nb));
+                }
+            }
+        );
+
 
         std::vector<unsigned> device_weights;
         if(m_use_device_weights){
+            std::cerr<<"Adding weights\n";
             const int BASE_DEVICE_WEIGHT = 2;
             device_weights.assign(Base::m_devices.size(), BASE_DEVICE_WEIGHT);
             for(const Polymer &p : Base::m_state->polymers){
@@ -304,6 +325,7 @@ public:
             }
         }
 
+        std::cerr<<"Mapping\n";
         graph.map();
 
         if(m_use_device_weights){

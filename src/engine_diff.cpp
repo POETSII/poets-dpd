@@ -50,7 +50,7 @@ std::ostream &operator<<(std::ostream &dst, const header &h)
 
 void usage()
 {
-    fprintf(stderr, "engine_diff : engine1 engine2 state-file steps\n");
+    fprintf(stderr, "engine_diff : engine1 engine2 state-file interval_count interval_size\n");
     fprintf(stderr, "  engine names:\n");
     for(auto s : DPDEngineFactory::ListFactories()){
         fprintf(stderr, "    %s\n", s.c_str());
@@ -81,9 +81,16 @@ int main(int argc, const char *argv[])
         usage();
     }
 
-    unsigned steps;
+    unsigned interval_count=10;
     if(argc>3){
-        steps=std::stoi(argv[4]);
+        interval_count=std::stoi(argv[4]);
+    }else{
+        usage();
+    }
+
+    unsigned interval_size=1;
+    if(argc>4){
+        interval_size=std::stoi(argv[5]);
     }else{
         usage();
     }
@@ -92,22 +99,11 @@ int main(int argc, const char *argv[])
     std::shared_ptr<DPDEngine> pengine1 = DPDEngineFactory::create(engine1_name);
     std::shared_ptr<DPDEngine> pengine2 = DPDEngineFactory::create(engine2_name);
 
-    WorldState s;
+    WorldState s=read_world_state(state_file);
 
-    {
-        int line_no=0;
-        std::ifstream src(state_file);
-        if(!src.is_open()){
-            fprintf(stderr, "Couldnt open state file %s\n", state_file.c_str());
-            exit(1);
-        }
-
-        s=read_world_state(src, line_no);
-    }
-
-    size_t state_size = 2*sizeof(Bead)*s.beads.size()*steps;
+    size_t state_size = 2*sizeof(Bead)*s.beads.size()*interval_count;
     std::cerr<<"Total size of state = "<<(state_size*pow(2.0,-20))<<"MB\n";
-    uint64_t bead_steps = 2*s.beads.size()*steps;
+    uint64_t bead_steps = 2*s.beads.size()*interval_count;
     std::cerr<<"Total mega-bead-steps = "<<(bead_steps*1e-6)<<" MBeadSteps\n";
 
     auto run_rep=[&](std::shared_ptr<DPDEngine> engine, const WorldState &s) -> std::vector<std::vector<Bead>>
@@ -124,8 +120,8 @@ int main(int argc, const char *argv[])
         engine->Attach(&state);
 
         unsigned t=state.t;
-        unsigned done=engine->Run(steps,1, [&]() -> bool {
-            if(t+1!=state.t){
+        unsigned done=engine->Run(interval_count, interval_size, [&]() -> bool {
+            if(t+interval_size!=state.t){
                 throw std::runtime_error("Mis-matched time value.");
             }
 
@@ -143,7 +139,7 @@ int main(int argc, const char *argv[])
     std::vector<std::vector<Bead>> beads2=run_rep(pengine2,s);
 
     std::cout<<"t,"<<header{"x"}<<","<<header{"v"}<<","<<header{"f"}<<"\n";
-    for(unsigned i=0; i<steps; i++){
+    for(unsigned i=0; i<interval_count; i++){
         const auto &s1=beads1[i], &s2=beads2[i];
         acc_t x_diff,v_diff,f_diff;
         acc_t v_mag_mean1, v_mag_mean2;
@@ -177,6 +173,6 @@ int main(int argc, const char *argv[])
         }
 
         using boost::accumulators::mean;
-        std::cout<<s.t+i<<",  "<<x_diff<<",  "<<v_diff<<",  "<<f_diff<<",  "<<mean(v_mag_mean1)<<","<<mean(v_mag_mean2)<<", "<<mean(f_mag_mean1)<<","<<mean(f_mag_mean2)<<"\n";
+        std::cout<<s.t+i*interval_size<<",  "<<x_diff<<",  "<<v_diff<<",  "<<f_diff<<",  "<<mean(v_mag_mean1)<<","<<mean(v_mag_mean2)<<", "<<mean(f_mag_mean1)<<","<<mean(f_mag_mean2)<<"\n";
     }
 }

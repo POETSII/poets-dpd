@@ -298,5 +298,9 @@ template<class T>
 inline void vec3_clear(T x[3])
 { for(int i=0; i<3; i++){ x[i]=0; } }
 
+template<class T>
+inline bool vec3_is_zero(const T *x)
+{ return x[0]==0 && x[1]==0 && x[2]==0; }
+
 
 #endif

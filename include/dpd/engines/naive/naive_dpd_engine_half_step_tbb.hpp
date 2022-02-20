@@ -117,7 +117,7 @@ protected:
                         auto *b = c.beads[j];
                         dpd_maths_core_half_step::update_pos(dt, m_state->box, *b);
                         unsigned index=world_pos_to_cell_index(b->x);
-                        if(index!=i){
+                        if(index!=(unsigned)i){
                             // Add to dst
                             assert(m_locked_cells.at(index).index==index);
                             m_locked_cells.at( index ).new_beads.push_back(b); // push into concurrent_vector

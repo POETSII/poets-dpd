@@ -105,7 +105,8 @@ public:
                 auto &nhood = m_neighbour_map[&dst];
                 nhood.reserve(src.neighbours.size());
                 for(unsigned neighbour_index : src.neighbours){
-                    nhood.push_back( &m_devices[neighbour_index] );
+                    auto o=&m_devices[neighbour_index];
+                    nhood.push_back( o );
                 }
             }
 
@@ -322,6 +323,7 @@ public:
                     if(message.dst==0){
                         bool carry_on=callback(std::get<raw_bead_resident_t>(message.payload));
                         if(!carry_on){
+                            //fprintf(stderr, "!carry_on\n");
                             return; // Quit the whole loop
                         }
                     }else{

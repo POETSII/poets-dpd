@@ -31,6 +31,13 @@ int floor_nn(float x);
 inline int round_impl(float x);
 
 void memcpy32(uint32_t *a, const uint32_t *b, unsigned n);
+void memzero32(uint32_t *a, const uint32_t *b, unsigned n);
+
+template<unsigned N>
+void memcpy32(uint32_t *a, const uint32_t *b);
+
+template<unsigned N>
+void memzero32(uint32_t *a);
 
 // https://github.com/riscv-non-isa/riscv-toolchain-conventions
 #if defined(__riscv) || defined (TINSEL)
@@ -39,5 +46,19 @@ void memcpy32(uint32_t *a, const uint32_t *b, unsigned n);
 #else
 #include "dpd_maths_primitives_native.hpp"
 #endif
+
+template<class T>
+inline void memcpy32(T &a, const T &b)
+{
+    static_assert((sizeof(T)%4)==0);
+    memcpy32<sizeof(T)/4>((uint32_t*)&a, (const uint32_t*)&b);
+}
+
+template<class T>
+inline void memzero32(T &a)
+{
+    static_assert((sizeof(T)%4)==0);
+    memzero32<sizeof(T)/4>((uint32_t*)&a);
+}
 
 #endif

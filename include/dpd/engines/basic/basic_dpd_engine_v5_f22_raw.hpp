@@ -257,7 +257,7 @@ public:
                 }
                 output_slice &s = slices.at(slice_i);
                 if(output.t < s.time){
-                    fprintf(stderr, "  Bead %u, Slice %u, time=%u, size=%u\n", output.t, slice_i, s.time, s.num_seen);
+                    fprintf(stderr, "  Bead %u, Slice %u, time=%u, size=%u\n", (unsigned)output.t, (unsigned)slice_i, (unsigned)s.time, (unsigned)s.num_seen);
                 }
                 require(output.t >= s.time, "Time does not match a slice time.");
                 if(output.t == s.time){

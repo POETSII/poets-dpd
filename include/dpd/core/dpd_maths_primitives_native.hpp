@@ -38,6 +38,23 @@ inline void memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
     memcpy(a, b, n*4);
 }
 
+inline void memzero32(uint32_t *a, unsigned n)
+{
+    memset(a, 0, n*4);
+}
+
+template<unsigned N>
+void memcpy32(uint32_t *a, const uint32_t *b)
+{
+    memcpy32(a,b,N);
+}
+
+template<unsigned N>
+void memzero32(uint32_t *a)
+{
+    memzero32(a,N);
+}
+
 inline int round_impl(float x)
 {
     return roundf(x);

@@ -10,12 +10,12 @@ struct BasicDPDEngineV8RawHandlers
     {
         raw_bead_view_t beads[2];
     };
-    static_assert(sizeof(raw_bead_share_t) <= 56);
+    static_assert(sizeof(raw_bead_share_t) <= 60);
 
     struct device_state_t
         : BasicDPDEngineV5RawHandlers::device_state_t
     {
-
+        uint32_t loc;
     };
 
 
@@ -52,8 +52,6 @@ struct BasicDPDEngineV8RawHandlers
             cell.cached_bond_indices[i]=0xff;
         }
 
-        calc_intra_forces<EnableLogging>(cell);
-
         cell.phase=SharingAndForcing;
         cell.rts=cell.share_todo==0 ? 0 : RTS_FLAG_share;
 
@@ -74,6 +72,7 @@ struct BasicDPDEngineV8RawHandlers
             const auto &b = resident[cell.share_todo];
             copy_bead_view::copy( begin, &b );
             begin++;
+            break;
         }
         while(begin!=end){
             begin->id=0xFFFFFFFFul;
@@ -81,6 +80,8 @@ struct BasicDPDEngineV8RawHandlers
         }
 
         if(cell.share_todo==0){
+            calc_intra_forces<false>(cell);
+
             cell.rts &= ~RTS_FLAG_share;
         }
     }
@@ -105,6 +106,8 @@ struct BasicDPDEngineV8RawHandlers
         if(dr_sqr >=1 || dr_sqr < MIN_DISTANCE_CUTOFF_SQR){ // The min threshold avoid large forces, and also skips self-interaction
             return NotBonded;
         }
+
+        assert(bead.id != incoming_id);
 
         float dr=pow_half(dr_sqr);
 
@@ -201,12 +204,17 @@ struct BasicDPDEngineV8RawHandlers
             vec3_copy(neighbour_x, incoming.x);
             int32_t neighbour_cell_pos[3];
             vec3_floor_nn(neighbour_cell_pos, neighbour_x);
-
+            
             // TODO : don't send these messages to self
             if(neighbour_cell_pos[0]==cell.location[0] && neighbour_cell_pos[1]==cell.location[1] && neighbour_cell_pos[2]==cell.location[2]){
                 //std::cerr<<" Skipping self.\n";
                 return;
             }
+
+            for(unsigned i=0; i<resident.size(); i++){
+                assert(incoming.id != resident[i].id);
+            }
+            
 
             for(int d=0; d<3; d++){
                 if(cell.location[d]==0 && neighbour_cell_pos[d]==cell.box[d]-1){
@@ -233,7 +241,6 @@ struct BasicDPDEngineV8RawHandlers
     static void calc_intra_forces(device_state_t &cell)
     {
         auto resident=make_bag_wrapper(cell.resident);
-        auto cached_bonds=make_bag_wrapper(cell.cached_bonds);
 
         for(unsigned i=0; i+1<resident.size(); i++){
             for(unsigned j=1; j<resident.size(); j++){

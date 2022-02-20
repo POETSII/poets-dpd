@@ -7,6 +7,7 @@
 #include "POLiteSWSim_PGraph.h"
 #include <iostream>
 #include <unistd.h>
+#include "dpd/core/AsyncHostLink.hpp"
 #endif
 
 #include "POLiteHW.h"
@@ -135,35 +136,68 @@ public:
         >;
 
 #ifndef PDPD_TINSEL
-    std::shared_ptr<typename Impl::HostLink> m_hostlink;
+    AsyncHostLink<Impl> m_hostlink;
     std::shared_ptr<typename Impl::template PGraph<Device, State, None, Message>> m_graph;
     int m_meshLenX;
     int m_meshLenY;
+    DPDEngine::timings_t m_timings;
+
+    static double now()
+    {
+        timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        return ts.tv_sec+1e-9*ts.tv_nsec;
+    };
 
     BasicDPDEngineV8RawTinsel()
     {
         std::cerr<<"Construct\n";
         m_meshLenX=Impl::BoxMeshXLen;
         m_meshLenY=Impl::BoxMeshYLen;
+        if(getenv("PDPD_BOX_MESH_X")){
+            int v=atoi(getenv("PDPD_BOX_MESH_X"));
+            if(v<1 || v>m_meshLenX){
+                throw std::runtime_error("Invalid PDPD_BOX_MESH_X");
+            }
+            m_meshLenX=v;
+            fprintf(stderr, "Setting boxMeshLenX to %d\n", m_meshLenX);
+        }
+        if(getenv("PDPD_BOX_MESH_Y")){
+            int v=atoi(getenv("PDPD_BOX_MESH_Y"));
+            if(v<1 || v>m_meshLenY){
+                throw std::runtime_error("Invalid PDPD_BOX_MESH_Y");
+            }
+            m_meshLenY=v;
+            fprintf(stderr, "Setting boxMeshLenY to %d\n", m_meshLenY);
+        }
+
+        typename Impl::HostLinkParams params;
+        params.numBoxesX=m_meshLenX;
+        params.numBoxesY=m_meshLenY;
+        m_hostlink.SetParams(params);
     }
 
-    void ensure_hostlink()
+    virtual bool GetTimings(DPDEngine::timings_t &timings)
     {
-        if(!m_hostlink){
-            //std::cerr<<"Opening hostlink\n";
-            typename Impl::HostLinkParams params;
-            params.numBoxesX=m_meshLenX;
-            params.numBoxesY=m_meshLenY;
-            //std::cerr<<"  boxx="<<params.numBoxesX<<", boxy="<<params.numBoxesY<<"\n";
-            m_hostlink = std::make_shared<typename Impl::HostLink>(params);
-        }
+        timings = m_timings;
+        return true;
     }
 
     void Attach(WorldState *state) override
     {
-        ensure_hostlink();
+        if(state){
+            m_hostlink.beginAquisition();
+            m_timings=DPDEngine::timings_t();
+        }else{
+            m_hostlink.reset();
+        }
         
+        double tBegin=now();
         BasicDPDEngineV8Raw::Attach(state);
+
+        if(!state){
+            return;
+        }
 
         //std::cerr<<"Building graph\n";
 
@@ -205,6 +239,7 @@ public:
 
         graph.map();
 
+        m_timings.compile = now()-tBegin;
     }
 
     void step_all(
@@ -215,24 +250,34 @@ public:
         std::function<bool(raw_bead_resident_t &output)> callback
     ) override
     {
-        ensure_hostlink();
+        m_hostlink.beginAquisition();
 
         unsigned nBeads=m_state->beads.size();
 
         auto &graph=*m_graph;
 
+        // Really this is compile
+        double tBegin=now();
         for(unsigned i=0; i<states.size(); i++){
             graph.devices[i]->state.state = states[i];
             graph.devices[i]->state.state.t_hash = m_t_hash;
             graph.devices[i]->state.state.t_seed = m_state->seed;
         }
+        m_timings.compile += now() - tBegin;
 
+        tBegin = now();
+        m_hostlink.completeAquisition();
+        m_timings.aquire = now()-tBegin;
+
+        tBegin = now();
         //std::cerr<<"Writing graph\n";
         graph.write(m_hostlink.get());
-
         //std::cerr<<"Booting\n";
         m_hostlink->boot("bin/engines/basic_dpd_engine_v8_raw_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v8_raw_tinsel_hw.riscv.data.v");
         //std::cerr<<"Go\n";
+        m_timings.configure = now()-tBegin;
+
+        tBegin=now();
         m_hostlink->go();
 
         auto now=[]()
@@ -252,6 +297,9 @@ public:
 
             typename Impl::template PMessage<Message> msg;
             if(m_hostlink->canRecv()){
+                if(seen==0){
+                    m_timings.execute_to_first_bead = now() - tBegin;
+                }
                 ++seen;
                 m_hostlink->recvMsg(&msg, sizeof(msg));
                 if(!callback(msg.payload.bead_resident)){
@@ -271,10 +319,13 @@ public:
                 usleep(1);
             }
         }
+        m_timings.execute_to_last_bead=now() - tBegin;
 
+        tBegin=now();
         for(int i=0; i<1000; i++){
             (m_hostlink->pollStdOut(stderr));
         }
+        m_timings.perf_counters = now()-tBegin;
 
         m_hostlink.reset();
     }

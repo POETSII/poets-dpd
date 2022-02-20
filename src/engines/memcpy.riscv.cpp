@@ -15,3 +15,10 @@ void /*__attribute__((noinline)) __attribute__((optimize("no-tree-loop-distribut
         a[i]=b[i];
     }
 }
+
+void /*__attribute__((noinline)) __attribute__((optimize("no-tree-loop-distribute-patterns")))*/ memzero32(uint32_t *a, unsigned n)
+{
+    for(unsigned i=0; i<n; i++){
+        a[i]=0;
+    }
+}

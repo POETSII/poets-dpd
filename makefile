@@ -4,10 +4,10 @@ CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 LDFLAGS += -fuse-ld=gold
 
-CPPFLAGS += -g3
-CPPFLAGS += -DNDEBUG=1 
+CPPFLAGS += -g3 -O0
+#CPPFLAGS += -DNDEBUG=1 
 CPPFLAGS += -O3 -march=native -ffast-math
-#CPPFLAGS += -Og -fsanitize=address -fsanitize=undefined
+#CPPFLAGS += -O0 -fsanitize=address -fsanitize=undefined
 
 TINSEL_ROOT = tinsel
 
@@ -161,8 +161,8 @@ endef
 
 bin/test/test_hash : LDLIBS += -ltestu01
 
-$(eval $(call register_engine_user,test_engine_diff))
-$(eval $(call register_engine_user,test_engine))
+$(eval $(call register_engine_user,test/test_engine_diff))
+$(eval $(call register_engine_user,test/test_engine))
 $(eval $(call register_engine_user,benchmark_engine))
 $(eval $(call register_engine_user,benchmark_engine_intervals))
 $(eval $(call register_engine_user,run_world))
