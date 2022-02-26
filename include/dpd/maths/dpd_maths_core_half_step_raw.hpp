@@ -54,9 +54,9 @@ namespace dpd_maths_core_half_step_raw
 
         
         for(int i=0; i<3; i++){
-            x[i] += (x[i]<0 ? dims[i] : 0);
-            x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
-            assert(x[i] >= 0);
+            x[i] += (x[i]<0.0f ? dims[i] : 0.0f);
+            x[i] -= (x[i]>=dims[i] ? dims[i] : 0.0f);
+            assert(x[i] >= 0.0f);
             assert(x[i] < dims[i]);
         }
         vec3_copy(b.x, x);

@@ -89,10 +89,57 @@ inline int floor_nn(float x)
     return r;
 }
 
-void memcpy32(uint32_t *a, const uint32_t *b, unsigned n);
+inline void __attribute__((noinline)) __attribute__((optimize("no-tree-loop-distribute-patterns"))) memcpy32(volatile uint32_t *a, const volatile uint32_t *b, unsigned n)
+{
+    for(unsigned i=0; i<n; i++){
+        a[i]=b[i];
+    }
+}
+
+inline void memcpy32(uint32_t *a, const volatile uint32_t *b, unsigned n)
+{
+    memcpy32((volatile uint32_t *)a, (const volatile uint32_t*)b, n);
+}
+
+inline void memcpy32(volatile uint32_t *a, const uint32_t *b, unsigned n)
+{
+    memcpy32((volatile uint32_t *)a, (const volatile uint32_t*)b, n);
+}
+
+inline void memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
+{
+    memcpy32((volatile uint32_t *)a, (const volatile uint32_t*)b, n);
+}
+
 void memzero32(uint32_t *a, unsigned n);
 
 #define TINSEL_MEMCPY_CROSSOVER 4
+
+template<unsigned N>
+inline void memcpy32(uint32_t *a, const volatile uint32_t *b)
+{
+    if constexpr (N<=TINSEL_MEMCPY_CROSSOVER){
+        #pragma GCC unroll 4
+        for(unsigned i=0; i<N; i++){
+            a[i] = b[i];
+        }
+    }else{
+        memcpy32(a,b,N);
+    }
+}
+
+template<unsigned N>
+inline void memcpy32(volatile uint32_t *a, const uint32_t *b)
+{
+    if constexpr (N<=TINSEL_MEMCPY_CROSSOVER){
+        #pragma GCC unroll 4
+        for(unsigned i=0; i<N; i++){
+            a[i] = b[i];
+        }
+    }else{
+        memcpy32(a,b,N);
+    }
+}
 
 template<unsigned N>
 inline void memcpy32(uint32_t *a, const uint32_t *b)

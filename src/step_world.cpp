@@ -130,6 +130,8 @@ int main(int argc, const char *argv[])
             fprintf(stdout, "%g,%g,%g\n", bpsEndToEnd, bpsCompileConfigExecExport, bpsExec);
         }
 
+        fprintf(stderr, "Successful completion.\n");
+
     }catch(const std::exception &e){
         print_exception(e);
         exit(1);

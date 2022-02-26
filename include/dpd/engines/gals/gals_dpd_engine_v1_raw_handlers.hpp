@@ -221,9 +221,10 @@
 */
 struct GALSDPDEngineV1Handlers
 {
-    static constexpr size_t LOG2_MAX_BEADS_PER_CELL = 4;
+    static constexpr size_t LOG2_MAX_BEADS_PER_CELL = 5;
     static constexpr size_t MAX_BEADS_PER_CELL = 1u<<LOG2_MAX_BEADS_PER_CELL;
     static constexpr size_t MAX_BEADS_PER_CELL_MASK = MAX_BEADS_PER_CELL-1;
+    static constexpr size_t MAX_VIEWS_PER_CELL = MAX_BEADS_PER_CELL*27;
 
     static constexpr size_t MAX_BEAD_TYPES=8;
 
@@ -241,7 +242,6 @@ struct GALSDPDEngineV1Handlers
         uint32_t id;
         float x[3];
         float v[3];
-        int32_t src[3]; // Debug only
         uint32_t t; // Debug only
     };
     //static_assert(sizeof(bead_view_t)==28);
@@ -259,7 +259,8 @@ struct GALSDPDEngineV1Handlers
         None     = 0, // No message. Purely to do receive counts
         Migrate = 1,
         Share    = 2,  // Sharing view
-        Output   = 3
+        Output   = 3,
+        Finish   = 4 
     };
 
     enum EdgeMask : uint32_t
@@ -275,20 +276,26 @@ struct GALSDPDEngineV1Handlers
     struct message_t
     {
         uint32_t t;
-        
+
         union{
             struct{
                 MessageType type; // also uint8_t
                 int8_t expected_migrations_count;        // If expected_count>=0, this is the number of messages sent in round t
-                int8_t expected_shares_count;
-                uint8_t _pad_;
+                int16_t expected_shares_count;
             };
             uint32_t type_expected_raw;
         };
-        
-        bead_resident_t bead;
+
+        union{            
+            bead_resident_t bead;
+            struct{
+                int32_t loc[3];
+                uint32_t num_resident;
+                uint32_t total_outputs;
+            }finish;
+        };
     };
-    //static_assert(sizeof(message_t)<=56);
+    static_assert(sizeof(message_t)<=56);
 
     struct round_state_t
     {
@@ -313,7 +320,7 @@ struct GALSDPDEngineV1Handlers
 
         // These do not need to be cleared at start of round
         bead_resident_t beads[MAX_BEADS_PER_CELL];
-        bead_view_t views[MAX_BEADS_PER_CELL*27];
+        bead_view_t views[MAX_VIEWS_PER_CELL];
     };
 
     static void clear_round_header(round_state_t &r)
@@ -326,7 +333,7 @@ struct GALSDPDEngineV1Handlers
 
     struct device_state_t
     {
-        int32_t box[3];
+        float box_sub_eps[3]; // This is nextbefore(box[i],0), and gives the _inclusive_ box
         float dt;
         float scaled_inv_root_dt;
         struct {
@@ -345,6 +352,9 @@ struct GALSDPDEngineV1Handlers
 
         uint32_t rts;
  
+        // Debug
+        uint32_t num_resident_in_output_round;
+        uint32_t num_outputs_sent;
 
         uint32_t intervals_todo;
         uint32_t interval_offset; // When offset reaches zero we output
@@ -414,16 +424,19 @@ struct GALSDPDEngineV1Handlers
     {
         dpd_maths_core_half_step_raw::update_mom(cell.dt, b);
         dpd_maths_core_half_step_raw::update_pos_no_wrap(cell.dt, b);
+        
         uint32_t em=cell.edge_mask;
         if(em){
             for(unsigned i=0; i<3; i++){
                 if(em&0x3){
                     if( (em&0x1)){
                         if(b.x[i]<0){
-                            b.x[i] += cell.box[i];
+                            b.x[i] += cell.box_sub_eps[i];
+                            assert(b.x[i] <= cell.box_sub_eps[i]);
                         }
-                    }else if(b.x[i]>=cell.box[i]){
-                        b.x[i] -= cell.box[i];
+                    }else if(b.x[i]>cell.box_sub_eps[i]){
+                        b.x[i] -= cell.box_sub_eps[i];
+                        assert(0 <= b.x[i]);
                     }
                 }
                 em=em>>2;
@@ -432,13 +445,24 @@ struct GALSDPDEngineV1Handlers
         return contains(cell, b);
     }
 
-    static void interact(const device_state_t &cell, uint32_t t, bead_resident_t &a, const bead_view_t &b, float *f_acc)
+    static __attribute__((noinline)) void interact(const device_state_t &cell, uint32_t t, bead_resident_t &a, const bead_view_t &b, float *f_acc)
     {
         float dx[3];
         float dr2=0;
-        for(int i=0; i<3; i++){
-            dx[i] = a.x[i] - b.x[i];
-            dr2 += dx[i]*dx[i];
+
+        if(1){
+            for(int i=0; i<3; i++){
+                dx[i] = a.x[i] - b.x[i];
+                dr2 += dx[i]*dx[i];
+                if(dr2 >= 1){
+                    return;
+                }
+            }
+        }else{
+            for(int i=0; i<3; i++){
+                dx[i] = a.x[i] - b.x[i];
+                dr2 += dx[i]*dx[i];
+            }
             if(dr2 >= 1){
                 return;
             }
@@ -475,6 +499,11 @@ struct GALSDPDEngineV1Handlers
 
     static void add_resident(const device_state_t &cell, round_state_t &r, const bead_resident_t &b)
     {
+        assert(r.num_resident < MAX_BEADS_PER_CELL);
+        /*if(r.num_resident==MAX_BEADS_PER_CELL){
+            puts("add_resident:overflow\n");
+        }*/
+
         for(unsigned i=0; i<r.num_views; i++){
             assert(b.id != r.views[i].id);
         }
@@ -512,7 +541,9 @@ struct GALSDPDEngineV1Handlers
 
     static void add_view(const device_state_t &cell, round_state_t &r, const bead_resident_t &b)
     {
-
+        /*if(r.num_views==MAX_VIEWS_PER_CELL){
+            puts("add_view:overflow\n");
+        }*/
 
         /*fprintf(stderr, " %u : [%u,%u,%u]  add_view(%u) from [%u,%u,%u], num_views=%u, dp=%p, rp=%p\n",
             r.t, cell.location[0], cell.location[1], cell.location[2], b.id,
@@ -523,6 +554,7 @@ struct GALSDPDEngineV1Handlers
 
         assert(b.t==r.t);
 
+        // This copy could be optimised out for the non-edge + non-store-view case?
         auto &rv=r.views[r.num_views];
         memcpy32(rv, (bead_view_t&)b);
 
@@ -544,12 +576,12 @@ struct GALSDPDEngineV1Handlers
             for(unsigned i=0; i<3; i++){
                 if(em &0x3){
                     if( em&0x1 ){
-                        if(rv.x[i]>2){
-                            rv.x[i] -= cell.box[i];
+                        if(rv.x[i]>2.0f){
+                            rv.x[i] -= cell.box_sub_eps[i];
                         }
-                    }else if(rv.x[i]<=2){
+                    }else if(rv.x[i]<=2.0f){
                         assert(em&0x2);
-                        rv.x[i] += cell.box[i];
+                        rv.x[i] += cell.box_sub_eps[i];
                     }
                 }
                 em>>=2;
@@ -558,6 +590,12 @@ struct GALSDPDEngineV1Handlers
 
         for(unsigned i=0; i<r.num_resident; i++){
             interact(cell, r.t, r.beads[i], rv, nullptr);
+        }
+
+        // Optimisation: once we are migration complete, we can stop storing
+        // these, which saves cache traffic
+        if(r.expected_migrations_delta!=0 || r.expected_migrations_received!=26){
+            r.num_views += 1;
         }
     }
 
@@ -585,6 +623,12 @@ struct GALSDPDEngineV1Handlers
             assert(r.beads[i].t==r.t);
             assert(contains(cell, r.beads[i]));
 
+            const auto &b=r.beads[i];
+            for(unsigned d=0; d<3; d++){
+                assert(0<=b.x[d]);
+                assert(b.x[d] <= cell.box_sub_eps[d]);
+            }
+
             for(unsigned j=i+1; j<r.num_resident; j++){
                 assert(r.beads[i].id != r.beads[j].id);
             }
@@ -593,6 +637,15 @@ struct GALSDPDEngineV1Handlers
             }
             for(unsigned j=0; j<r.num_views; j++){
                 assert(r.beads[i].id != r.views[j].id);
+            }
+        }
+
+        for(unsigned i=0; i<r.num_migrating; i++){
+            const auto &b=r.beads[MAX_BEADS_PER_CELL-1-i];
+            assert(!contains(cell, b));
+            for(unsigned d=0; d<3; d++){
+                assert(0<=b.x[d]);
+                assert(b.x[d] <= cell.box_sub_eps[d]);
             }
         }
     }
@@ -636,6 +689,10 @@ struct GALSDPDEngineV1Handlers
         c.t += 1;
 
         bool add_to_output_queue=is_output_round(c, c.t);
+
+        if(add_to_output_queue){
+            c.num_resident_in_output_round += curr.num_resident;
+        }
 
         //fprintf(stderr, "  advance : %u -> %u, is_output=%d, resident=%u\n", c.t-1, c.t, add_to_output_queue, curr.num_resident);
 
@@ -690,7 +747,7 @@ struct GALSDPDEngineV1Handlers
     }
 
 
-    static void update_rts_and_maybe_step(device_state_t &cell, const round_state_t &curr)
+    static __attribute__((noinline)) void update_rts_and_maybe_step(device_state_t &cell, const round_state_t &curr)
     {
         assert(&curr==&cell.rounds[cell.t&1]);
         if(curr.num_migrating
@@ -737,27 +794,24 @@ struct GALSDPDEngineV1Handlers
         return cell.rts;
     }
 
-    static void on_init(device_state_t &cell)
+    static __attribute__((noinline)) void on_init(device_state_t &cell)
     {
         invariants(cell);
     }
 
     static bool on_barrier(device_state_t &cell)
     {
-        return true;
+        return false;
     }
 
     static void on_send(device_state_t &cell, message_t &msg)
     {
         invariants(cell);
 
+        memzero32(msg);
+
         assert(cell.rts);
         round_state_t &curr=cell.rounds[cell.t&1];
-
-        // Debug only
-        for(int i=0; i<3; i++){
-            msg.bead.src[i]=cell.location[i];
-        }
 
         if(cell.rts==RTS_FLAG_nhood){
             msg.t=curr.t;
@@ -806,6 +860,8 @@ struct GALSDPDEngineV1Handlers
 
             msg.t=msg.bead.t;
 
+            cell.num_outputs_sent++;
+
             if(cell.t < cell.max_t){
                 // Still running normallu
                 update_rts_and_maybe_step(cell, curr);
@@ -824,8 +880,12 @@ struct GALSDPDEngineV1Handlers
     {
         invariants(cell);
 
+        /*if(!(cell.t <= msg.t && msg.t <= cell.t+1)){
+            puts("recv:wrong-t\n");
+        }*/
+
         assert(cell.t <= msg.t && msg.t <= cell.t+1);
-        auto &dst = cell.rounds[msg.t&1];
+        round_state_t &dst = cell.rounds[msg.t&1];
         assert(dst.t==msg.t);
 
         if(msg.type==Share){
@@ -850,7 +910,8 @@ struct GALSDPDEngineV1Handlers
             dst.expected_views_delta += msg.expected_shares_count;
         }
 
-        if(msg.t==cell.t){
+        // If rts!=0 it will never become 0
+        if(!cell.rts && msg.t==cell.t){
             update_rts_and_maybe_step(cell, dst);
         }
 

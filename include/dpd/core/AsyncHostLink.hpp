@@ -50,9 +50,9 @@ private:
         }
         lk.unlock();
 
-        fprintf(stderr, "AsyncHostLink::beginAquire worker started.\n");
+        //fprintf(stderr, "AsyncHostLink::beginAquire worker started.\n");
         auto hostlink=std::make_shared<HostLink>(m_params);
-        fprintf(stderr, "AsyncHostLink::beginAquire worker finished.\n");
+        //fprintf(stderr, "AsyncHostLink::beginAquire worker finished.\n");
 
         lk.lock();
         m_state=Aquired;

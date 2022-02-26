@@ -10,6 +10,8 @@
 #include <cstring>
 #include <variant>
 #include <random>
+#include <time.h>
+#include <math.h>
 
 #include "dpd/external/robin_hood.h"
 
@@ -89,6 +91,12 @@ public:
 
         vec3i_t box{m_state->box};
 
+        vec3f_t box_sub_eps{
+            nextafterf(box[0], -1),
+            nextafterf(box[1], -1),
+            nextafterf(box[2], -1)
+        };
+
         for(unsigned i=0; i<m_devices.size(); i++){
             device_state_t &dst=m_devices[i];
 
@@ -100,7 +108,7 @@ public:
                 int( i / (box[0]*box[1] ))
             };
 
-            box.extract(dst.box);
+            box_sub_eps.extract(dst.box_sub_eps);
             dst.dt=m_state->dt;
             dst.scaled_inv_root_dt=pow_half(24 / m_state->dt);
             for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -125,7 +133,7 @@ public:
         auto rel_nhood_locs = make_relative_nhood_full(true);
         for(unsigned i=0; i<m_devices.size(); i++){
             device_state_t &dst=m_devices[i];
-            vec3i_t loc(dst.location);
+            vec3i_t loc{dst.location[0], dst.location[1], dst.location[2]};
             auto abs_nhood_locs=make_absolute_nhood(rel_nhood_locs, box, loc);
             auto &nhood = m_neighbour_map[&dst];
             nhood.reserve(abs_nhood_locs.size());
@@ -209,6 +217,9 @@ protected:
             Handlers::invariants(device);
         }
 
+        float fbox[3];
+        m_state->box.extract(fbox);
+
         for(auto &b : m_state->beads){
             bead_resident_t bb;
             bb.id=b.get_hash_code().hash;
@@ -216,7 +227,7 @@ protected:
             b.v.extract(bb.v);
             b.f.extract(bb.f);
             // Pre-correct one-step forwards in time, as handlers will do one too few
-            dpd_maths_core_half_step_raw::update_pos((float)m_state->dt, m_state->box, bb);
+            dpd_maths_core_half_step_raw::update_pos<float,float[3],bead_resident_t>((float)m_state->dt, fbox, bb);
 
             vec3i_t loc=floor(bb.x);
             auto dst = m_location_to_device.at(loc);
@@ -229,7 +240,6 @@ protected:
             }
 
             bb.t=curr.t;
-            vec3_copy(bb.src, dst->location);
 
             Handlers::add_resident(*dst, curr, bb);
 
@@ -297,9 +307,11 @@ public:
         */
 
 
-        auto process_output=[&](uint32_t t, bead_resident_t &output) -> bool
+        auto process_output=[&](bead_resident_t &output) -> bool
         {
             assert(!aborted);
+
+            uint32_t t=output.t;
 
             require(t <= final_slice_t, "Output is from beyond slice horizon.");
 
@@ -359,7 +371,7 @@ protected:
         robin_hood::unordered_map<device_state_t*, std::vector<device_state_t*>> &neighbour_map,
         unsigned interval_size,
         unsigned interval_count,
-        std::function<bool(uint32_t t,bead_resident_t &output)> callback
+        std::function<bool(bead_resident_t &output)> callback
     )
     {
         //fprintf(stderr, "Stepping\n");
@@ -372,6 +384,11 @@ protected:
         std::vector<inflight_message_t> messages_next;
 
         std::mt19937_64 rng;
+        if(getenv("PDPD_RANDOM_SEED")){
+            uint32_t seed=time(0) + (uintptr_t)(malloc) + (uintptr_t)(this) + (uintptr_t)(&rng);
+            fprintf(stderr, "Seed=%u\n", seed);
+            rng.seed(seed);
+        }
 
         for(auto &state : states){
             Handlers::on_init(state);
@@ -380,12 +397,12 @@ protected:
         unsigned next_msg_t = interval_size;
         while(1){
             for(auto &message : messages){
-                if((rng()&7)==0){
+                if((rng()&3)!=0){
                     messages_next.push_back(message);
                 }else if(message.dst==0){
                     assert(message.payload.type=Handlers::Output);
                     //fprintf(stderr, "Msg for t=%d\n", message.payload.t);
-                    bool carry_on=callback(message.payload.t, message.payload.bead);
+                    bool carry_on=callback(message.payload.bead);
                     if(!carry_on){
                         //fprintf(stderr, "Break\n");
                         m_slices.clear();
@@ -408,7 +425,7 @@ protected:
                 }
                 assert(rts==Handlers::RTS_FLAG_output || rts==Handlers::RTS_FLAG_nhood);
                 active=true;
-                if((rng()&7)==0){
+                if((rng()&1)==0){
                     continue;
                 }
                 message_t payload;
