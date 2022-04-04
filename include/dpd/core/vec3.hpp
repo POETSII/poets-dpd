@@ -135,7 +135,7 @@ std::ostream &operator<<(std::ostream &dst, const vec3g_t<T> &x)
 
 using vec3r_t = vec3g_t<double>;
 using vec3f_t = vec3g_t<float>;
-using vec3i_t = vec3g_t<int>;
+using vec3i_t = vec3g_t<int32_t>;
 
 inline vec3r_t normalise(const vec3r_t &x)
 {
@@ -252,6 +252,10 @@ inline void vec3_neg(T dst[3])
 { for(int i=0; i<3; i++){ dst[i] = -dst[i]; } }
 
 template<class T>
+inline void vec3_neg(T dst[3], const T src[3])
+{ for(int i=0; i<3; i++){ dst[i] = -src[i]; } }
+
+template<class T>
 inline void vec3_add_mul(T dst[3], const T x[3], T s)
 { for(int i=0; i<3; i++){ dst[i] += x[i] * s; } }
 
@@ -277,6 +281,14 @@ inline void vec3_floor(int32_t dst[3], const T x[3])
 template<class T>
 inline void vec3_floor_nn(int32_t dst[3], const T x[3])
 { for(int i=0; i<3; i++){ assert(x[i]>=0); dst[i] = floor_nn(x[i]); } }
+
+template<class T>
+inline vec3i_t vec3_floor(vec3g_t<T> x)
+{
+    vec3i_t res;
+    vec3_floor(&res.x[0], &x.x[0]);
+    return res;
+}
 
 
 

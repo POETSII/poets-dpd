@@ -96,9 +96,13 @@ public:
                 device_state_t &dst=m_devices[i];
                 const cell_t &src=m_cells[i];
 
+                int32_t loc[3];
+                src.location.extract(loc);
+
                 m_box.extract(dst.box);
                 dst.dt=m_state->dt;
                 dst.scaled_inv_root_dt=pow_half(24 / m_state->dt);
+                dst.edge_bits = create_wrap_bits(&m_box.x[0], loc);
                 dst.bond_r0=m_bond_r0;
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){

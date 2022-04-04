@@ -103,10 +103,19 @@ int main(int argc, const char *argv[])
 
         double t2=now();
 
-        fprintf(stdout, "%s,%s,%d,%d,%d,%g,%g,%g\n",
+        DPDEngine::timings_t timings;
+        bool timings_valid= engine->GetTimings(timings);
+
+        fprintf(stdout, "%s,%s,%d,%d,%d,%g,%g,%g",
             engine_name.c_str(), mode.c_str(), volume, state.beads.size(), todo,
             t1-t0, t2-t1, state.beads.size()/(t2-t1)*todo
         );
+        if(timings_valid){
+            fprintf(stdout, ", %g, %g", timings.execute_to_first_bead, state.beads.size() * timings.execute_to_first_bead * todo);
+        }
+        fprintf(stdout, "\n");
+
+        
     }
 
     return 0;

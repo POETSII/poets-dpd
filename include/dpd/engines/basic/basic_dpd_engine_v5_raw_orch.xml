@@ -135,51 +135,18 @@
                 __DEVICE_STATE_C__
             ]]></State>
             <SharedCode/>
-            <InputPin name="share_in" messageTypeId="share">
+
+            <InputPin name="in" messageTypeId="message">
                 <Properties/>
                 <State/>
                 <OnReceive><![CDATA[
-                    DPDHandlers::on_recv_share(*deviceState, *message);
+                    DPDHandlers::on_recv(*deviceState, *message);
                 ]]></OnReceive>
             </InputPin>
 
-            <InputPin name="migrate_in" messageTypeId="migrate">
-                <Properties/>
-                <State/>
-                <OnReceive><![CDATA[
-                    DPDHandlers::on_recv_migrate(*deviceState, *message);
-                ]]></OnReceive>
-            </InputPin>
-
-            <InputPin name="force_in" messageTypeId="force">
-                <Properties/>
-                <State/>
-                <OnReceive><![CDATA[
-                    DPDHandlers::on_recv_force(*deviceState, *message);
-                ]]></OnReceive>
-            </InputPin>
-
-            <OutputPin name="migrate_out" messageTypeId="migrate">
+            <OutputPin name="out" messageTypeId="message">
                 <OnSend><![CDATA[
-                    DPDHandlers::on_send_migrate(*deviceState, *message);
-                ]]></OnSend>
-            </OutputPin>
-
-            <OutputPin name="share_out" messageTypeId="share">
-                <OnSend><![CDATA[
-                    DPDHandlers::on_send_share(*deviceState, *message);
-                ]]></OnSend>
-            </OutputPin>
-
-            <OutputPin name="force_out" messageTypeId="force">
-                <OnSend><![CDATA[
-                    DPDHandlers::on_send_force(*deviceState, *message);
-                ]]></OnSend>
-            </OutputPin>
-
-            <OutputPin name="output_out" messageTypeId="migrate">
-                <OnSend><![CDATA[
-                    DPDHandlers::on_send_output(*deviceState, *message);
+                    DPDHandlers::on_send(*deviceState, *message);
                 ]]></OnSend>
             </OutputPin>
 

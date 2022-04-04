@@ -7,6 +7,7 @@
 
 #include "dpd/storage/bag_wrapper.hpp"
 #include "dpd/maths/dpd_maths_core_half_step_raw.hpp"
+#include "dpd/core/edge_wrap.hpp"
 
 #include <iterator>
 #include <cstring>
@@ -133,7 +134,8 @@ struct BasicDPDEngineV5RawHandlersImpl
             static_assert(is_bead_view<A>());
             static_assert(is_bead_view<B>());
 
-            memcpy32(&dst->id, &src->id,(1+3+3));
+            memcpy32<(1+3+3)>(&dst->id, &src->id);
+            //memcpy32(&dst->id, &src->id,(1+3+3));
         }
     };
 
@@ -147,7 +149,8 @@ struct BasicDPDEngineV5RawHandlersImpl
             static_assert(is_bead_resident<A>());
             static_assert(is_bead_resident<B>());
             static_assert(offsetof(A,checksum)-offsetof(A,id)==13*4);
-            memcpy32((uint32_t*)&dst->id, (uint32_t*)&src->id, (1+3+3+3+4));
+            memcpy32<(1+3+3+3+4)>((uint32_t*)&dst->id, (uint32_t*)&src->id);
+            //memcpy32((uint32_t*)&dst->id, (uint32_t*)&src->id, (1+3+3+3+4));
         }
     };
 
@@ -159,10 +162,12 @@ struct BasicDPDEngineV5RawHandlersImpl
         template<class A, class B>
         static void copy(A *dst, const B *src)
         {
-            dst->id=src->id;
+            /*dst->id=src->id;
             for(int i=0; i<3; i++){
                 dst->x[i]=src->x[i];
             }
+            */
+           memcpy32<4>((uint32_t*)dst, (const uint32_t*)src);
         }
     };
 
@@ -275,7 +280,8 @@ struct BasicDPDEngineV5RawHandlersImpl
 
         void operator=(const raw_force_input_t &x)
         {
-            memcpy32((uint32_t*)this, (const uint32_t*)&x, sizeof(*this)/4);
+            memcpy32<sizeof(*this)/4>((uint32_t*)this, (const uint32_t*)&x);
+            //memcpy32((uint32_t*)this, (const uint32_t*)&x, sizeof(*this)/4);
         }
 
         template<class Visitor>
@@ -291,14 +297,15 @@ struct BasicDPDEngineV5RawHandlersImpl
     {
         static_assert(is_force_input<A>());
         static_assert(is_force_input<B>());
-        memcpy32(&dst->target_hash, &src->target_hash, sizeof(B)/4);
+        memcpy32<sizeof(B)/4>(&dst->target_hash, &src->target_hash);
+        //memcpy32(&dst->target_hash, &src->target_hash, sizeof(B)/4);
     }
 
     struct device_state_t
     {
-        int32_t box[3];
+        float box[3];
         int32_t location[3];
-        uint32_t location_packed;
+        uint32_t edge_bits;
         float dt;
         float scaled_inv_root_dt;
         float bond_r0;
@@ -394,6 +401,7 @@ struct BasicDPDEngineV5RawHandlersImpl
         {
             vv("box", box, std_size(box));
             vv("location", location, std_size(location));
+            vv("edge_bits", edge_bits);
             vv("dt", dt);
             vv("scaled_inv_root_dt", scaled_inv_root_dt);
             vv("bond_r0", bond_r0);
@@ -631,21 +639,18 @@ struct BasicDPDEngineV5RawHandlersImpl
         auto resident=make_bag_wrapper(cell.resident);
         auto cached_bonds=make_bag_wrapper(cell.cached_bonds);
         
-        float neighbour_x[3];
-        vec3_copy(neighbour_x, incoming.x);
-        int32_t neighbour_cell_pos[3];
-        
-        vec3_floor_nn(neighbour_cell_pos, neighbour_x);
-        for(int d=0; d<3; d++){
-            if(cell.location[d]==0 && neighbour_cell_pos[d]==cell.box[d]-1){
-                neighbour_x[d] -= cell.box[d];
-            }else if(cell.location[d]==cell.box[d]-1 && neighbour_cell_pos[d]==0){
-                neighbour_x[d] += cell.box[d];
-            }
-        }
-    
+        float neighbour_x[3]={
+            incoming.x[0],
+            incoming.x[1],
+            incoming.x[2]
+        };
+        do_neighbour_wrap(neighbour_x, cell.edge_bits, cell.box);
 
         bool cached=false;
+
+        const float ONE=1.0f;
+        const float R0=cell.bond_r0; 
+        const float KAPPA=cell.bond_kappa;
 
         unsigned cached_bond_index=cached_bonds.size(); // This is the index it will have, _if_ it is cached
         for(unsigned bead_i=0; bead_i < resident.size(); bead_i++){
@@ -656,26 +661,44 @@ struct BasicDPDEngineV5RawHandlersImpl
             // This implicitly interacts each bead with itself, which is handled with a
             // distance check in calc_force.
             float dx[3];
-            vec3_sub(dx, bead.x, neighbour_x);
-            float dr_sqr=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
-            if(dr_sqr >=1 || dr_sqr < MIN_DISTANCE_CUTOFF_SQR){ // The min threshold avoid large forces
-                continue;
+            float dr_sqr;
+            if(0){
+                vec3_sub(dx, bead.x, neighbour_x);
+                dr_sqr=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
+                if(dr_sqr >=1 || dr_sqr < MIN_DISTANCE_CUTOFF_SQR){ // The min threshold avoid large forces
+                    continue;
+                }
+            }else{
+                // Marginally faster
+                dx[0] = bead.x[0] - neighbour_x[0];
+                dr_sqr = dx[0]*dx[0];
+                if(dr_sqr >= ONE){
+                    continue;
+                }
+                dx[1] = bead.x[1] - neighbour_x[1];
+                dr_sqr += dx[1]*dx[1];
+                if(dr_sqr >= ONE){
+                    continue;
+                }
+                dx[2] = bead.x[2] - neighbour_x[2];
+                dr_sqr += dx[2]*dx[2];
+                if(dr_sqr >= ONE){
+                    continue;
+                }
             }
             if(bead.id==incoming.id){
                 continue;
             }
             float dr=pow_half(dr_sqr);
 
-            float kappa=0.0f;
-            float r0=0.0f;
+            bool is_bonded=false;
             if constexpr(!NO_BONDS){
-                r0 = cell.bond_r0;
                 if(!(is_monomer(incoming.id) || is_monomer(bead.id))){
                     if(get_polymer_id(bead.id) == get_polymer_id(incoming.id) ){
                         auto other_polymer_offset=get_polymer_offset(incoming.id);
                         for(unsigned i=0; i<MAX_BONDS_PER_BEAD; i++){
                             if(other_polymer_offset==bead.bond_partners[i]){
-                                kappa=cell.bond_kappa;
+                                is_bonded=true;
                                 break;
                             }
                         }
@@ -692,7 +715,7 @@ struct BasicDPDEngineV5RawHandlersImpl
                 cell.scaled_inv_root_dt,
                 cell.t_hash,
                 dx, dr,
-                kappa, r0, 
+                is_bonded, KAPPA, R0, 
                 strength.conservative,
                 strength.sqrt_dissipative,
                 BeadHash{bead.id}, BeadHash{incoming.id},
@@ -703,7 +726,7 @@ struct BasicDPDEngineV5RawHandlersImpl
             vec3_add(bead.f, f);
 
             if constexpr(!NO_BONDS){
-                if(kappa!=0.0f){
+                if(is_bonded){
                     //std::cerr<<"K: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
                     if(!cached){
                         auto &tmp=cached_bonds.alloc_back();

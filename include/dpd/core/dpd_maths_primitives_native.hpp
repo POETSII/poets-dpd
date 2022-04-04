@@ -77,6 +77,18 @@ void memzero32(uint32_t *a)
     memzero32(a,N);
 }
 
+
+inline void memswap32(uint32_t *a, uint32_t *b, unsigned n)
+{
+    std::swap_ranges(a, a+n, b);
+}
+
+template<unsigned N>
+inline void memswap32(uint32_t *a, uint32_t *b)
+{
+    memswap32(a, b, N);
+}
+
 inline int round_impl(float x)
 {
     return roundf(x);

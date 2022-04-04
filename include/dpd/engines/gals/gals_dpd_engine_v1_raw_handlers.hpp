@@ -221,6 +221,8 @@
 */
 struct GALSDPDEngineV1Handlers
 {
+    static constexpr const char *THIS_HEADER=__FILE__;
+
     static constexpr size_t LOG2_MAX_BEADS_PER_CELL = 5;
     static constexpr size_t MAX_BEADS_PER_CELL = 1u<<LOG2_MAX_BEADS_PER_CELL;
     static constexpr size_t MAX_BEADS_PER_CELL_MASK = MAX_BEADS_PER_CELL-1;
@@ -554,24 +556,24 @@ struct GALSDPDEngineV1Handlers
 
         assert(b.t==r.t);
 
-        // This copy could be optimised out for the non-edge + non-store-view case?
-        auto &rv=r.views[r.num_views];
-        memcpy32(rv, (bead_view_t&)b);
+        // For non-edge case, try to keep it in message buffer
+        if(cell.edge_mask==0){
+            for(unsigned i=0; i<r.num_resident; i++){
+                interact(cell, r.t, r.beads[i], b, nullptr);
+            }
 
-        for(unsigned i=0; i<r.num_views; i++){
-            assert(rv.id != r.views[i].id);
-        }
-        for(unsigned i=0; i<r.num_resident; i++){
-            assert(rv.id != r.beads[i].id);
-        }
-        for(unsigned i=0; i<r.num_migrating; i++){
-            assert(rv.id != r.beads[MAX_BEADS_PER_CELL-1-i].id);
-        }
+            if(r.expected_migrations_delta!=0 || r.expected_migrations_received!=26){
+                auto &rv=r.views[r.num_views];
+                memcpy32(rv, (bead_view_t&)b);
+                r.num_views += 1;
+            }
+        }else{
+            // We need a mutable copy, regardless of if we need to save it
+            auto &rv=r.views[r.num_views];
+            memcpy32(rv, (bead_view_t&)b);
 
-        // If needed, apply wrap-around.
-        // optimised for case where no wrapping needed
-        uint32_t em=cell.edge_mask;
-        if(em){
+            // Apply wrap-around.
+            uint32_t em=cell.edge_mask;
             // Vast majority of cells never take this path
             for(unsigned i=0; i<3; i++){
                 if(em &0x3){
@@ -586,16 +588,16 @@ struct GALSDPDEngineV1Handlers
                 }
                 em>>=2;
             }
-        }
+            
+            for(unsigned i=0; i<r.num_resident; i++){
+                interact(cell, r.t, r.beads[i], rv, nullptr);
+            }
 
-        for(unsigned i=0; i<r.num_resident; i++){
-            interact(cell, r.t, r.beads[i], rv, nullptr);
-        }
-
-        // Optimisation: once we are migration complete, we can stop storing
-        // these, which saves cache traffic
-        if(r.expected_migrations_delta!=0 || r.expected_migrations_received!=26){
-            r.num_views += 1;
+            // Optimisation: once we are migration complete, we can stop storing
+            // these, which saves cache traffic
+            if(r.expected_migrations_delta!=0 || r.expected_migrations_received!=26){
+                r.num_views += 1;
+            }
         }
     }
 

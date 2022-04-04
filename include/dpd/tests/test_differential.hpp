@@ -95,7 +95,7 @@ std::pair<bool,std::string> test_differential(
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);
 
-                std::cerr<<"  fdiff_max at bead "<<fdiff_index<<", diff="<<fdiff<<", steps="<<todo<<"\n";
+                std::cerr<<"  fdiff_max at bead "<<fdiff_index<<", hash="<<state1.beads[fdiff_index].get_hash_code().hash<<", x="<<state1.beads[fdiff_index].x<<", diff="<<fdiff<<", steps="<<todo<<"\n";
                 std::cerr<<"      ref="<<state1.beads[fdiff_index].f<<"\n";
                 std::cerr<<"      got="<<state2.beads[fdiff_index].f<<"\n";
 

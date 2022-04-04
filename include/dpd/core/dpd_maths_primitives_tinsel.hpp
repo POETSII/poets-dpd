@@ -113,13 +113,26 @@ inline void memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
 
 void memzero32(uint32_t *a, unsigned n);
 
-#define TINSEL_MEMCPY_CROSSOVER 4
+inline void __attribute__((noinline)) __attribute__((optimize("no-tree-loop-distribute-patterns"))) memswap32(uint32_t *a, uint32_t *b, unsigned n)
+{
+    for(unsigned i=0; i<n; i++){
+        uint32_t va=a[i];
+        uint32_t vb=b[i];
+        b[i]=va;
+        a[i]=vb;
+    }
+}
+
+// As long as you have instruction space, you should make this as
+// big as possible. In tinsel it is always worth unrolling, as it
+// reduces loop overhead
+#define TINSEL_MEMCPY_CROSSOVER 16
 
 template<unsigned N>
 inline void memcpy32(uint32_t *a, const volatile uint32_t *b)
 {
     if constexpr (N<=TINSEL_MEMCPY_CROSSOVER){
-        #pragma GCC unroll 4
+        #pragma GCC unroll 16
         for(unsigned i=0; i<N; i++){
             a[i] = b[i];
         }
@@ -132,7 +145,7 @@ template<unsigned N>
 inline void memcpy32(volatile uint32_t *a, const uint32_t *b)
 {
     if constexpr (N<=TINSEL_MEMCPY_CROSSOVER){
-        #pragma GCC unroll 4
+        #pragma GCC unroll 16
         for(unsigned i=0; i<N; i++){
             a[i] = b[i];
         }
@@ -145,7 +158,7 @@ template<unsigned N>
 inline void memcpy32(uint32_t *a, const uint32_t *b)
 {
     if constexpr (N<=TINSEL_MEMCPY_CROSSOVER){
-        #pragma GCC unroll 4
+        #pragma GCC unroll 16
         for(unsigned i=0; i<N; i++){
             a[i] = b[i];
         }
@@ -166,6 +179,22 @@ void memzero32(uint32_t *a)
         }
     }else{
         memzero32(a,N);
+    }
+}
+
+template<unsigned N>
+inline void memswap32(uint32_t *a, uint32_t *b)
+{
+    if constexpr (N<=TINSEL_MEMCPY_CROSSOVER){
+        #pragma GCC unroll 16
+        for(unsigned i=0; i<N; i++){
+            uint32_t va=a[i];
+            uint32_t vb=b[i];
+            a[i]=vb;
+            b[i]=va;
+        }
+    }else{
+        memswap32(a,b,N);
     }
 }
 

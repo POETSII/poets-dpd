@@ -149,19 +149,23 @@ public:
 
         inline void recv(Message* msg, None* /*edge*/) {
             if(msg->type==Base::OutputFlags::RTS_INDEX_share){
+
+                uint32_t rts=s->state.rts;
                 Handlers::template on_recv_share<false>(s->state, msg->bead_view);
+                if(!NoBonds && (rts != s->state.rts)){
+                    update_rts();
+                }
 
             }else if(msg->type==Base::OutputFlags::RTS_INDEX_force){
+                // Never updates rts
                 Handlers::on_recv_force(s->state, msg->force_input);
-
             }else if(msg->type==Base::OutputFlags::RTS_INDEX_migrate){
+                // Never updates rts
                 Handlers::on_recv_migrate(s->state, msg->bead_resident);
             
             }else{
                 assert(false);
             }
-
-            update_rts();
         }
 
         inline bool finish(Message volatile*)
