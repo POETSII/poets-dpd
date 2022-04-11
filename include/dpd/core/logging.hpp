@@ -26,7 +26,6 @@ public:
 
     static void set_logger(ForceLogging *s)
     {
-        assert(!logger());
         logger()=s;
     }
 

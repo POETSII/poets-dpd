@@ -25,7 +25,7 @@ namespace dpd_maths_core_half_step
         TBead &b
     )
     {
-        // x(t+dt) = x(t) + v(t)*dt + f(t)*dt*dt
+        // x(t+dt) = x(t) + v(t)*dt + f(t)*dt*dt/2
         // v(t+dt/2) = v(t) + dt*f(t)/2
 
         auto x = b.x + b.v*dt + b.f*half(dt*dt);

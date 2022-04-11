@@ -64,6 +64,12 @@ inline float default_hash(uint64_t base, uint32_t s1, uint32_t s2)
         std::cerr<<"ucount="<<u_count<<", mean="<<u_sum/u_count<<", std="<<sqrt(u_sum_sqr/u_count)<<"\n";
     }
     */
+
+    #ifndef PDPD_TINSEL
+    //fprintf(stderr, "MathsCore : %llu, %u, %u -> %u, %f\n", base, s1, s2, ru, u);
+    #endif
+
+
     return u;
 }
 

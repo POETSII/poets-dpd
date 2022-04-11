@@ -61,6 +61,11 @@ public:
         }
     }
 
+    void SetFixedWater(bool fixed_water=true)
+    {
+        m_fixed_water=fixed_water;
+    }
+
 private:
     WorldState *m_state;
 
@@ -72,6 +77,7 @@ private:
     double m_scaled_inv_root_dt;
 
     uint64_t m_t_hash;
+    bool m_fixed_water=false;
 
     std::unordered_set<std::pair<const Bead*,const Bead*>, NaiveDPDEngine<false>::bp_hash> m_seen_pairs;
 
@@ -210,7 +216,9 @@ private:
 
         // Move the beads, and then assign to cells based on x(t+dt)
         for(auto &b : m_state->beads){
-            dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
+            if(!m_fixed_water && b.bead_type){
+                dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
+            }
             m_cells.at( world_pos_to_cell_index(b.x) ).push_back(&b);
         }
 
@@ -244,7 +252,9 @@ private:
 
         // Final momentum update
         for(auto &b : m_state->beads){
-            dpd_maths_core_half_step::update_mom(dt, b);
+            if(!m_fixed_water || b.bead_type){
+                dpd_maths_core_half_step::update_mom(dt, b);
+            }
         }
 
         if(EnableLogging && ForceLogging::logger()){
@@ -300,6 +310,12 @@ private:
         
         for(const Bead *ob : other)
         {
+            if(m_fixed_water){
+                if(ob->bead_type==0){
+                    continue;
+                }
+            }
+
             vec3r_t ob_x = vec3r_t(ob->x) + other_delta;
             for(Bead *hb : home){
                 vec3r_t dx =  hb->x - ob_x;

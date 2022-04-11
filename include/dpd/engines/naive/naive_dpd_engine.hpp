@@ -350,6 +350,8 @@ private:
         }
         #endif
         
+        //fprintf(stderr, "Naive : %llu, %u, %u -> %u, %f\n", m_t_hash, s1, s2, ru, u);
+
         return u;
     }
 

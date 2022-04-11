@@ -13,9 +13,15 @@ public:
         : m_dst(name)
         , m_t(0)
     {
+        fprintf(stderr, "dst=%s\n", name.c_str());
         if(!m_dst.is_open()){
             fprintf(stderr, "Couldnt open force logging file %s\n", name.c_str());
         }
+    }
+
+    ~FileLogger()
+    {
+        m_dst.flush();
     }
 
     void print(double val)
@@ -32,6 +38,7 @@ public:
 
     virtual void LogProperty(const char *name, int dims, const double *x)
     {
+        fprintf(stderr, "LogProp\n");
         m_dst<<"Prop,"<<m_t<<",,,,"<<name;
         for(int i=0; i<dims; i++){
             m_dst<<",";

@@ -7,6 +7,7 @@
 #include "dpd/tests/test_isolated_moving_bead.hpp"
 #include "dpd/tests/test_multiple_moving_beads.hpp"
 #include "dpd/engines/naive/naive_dpd_engine.hpp"
+#include "dpd/core/logging_impl.hpp"
 
 #include "dpd/tests/test_differential.hpp"
 
@@ -34,6 +35,15 @@ int main(int argc, const char *argv[])
     std::string prefix;
     if(argc>2){
         prefix=argv[2];
+    }
+
+    std::string log_dst;
+    FileLogger *logger=nullptr;
+    if(getenv("PDPD_LOG")){
+        log_dst=getenv("PDPD_LOG");
+        logger=new FileLogger(log_dst);
+        ForceLogging::set_logger(logger);
+        fprintf(stderr, "Logging to %s, p=%p\n", log_dst.c_str(), ForceLogging::logger());
     }
 
     TestOrderedMesh::register_tests();
@@ -70,5 +80,11 @@ int main(int argc, const char *argv[])
         }
         test_num++;
     }
+
+    ForceLogging::set_logger(nullptr);
+    if(logger){
+        delete logger;
+    }
+
     return failed>0;
 }

@@ -1,6 +1,7 @@
-
+#define TBB_PREVIEW_GLOBAL_CONTROL 1
 #include "dpd/core/dpd_engine.hpp"
 #include "dpd/core/dpd_state_builder.hpp"
+#include <tbb/global_control.h>
 
 #include <random>
 
@@ -92,6 +93,9 @@ int main(int argc, const char *argv[])
 
     int volume=state.box[0]*state.box[1]*state.box[2];
 
+
+    //tbb::global_control global_limit(tbb::global_control::max_allowed_parallelism, 1);
+
     for(int todo=nStart; todo<1000000; todo=std::max(2,todo*3/2)){
         double t0=now();
 
@@ -111,7 +115,7 @@ int main(int argc, const char *argv[])
             t1-t0, t2-t1, state.beads.size()/(t2-t1)*todo
         );
         if(timings_valid){
-            fprintf(stdout, ", %g, %g", timings.execute_to_first_bead, state.beads.size() * timings.execute_to_first_bead * todo);
+            fprintf(stdout, ", %g, %g", timings.execute_to_first_bead, state.beads.size() / timings.execute_to_first_bead * todo);
         }
         fprintf(stdout, "\n");
 
