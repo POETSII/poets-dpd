@@ -4,6 +4,7 @@
 #include "test_base.hpp"
 #include "dpd/core/dpd_engine.hpp"
 #include "dpd/core/dpd_state_io.hpp"
+#include "dpd/core/logging.hpp"
 
 std::pair<bool,std::string> test_differential(
     TestBase &test,
@@ -11,6 +12,8 @@ std::pair<bool,std::string> test_differential(
     DPDEngine &engine2
 ){
     WorldState state1, state2;
+
+    auto *logger=ForceLogging::logger();
 
     try{
         state1 = test.create_world();
@@ -44,7 +47,13 @@ std::pair<bool,std::string> test_differential(
                 state2.beads[i] = state1.beads[i];
             }
 
+            if(logger){
+                logger->SetPrefix("Ref,");
+            }
             engine1.Run(todo);
+            if(logger){
+                logger->SetPrefix("Dut,");
+            }
             engine2.Run(todo);
 
             validate(state1);

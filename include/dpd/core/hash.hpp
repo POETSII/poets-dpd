@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <cassert>
 
+#if __x86_64__ 
+#include <immintrin.h>
+#endif
+
 inline uint64_t splitmix64(uint64_t z)
 {
 
@@ -24,6 +28,20 @@ inline uint64_t riscv_mix64_m2(uint64_t x)
     x = x ^ (x>>32);     // 1
     return x;
 }
+
+#if 0
+// Does hash on 4 64-bit integers
+inline __m256i riscv_mix64_m2_v4q(__m256i x)
+{
+    const __m256i C=_mm256_set1_epi64x (0xd392d2a7); // 2
+    x = x ^ _mm256_srli_epi64(x,32);     // 1
+    x = x * C;           // 4
+    x = x ^ _mm256_srli_epi64(x,32);     // 1
+    x = x * C;           // 4
+    x = x ^ _mm256_srli_epi64(x,32);     // 1
+    return x;
+}
+#endif
 
 inline uint64_t riscv_mix64_m3(uint64_t x)
 {

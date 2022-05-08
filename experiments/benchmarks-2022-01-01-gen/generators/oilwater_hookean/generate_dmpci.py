@@ -23,15 +23,15 @@ State	random
 
 Bead  W
       0.5
-      25
+      15
       4.5
 
 Bead  O
       0.5
-      75    25
+      55    15
       4.5   4.5
       
-Bond  O O  64.0  0.5
+Bond  O O  200.0  0.5
 
 Polymer	Water    0.75   " (W) "
 Polymer Oil      0.25   " (O O O O O O) "

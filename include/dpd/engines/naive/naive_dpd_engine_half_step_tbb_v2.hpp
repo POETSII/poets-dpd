@@ -293,6 +293,10 @@ class NaiveDPDEngineHalfStepTBBV2
             }
         }
     }
+
+public:
+    std::string CanSupport(const WorldState *) const
+    { return "I am broken, and David is too lazy to fix me. Sadness."; }
 };
 
 #endif

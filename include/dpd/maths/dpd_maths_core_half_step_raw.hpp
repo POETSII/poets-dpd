@@ -11,6 +11,11 @@
 
 namespace dpd_maths_core_half_step_raw
 {
+    enum Options{
+        DisableRandom = 1,
+        Default=0
+    };
+
 
     using dpd_maths_core::default_hash;
 
@@ -117,7 +122,7 @@ void update_mom(
 }
 
 template<
-    bool EnableLogging, class TScalar, class TVector, class TForce
+    bool EnableLogging, class TScalar, class TVector, class TForce,  Options TOptions=Options::Default
 >
 void calc_force(
     TScalar scale_inv_sqrt_dt,
@@ -135,6 +140,8 @@ void calc_force(
 
     TForce & force_home
 ) {
+    const bool DisableRandom = TOptions & Options::DisableRandom;
+
     assert(home_hash != other_hash);
     assert(0 < dr && dr < 1);
 
@@ -155,7 +162,12 @@ void calc_force(
     TScalar sqrt_gammap = sqrtDissStrength*wr;
 
     TScalar dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
-    TScalar u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
+    TScalar u;
+    if(DisableRandom){
+        u=0.000001f;
+    }else{
+        u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
+    }
     TScalar randForce = sqrt_gammap * scale_inv_sqrt_dt * u;
 
     TScalar dr0=r0-dr;
@@ -202,7 +214,7 @@ void calc_force(
 }
 
 template<
-    bool EnableLogging, class TScalar, class TVector, class TForce
+    bool EnableLogging, class TScalar, class TVector, class TForce, Options TOptions=Options::Default
 >
 void calc_force(
     TScalar scale_inv_sqrt_dt,
@@ -220,6 +232,8 @@ void calc_force(
 
     TForce & force_home
 ) {
+    const bool DisableRandom = TOptions & Options::DisableRandom;
+
     assert(home_hash != other_hash);
     assert(0 < dr && dr < 1);
 
@@ -240,7 +254,12 @@ void calc_force(
     TScalar sqrt_gammap = sqrtDissStrength*wr;
 
     TScalar dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
-    TScalar u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
+    TScalar u;
+    if(DisableRandom){
+        u=0.0001f;
+    }else{
+        u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
+    }
     TScalar randForce = sqrt_gammap * scale_inv_sqrt_dt * u;
 
     TScalar scaled_force = conForce + dissForce + randForce;

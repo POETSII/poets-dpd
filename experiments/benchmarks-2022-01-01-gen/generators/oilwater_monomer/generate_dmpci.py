@@ -21,14 +21,15 @@ Comment	" 75:25 mixture of water and oil to see them phase separate. The cross i
 
 State	random
 
+
 Bead  W
       0.5
-      25
+      15
       4.5
 
 Bead  O
       0.5
-      75    25
+      55    15
       4.5   4.5
 
 Polymer	Water    0.75   " (W) "

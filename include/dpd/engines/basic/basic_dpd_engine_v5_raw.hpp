@@ -16,7 +16,7 @@
     - Multiple time-steps within loop.
     - Output is via message.
 */
-template<bool NoBonds>
+template<bool NoBonds, bool NoRandom=false>
 class BasicDPDEngineV5RawImpl
     : public BasicDPDEngine
 {
@@ -32,7 +32,7 @@ public:
 
     static constexpr bool EnableLogging = false;
 
-    using Handlers = BasicDPDEngineV5RawHandlersImpl<NoBonds>;
+    using Handlers = BasicDPDEngineV5RawHandlersImpl<NoBonds,NoRandom>;
 
     using OutputFlags = typename Handlers::OutputFlags;
     using raw_bead_view_t = typename Handlers::raw_bead_view_t;
@@ -278,7 +278,7 @@ public:
                 if(output.t < s.time){
                     fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                 }
-                require(output.t >= s.time, "Time does not match a slice time.");
+                //require(output.t >= s.time, "Time does not match a slice time.");
                 if(output.t == s.time){
                     //fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                     bool prev_comp=s.complete();

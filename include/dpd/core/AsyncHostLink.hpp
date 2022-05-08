@@ -80,7 +80,7 @@ private:
             fprintf(stderr, "AsyncHostLink::completeAquisition - waiting for worker thread.\n");
             m_cond.wait(lk, [&]() -> bool {return m_state==Aquired;} );
 
-            assert(m_state=Aquired);
+            assert(m_state==Aquired);
         }
 
         if(m_aquire_thread.joinable()){

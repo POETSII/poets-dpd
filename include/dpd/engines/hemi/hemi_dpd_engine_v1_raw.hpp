@@ -168,7 +168,7 @@ protected:
             b.x.extract(bead.x);
             for(int d=0; d<3; d++){
                 assert(0.0f <= bead.x[d]);
-                if(bead.x[d] == m_state->box[d]){
+                if(bead.x[d] == (float)m_state->box[d]){ // Handle pesky rounding due to double->float conversion
                     bead.x[d]=0.0f;
                 }
                 assert(bead.x[d] < m_state->box[d]);

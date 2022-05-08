@@ -235,7 +235,7 @@ protected:
             assert(curr.t==dst->t);
             
             if(curr.num_resident+1 >= Handlers::MAX_BEADS_PER_CELL){
-                fprintf(stderr, "%d beads in cell.\n", curr.num_resident+1);
+                fprintf(stderr, "%d beads in cell.\n", (int)curr.num_resident+1);
                 throw std::runtime_error("Initial config is too dense.");
             }
 
@@ -328,7 +328,7 @@ public:
                 if(t < s.time){
                     //fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                 }
-                require(t >= s.time, "Time does not match a slice time.");
+                //require(t >= s.time, "Time does not match a slice time.");
                 if(t == s.time){
                     //fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                     bool prev_comp=s.complete();

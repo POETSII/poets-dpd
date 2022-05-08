@@ -157,7 +157,6 @@ struct BasicDPDEngineV8RawHandlers
             return;
         }
 
-        auto resident=make_bag_wrapper(cell.resident);
         auto cached_bonds=make_bag_wrapper(cell.cached_bonds);
         
         //std::cerr<<"K: "<<get_hash_code(bead.id)<<" - "<<get_hash_code(incoming.id)<<"\n";
@@ -175,7 +174,7 @@ struct BasicDPDEngineV8RawHandlers
         }else{
             // Once both partners have arrived, we calculate force and push onto outgoing_forces
             //std::cerr<<"Force!`\n";
-            assert(bead.id == resident[bead_i].id);
+            assert(bead.id == make_bag_wrapper(cell.resident)[bead_i].id);
             calc_angle_force_for_middle_bead(cell, bead, cell.cached_bond_indices[bead_i], cached_bond_index);
             cell.rts |= RTS_FLAG_force;
             //std::cerr<<"DoenFr\n";

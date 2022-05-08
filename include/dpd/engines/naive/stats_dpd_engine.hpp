@@ -605,11 +605,6 @@ private:
         m_forces[tail_bead.bead_id] += tailForce;
         m_forces[middle_bead.bead_id] += middleForce;
 
-        if(ForceLogging::logger()){
-            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_head", headForce);
-            ForceLogging::logger()->LogBeadTripleProperty(middle_bead.get_hash_code(), head_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_mid", middleForce);
-            ForceLogging::logger()->LogBeadTripleProperty(tail_bead.get_hash_code(), head_bead.get_hash_code(), middle_bead.get_hash_code(), "f_next_angle_tail", tailForce);
-        }
 
         
     }

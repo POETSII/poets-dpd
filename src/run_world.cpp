@@ -156,19 +156,19 @@ int main(int argc, const char *argv[])
             std::ofstream output;
 
             if( (slice_i%state_modulus) == 0 ){
-        	    snprintf(&tmp[0], tmp.size()-1, "%s.%09d.state", baseName.c_str(), state.t);
-		    output.open(&tmp[0]);
+        	    snprintf(&tmp[0], tmp.size()-1, "%s.%09d.state", baseName.c_str(), (int)state.t);
+                output.open(&tmp[0]);
 
-	            if(!output.is_open()){
-        	        fprintf(stderr, "Couldnt create file %s\n", &tmp[0]);
-                	exit(1);
-	            }
-        	    write_world_state(output, state);
-	            output.close();
-	    }
+                    if(!output.is_open()){
+                        fprintf(stderr, "Couldnt create file %s\n", &tmp[0]);
+                        exit(1);
+                    }
+                    write_world_state(output, state);
+                    output.close();
+            }
 
             if( (slice_i%vtk_modulus) == 0){
-             snprintf(&tmp[0], tmp.size()-1, "%s.%09d.vtk", baseName.c_str(), state.t);
+             snprintf(&tmp[0], tmp.size()-1, "%s.%09d.vtk", baseName.c_str(), (int)state.t);
              output.open(&tmp[0]);
              if(!output.is_open()){
                  fprintf(stderr, "Couldnt create file %s\n", &tmp[0]);

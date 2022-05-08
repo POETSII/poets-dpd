@@ -13,6 +13,11 @@
 #include <iostream>
 #endif
 
+
+#if __x86_64__ 
+#include <immintrin.h>
+#endif
+
 namespace dpd_maths_core
 {
 
@@ -78,6 +83,20 @@ inline float default_hash(uint64_t base, const BeadHash &s1, const BeadHash &s2)
     return default_hash(base, s1.hash, s2.hash);
 }
 
+/*
+#if __x86_64__ 
+
+inline __m256 default_hash(uint64_t base, __m256i s1, __m256i s2)
+{
+    const float scale=0.00000000023283064365386962890625f; // Gives range of [-0.5,0.5]  (same as Osprey-DPD)
+
+    __m256i ru=hash_rng_sym(base, s1, s2);
+    __m256 rs=_mm256_cvtepi32_ps(ru);
+    return rs * scale; 
+}
+
+#endif
+*/
 
 
 template<class TScalar, class TDims, class TBead>

@@ -1,13 +1,22 @@
+CXX = g++-11
+
+
 CPPFLAGS += -Iinclude -std=c++17 -W -Wall -O0
 CPPFLAGS += -Wno-unused-variable -fmax-errors=2 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable
+CPPFLAGS += -Wno-class-memaccess -Wno-invalid-offsetof
 CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 LDFLAGS += -fuse-ld=gold
 
-CPPFLAGS += -g3 -O0
+LDFLAGS += -L/home/dt10/.linuxbrew/lib
+
+CPPFLAGS += -g3 -O0 -mavx2
 CPPFLAGS += -DNDEBUG=1 
-CPPFLAGS += -O3 -march=native -ffast-math
-#CPPFLAGS += -O0 -fsanitize=address -fsanitize=undefined
+CPPFLAGS += -O3 -march=native
+#-mavx512f -mprefer-vector-width=512
+#CPPFLAGS += -fsanitize=address -fsanitize=undefined 
+#CPPFLAGS += -fsanitize=undefined -fsanitize=thread
+#CPPFLAGS += -fopt-info-vec -fopt-info-vec-missed
 
 TINSEL_ROOT = tinsel
 
@@ -168,6 +177,7 @@ $(eval $(call register_engine_user,benchmark_engine_intervals))
 $(eval $(call register_engine_user,run_world))
 $(eval $(call register_engine_user,step_world))
 $(eval $(call register_engine_user,engine_diff))
+$(eval $(call register_engine_user,relax_world))
 
 bin/create_xml_v5_graph_instance : LDFLAGS += -static
 

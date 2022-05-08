@@ -533,6 +533,8 @@ private:
         auto first=calc_distance_from_to(head_bead.x, middle_bead.x);
         auto second=calc_distance_from_to(middle_bead.x, tail_bead.x);
 
+        //std::cerr<<m_state->t<<", ("<<bp.bond_offset_head<<","<<bp.bond_offset_tail<<"), first="<<first<<", second="<<second<<"\n";
+
         double FirstLength   = first.l2_norm();
         double SecondLength  = second.l2_norm();
 
@@ -608,10 +610,20 @@ private:
         m_forces[middle_bead.bead_id] += middleForce;
 
         if(ForceLogging::logger()){
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_xhd", head_bead.x);
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_xmd", middle_bead.x);
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_xtl", tail_bead.x);
+            
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_dx01", first);
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_dx12", second);
             ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_head", headForce);
-            ForceLogging::logger()->LogBeadTripleProperty(middle_bead.get_hash_code(), head_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_mid", middleForce);
-            ForceLogging::logger()->LogBeadTripleProperty(tail_bead.get_hash_code(), head_bead.get_hash_code(), middle_bead.get_hash_code(), "f_next_angle_tail", tailForce);
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_mid", middleForce);
+            ForceLogging::logger()->LogBeadTripleProperty(head_bead.get_hash_code(), middle_bead.get_hash_code(), tail_bead.get_hash_code(), "f_next_angle_tail", tailForce);
         }
+
+        if(m_state->t==5649){
+            //std::cerr<<"Ref ; t="<<m_state->t<<", dx01="<<first<<", dx12="<<second<<"\n";
+       }
 
         
     }

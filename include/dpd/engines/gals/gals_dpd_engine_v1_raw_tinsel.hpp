@@ -249,9 +249,11 @@ public:
         unsigned seen_outputs=0;
         unsigned seen_finish=0;
         double tPrint=tBegin+4;
+        double tLastGotBead=tBegin;
         while(1){
             while(m_hostlink->pollStdOut(stderr));
 
+            double tNow=now();
             typename Impl::template PMessage<Message> msg;
             if(m_hostlink->canRecv()){
                 m_hostlink->recvMsg(&msg, sizeof(msg));
@@ -262,10 +264,11 @@ public:
                     assert(msg.payload.type==Handlers::Output);
 
                     if(seen_outputs==0){
-                        m_timings.execute_to_first_bead = now() - tBegin;
+                        m_timings.execute_to_first_bead = tNow - tBegin;
                     }
 
                     ++seen_outputs;
+                    tLastGotBead=tNow;
                     if(!callback(msg.payload.bead)){
                         break;
                     }
@@ -291,10 +294,14 @@ public:
 
                 assert(0);
             }else{
-                double tNow=now();
                 if(tNow>tPrint){
                     std::cerr<<"  got "<<seen_outputs<<" out of "<<nBeads<<", got "<<seen_finish<<" out of "<<m_devices.size()<<" cells\n";
                     tPrint=tBegin+1.5*(tNow-tBegin);
+                }
+                if(interval_count==1 && seen_outputs>0 && (tNow-tLastGotBead)>5){
+                    std::cerr<<"  got "<<seen_outputs<<" out of "<<nBeads<<", got "<<seen_finish<<" out of "<<m_devices.size()<<" cells\n";
+                    std::cerr<<"  last bead received at "<<(tNow-tLastGotBead)<<" secs ago. Assuming lock-up and aborting.\n";
+                    exit(1);
                 }
                 if(!m_hostlink->isSim()){
                     usleep(1); // TODO : Sigh

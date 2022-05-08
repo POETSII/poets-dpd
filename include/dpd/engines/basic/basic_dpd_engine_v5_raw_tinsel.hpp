@@ -13,13 +13,13 @@
 
 #include "POLite/PerfCounterAccumulator.h"
 
-template<bool NoBonds, class Impl>
+template<bool NoBonds, class Impl, bool NoRandom>
 class BasicDPDEngineV5RawTinselImpl
-    : public BasicDPDEngineV5RawImpl<NoBonds>
+    : public BasicDPDEngineV5RawImpl<NoBonds,NoRandom>
 {
 public:
     using Handlers = BasicDPDEngineV5RawHandlersImpl<NoBonds>;
-    using Base = BasicDPDEngineV5RawImpl<NoBonds>;
+    using Base = BasicDPDEngineV5RawImpl<NoBonds,NoRandom>;
 
     using None = typename Impl::None;
 
@@ -409,25 +409,34 @@ public:
         //std::cerr<<"Waiting for output\n";
         unsigned seen=0;
         double tPrint=tBegin+4;
+        double tLastGotForRound=tBegin;
         while(1){
             while(m_hostlink->pollStdOut(stderr));
 
             typename Impl::template PMessage<Message> msg;
             if(m_hostlink->canRecv()){
+                double tNow=now();
                 if(seen==0){
-                    m_timings.execute_to_first_bead = now() - tBegin;
+                    m_timings.execute_to_first_bead = tNow - tBegin;
                 }
                 ++seen;
                 m_hostlink->recvMsg(&msg, sizeof(msg));
                 if(!callback(msg.payload.bead_resident)){
                     break;
                 }
+
+                tLastGotForRound=tNow;
                 
             }else{
                 double tNow=now();
                 if(tNow>tPrint){
                     std::cerr<<"  got "<<seen<<" out of "<<nBeads<<"\n";
                     tPrint=tBegin+1.5*(tNow-tBegin);
+                }
+                if(seen > 0 && interval_count==1 && (tNow - tLastGotForRound) > 5){
+                    std::cerr<<"  got "<<seen<<" out of "<<nBeads<<"\n";
+                    std::cerr<<"  last bead received at "<<(tNow-tLastGotForRound)<<" secs ago. Assuming lock-up and aborting.\n";
+                    exit(1);
                 }
                 usleep(1); // TODO : Sigh
             }
@@ -465,9 +474,12 @@ public:
 };
 
 template<class TImpl>
-using BasicDPDEngineV5RawTinsel = BasicDPDEngineV5RawTinselImpl<false, TImpl>;
+using BasicDPDEngineV5RawTinsel = BasicDPDEngineV5RawTinselImpl<false, TImpl, false>;
 
 template<class TImpl>
-using BasicDPDEngineV5RawNoBondsTinsel = BasicDPDEngineV5RawTinselImpl<true, TImpl>;
+using BasicDPDEngineV5RawNoBondsTinsel = BasicDPDEngineV5RawTinselImpl<true, TImpl, false>;
+
+template<class TImpl>
+using BasicDPDEngineV5RawNoRandomTinsel = BasicDPDEngineV5RawTinselImpl<false, TImpl, true>;
 
 #endif

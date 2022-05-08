@@ -30,9 +30,9 @@ working/$1/$2/$2.0.state.gz : generators/$1/generate_dmpci.py
 	(cd working/$1/$2 && $(OSPREY_DPD_BIN) $2)
 
 states/$1/$2/$2.state.gz : working/$1/$2/$2.0.state.gz
-	>&2 echo "$2 - relaxing for $(if $4,$4,100) timesteps"
+	>&2 echo "$2 - relaxing for batches of $(if $4,$4,100) timesteps"
 	mkdir -p states/$1/$2
-	$(POETS_DPD_DIR)/bin/step_world tolerant_dpd_engine_half_step_tbb $$< $$@ $(if $4,$4,100)
+	$(POETS_DPD_DIR)/bin/relax_world tolerant_dpd_engine_half_step_tbb $$< $$@ $(if $4,$4,100)
 
 states_bin/$1/$2/$2.state.gz : states/$1/$2/$2.state.gz
 	>&2 echo "$2 - converting to binary and zeroing forces"
@@ -78,7 +78,7 @@ define generator_template
 
 run_% : states/$1/%.state.gz
 	mkdir -p working/$1/$$*
-	$(POETS_DPD_DIR)/bin/run_world naive_dpd_engine <(gunzip -k -c $$<) working/$1/$$*/out- 100 10 10
+	$(POETS_DPD_DIR)/bin/run_world tolerant_dpd_engine_half_step_tbb <(gunzip -k -c $$<) working/$1/$$*/out- 100 10 10
 
 $1_all_states : $$($1_ALL_STATES)
 

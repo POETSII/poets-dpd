@@ -52,7 +52,7 @@ public:
         b.add_bead_type("A");
         b.add_polymer_type("A", {"A"}, {}, {});
 
-        b.set_interaction_strength(0, 0, 25, 4.5);
+        b.set_interaction_strength(0u, 0u, 25, 4.5);
 
         int beads_per_dim=6;
 

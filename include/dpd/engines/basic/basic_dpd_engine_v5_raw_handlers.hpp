@@ -32,7 +32,7 @@ inline void tinsel_require(bool cond, const char *msg)
     }
 }
 
-template<bool NoBonds=false>
+template<bool NoBonds=false,bool NoRandom=false>
 struct BasicDPDEngineV5RawHandlersImpl
 {
     static constexpr const char *THIS_HEADER=__FILE__;
@@ -652,7 +652,10 @@ struct BasicDPDEngineV5RawHandlersImpl
         const float R0=cell.bond_r0; 
         const float KAPPA=cell.bond_kappa;
 
-        unsigned cached_bond_index=cached_bonds.size(); // This is the index it will have, _if_ it is cached
+        unsigned cached_bond_index;
+        if constexpr(!NO_BONDS){
+            cached_bond_index=cached_bonds.size(); // This is the index it will have, _if_ it is cached
+        }
         for(unsigned bead_i=0; bead_i < resident.size(); bead_i++){
             auto &bead=resident[bead_i];
 
@@ -711,7 +714,10 @@ struct BasicDPDEngineV5RawHandlersImpl
             auto strength=cell.interactions[MAX_BEAD_TYPES*bead_type1+bead_type2];
 
             float f[3];
-            dpd_maths_core_half_step_raw::calc_force<EnableLogging,float,float[3],float[3]>(
+            const auto MathOptions = NoRandom
+                ? dpd_maths_core_half_step_raw::Options::DisableRandom
+                : dpd_maths_core_half_step_raw::Options::Default;
+            dpd_maths_core_half_step_raw::calc_force<EnableLogging,float,float[3],float[3],MathOptions>(
                 cell.scaled_inv_root_dt,
                 cell.t_hash,
                 dx, dr,

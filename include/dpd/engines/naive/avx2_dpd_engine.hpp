@@ -20,7 +20,7 @@ class AVX2DPDEngine
     : public DPDEngine
 {
 private:
-    static const unsigned MAX_LOCAL = 8;
+    static const unsigned MAX_LOCAL = 16;
     static_assert(MAX_LOCAL==8 || MAX_LOCAL==16);
 
     static const unsigned MAX_BEAD_TYPES = 16;
@@ -54,9 +54,15 @@ private:
         std::copy(src+n, src+MAX_LOCAL, dst+n);
         #endif*/
 
-        static_assert(sizeof(T)*MAX_LOCAL==32);
+        static_assert(sizeof(T)*MAX_LOCAL==32 || sizeof(T)*MAX_LOCAL==64);
         __m256i val = _mm256_loadu_si256((const __m256i *)src);
         _mm256_storeu_si256((__m256i*)dst, val);
+
+        static_assert(sizeof(T)==4);
+        if(MAX_LOCAL>8 && n>8){
+            val = _mm256_loadu_si256((const __m256i *)(src+8));
+            _mm256_storeu_si256((__m256i*)(dst+8), val);
+        }
     }
 
     static void copy_and_add_max_local_words(
@@ -79,11 +85,18 @@ private:
         #endif
         */
 
-        static_assert(sizeof(float)*MAX_LOCAL==32);
+        static_assert(sizeof(float)*MAX_LOCAL==32 || sizeof(float)*MAX_LOCAL==64);
 
         __m256 val = _mm256_loadu_ps(src);
         __m256 xx = _mm256_broadcast_ss(&inc);
+        val=_mm256_add_ps(val, xx);
         _mm256_storeu_ps(dst, val);
+
+        if(MAX_LOCAL>8 && n>8){
+            val = _mm256_loadu_ps(src+8);
+            val=_mm256_add_ps(val, xx);
+            _mm256_storeu_ps(dst+8, val);
+        }
     }
 
     struct Cell
@@ -477,6 +490,111 @@ private:
         }
     }
 
+    #if 0
+    static void __attribute__((noinline)) calculate_cell_forces_v2(
+        float dt,
+        uint64_t t_hash,
+        float scale_inv_sqrt_dt,
+        const float conStrengthMatrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
+        const float sqrtDissStrengthMatrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
+        FullNHood &nhood,
+        Cell &cell
+    ){
+        unsigned n=nhood.count;
+        unsigned n_avx2=(n+7)/8;
+
+        for(unsigned local_index=0; local_index<cell.local_nhood_count; local_index++){
+            float position[3], velocity[3], force[3];
+            for(unsigned d=0; d<3; d++){
+                position[d]=cell.positions[d][local_index];
+                velocity[d]=cell.velocities[d][local_index];
+                force[d]=0.0f;
+            }
+            uint32_t id=cell.ids[local_index];
+            unsigned bead_type=BeadHash{id}.get_bead_type();
+
+            __m256 conStrength = _mm256_loadu_ps(conStrengthMatrix+bead_type*MAX_BEAD_TYPES);
+            __m256 sqrtDissStrength = _mm256_loadu_ps(sqrtDissStrengthMatrix+bead_type*MAX_BEAD_TYPES);
+            
+            for(unsigned i=0; i<n; i+=8){
+                static_assert(BeadHash::BEAD_TYPE_BITS==4);
+                __m256i ids=_mm256_loadu_si256((const __m256i*)(nhood.ids+i));
+                ids = ids>>28;
+
+                __m256 conStrengthSel =  _mm256_permutevar8x32_ps(conStrengthRow, ids);
+                __m256 sqrtDissStrengthSel = _mm256_permutevar8x32_ps(sqrtDissStrengthRow, ids);
+                
+                __m256 dx[3];
+                #pragma GCC unroll 3
+                for(int d=0; d<3; d++){
+                    dx[d] =  position[d] - _mm256_loadu_ps(nhood.positions[d]+i);
+                }
+                
+                __m256 r2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
+
+                // This is the early stopping point, but it is very likely that
+                // at least one lane is active in 8-way SIMD as we have beads
+                // from multiple neighbours
+                
+                auto r = _mm256_sqrt_ps(r2);
+                auto active_mask = _mm256_and_ps( _mm256_cmp_ps(r2,_mm256_set1_ps(1.0f), _CMP_EQ_OQ) , _mm256_cmp_ps(_mm256_set1_ps(0.000001f), r2, _CMP_EQ_OQ));
+                auto inv_r = _mm256_and_ps(active_mask, 1.0f / r);  // Note: this will end up as NaN if r==0, which propagates
+                auto wr = 1.0f - r;
+
+                __m256 dv[3];
+                #pragma GCC unroll 3
+                for(int d=0; d<3; d++){
+                    dx[d] *= inv_r;
+                    dv[d] = velocity[d] - _mm256_loadu_ps(nhood.velocities[d]+i);
+                }
+                
+                auto oid=_mm256_loadu_si256((__m256i*)(nhood.ids+i));
+                
+                auto conForce = conStrength*wr;
+                
+                auto rdotv = dx[0]*dv[0] + dx[1]*dv[1] + dx[2]*dv[2];
+                auto sqrt_gammap = sqrtDissStrength*wr;
+
+                auto dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
+                auto u = dpd_maths_core_half_step::default_hash(t_hash, id, oid);
+                float randScale = sqrt_gammap * scale_inv_sqrt_dt;
+                float randForce = randScale * u;
+
+                float scaled_force = active ? (conForce + dissForce + randForce) : 0;
+
+                #pragma GCC unroll 3
+                for(int d=0; d<3; d++){
+                    force[d] += scaled_force*dx[d];
+                }
+                assert(!isnanf(force[0]));
+
+                /*if(ForceLogging::logger()){    
+                    fprintf(stderr, "Logging\n");        
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dx", 3,ddx);
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dr", 1,&r);
+                    double tt=scale_inv_sqrt_dt;
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-invrootdt", 1, &tt);
+                    double gammap=sqrt_gammap*sqrt_gammap;
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-gammap", 1, &gammap);
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-rng", 1, &u);
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-con",1, &conForce);
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-diss", 1,&dissForce);
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-rng-scale",1, &randScale);
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-rand",1, &randForce);
+                    double dpd_force=conForce + dissForce + randForce;
+                    double ff[3]={(double)dx[0]*dpd_force,(double)dx[1]*dpd_force,(double)dx[2]*dpd_force};
+                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"f_next_dpd", 3,ff);
+                }*/
+            }
+
+            #pragma GCC unroll 3
+            for(int d=0; d<3; d++){
+                cell.forces[d][local_index] += force[d];
+            }
+        }
+    }
+    #endif
+
     void __attribute__((noinline)) move_beads_range(const range_t &r)
     {
         float dt=m_dt;  
@@ -568,7 +686,12 @@ private:
                 vec3f_t dx;
                 for(int d=0; d<3; d++){
                     dx[d] = tail_pos.x[d] - head_pos.x[d];
-                }
+                    if(dx[d] > 2.5){
+                        dx[d] -= m_dims[d];
+                    }else if(dx[d] < -2.5){
+                        dx[d] += m_dims[d];
+                    }
+                }               
                 float r2 = dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
                 float r=sqrtf(r2);
                 float inv_r=1.0f/r;
@@ -601,7 +724,18 @@ private:
 
                 vec3f_t dx01 = centre_pos.x - head_pos.x ;
                 vec3f_t dx12 = tail_pos.x - centre_pos.x;
-
+                for(int d=0; d<3; d++){
+                    if(dx01[d] > 2.5){
+                        dx01[d] -= m_dimsf[d];
+                    }else if(dx01[d] < -2.5){
+                        dx01[d] += m_dimsf[d];
+                    }
+                    if(dx12[d] > 2.5){
+                        dx12[d] -= m_dimsf[d];
+                    }else if(dx12[d] < -2.5){
+                        dx12[d] += m_dimsf[d];
+                    }
+                }
                 // TODO : Calculating this every time is stupid
                 float sin_theta, cos_theta;
                 sincosf(bp.theta0, &sin_theta, &cos_theta);
@@ -706,6 +840,20 @@ private:
     }
 public:
 
+    std::string CanSupport(const WorldState *world) const override
+    {
+        if(world->bead_types.size() > MAX_BEAD_TYPES){
+            return "Too many bead types.";
+        }
+
+        for(const auto &pt : world->polymer_types){
+            if(pt.bond_pairs.size()){
+                return "BondPairs are unreliable for this engine. Need debugging.";
+            }
+        }
+
+        return {};
+    }
 
     void Attach(WorldState *state) override
     {
@@ -743,7 +891,7 @@ public:
                 c.is_on_boundary |= (location[d]==0) || (location[d]==m_dims[d]-1);
             }
             c.world=m_world;
-
+            c.local_nhood_count=0;
             int dst=0;
             for(int dx=-1; dx<=+1; dx++){
                 int ox=(location[0]+m_dims[0]+dx) % m_dims[0];
