@@ -4,6 +4,7 @@
 #include "test_base.hpp"
 #include "dpd/core/dpd_engine.hpp"
 #include "dpd/core/dpd_state_io.hpp"
+#include "dpd/core/logging.hpp"
 
 std::pair<bool,std::string> test_differential(
     TestBase &test,
@@ -11,6 +12,8 @@ std::pair<bool,std::string> test_differential(
     DPDEngine &engine2
 ){
     WorldState state1, state2;
+
+    auto *logger=ForceLogging::logger();
 
     try{
         state1 = test.create_world();
@@ -44,7 +47,13 @@ std::pair<bool,std::string> test_differential(
                 state2.beads[i] = state1.beads[i];
             }
 
+            if(logger){
+                logger->SetPrefix("Ref,");
+            }
             engine1.Run(todo);
+            if(logger){
+                logger->SetPrefix("Dut,");
+            }
             engine2.Run(todo);
 
             validate(state1);
@@ -58,6 +67,7 @@ std::pair<bool,std::string> test_differential(
             
 
             double maxDiff= 0.001;
+            maxDiff *= sqrt(todo);
 
             double xdiff=0;
             int xdiff_index=-1;
@@ -87,14 +97,14 @@ std::pair<bool,std::string> test_differential(
                     fdiff_index=i;
                 }
             }
-            if(fdiff>10*maxDiff){ // Forces can be large, so allow more slack
-                std::cerr<<"At time "<<state1.t<<" the f values have diverged.\n";
+            if(fdiff>10*maxDiff){ // Forces can be large, so allow lots of slack - particularly needed for fixed-point...
+                std::cerr<<"At time "<<state1.t<<" after "<<todo<<" steps the f values have diverged.\n";
                 
 
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);
 
-                std::cerr<<"  fdiff_max at bead "<<fdiff_index<<", diff="<<fdiff<<"\n";
+                std::cerr<<"  fdiff_max at bead "<<fdiff_index<<", hash="<<state1.beads[fdiff_index].get_hash_code().hash<<", x="<<state1.beads[fdiff_index].x<<", diff="<<fdiff<<", steps="<<todo<<"\n";
                 std::cerr<<"      ref="<<state1.beads[fdiff_index].f<<"\n";
                 std::cerr<<"      got="<<state2.beads[fdiff_index].f<<"\n";
 
@@ -102,7 +112,7 @@ std::pair<bool,std::string> test_differential(
             }
 
             if(xdiff>maxDiff){
-                std::cerr<<"At time "<<state1.t<<" the x values have diverged.\n";
+                std::cerr<<"At time "<<state1.t<<" after "<<todo<<" steps the x values have diverged.\n";
 
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);
@@ -114,7 +124,7 @@ std::pair<bool,std::string> test_differential(
                 return {false, "Position divergence."};
             }
             if(vdiff>maxDiff){
-                std::cerr<<"At time "<<state1.t<<" the v values have diverged.\n";
+                std::cerr<<"At time "<<state1.t<<" after "<<todo<<" steps the v values have diverged.\n";
 
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);

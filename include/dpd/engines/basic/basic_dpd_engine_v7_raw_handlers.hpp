@@ -73,7 +73,7 @@ struct BasicDPDEngineV7RawHandlers
         while(cell.share_todo && begin!=end){
             --cell.share_todo;
             const auto &b = resident[cell.share_todo];
-            Base::copy_bead_view( begin, &b );
+            Base::copy_bead_view::copy( begin, &b );
             begin++;
         }
         while(begin!=end){
@@ -170,7 +170,7 @@ struct BasicDPDEngineV7RawHandlers
 
                 float f[3];
                 dpd_maths_core_half_step_raw::calc_force<EnableLogging,float,float[3],float[3]>(
-                    cell.inv_root_dt,
+                    cell.scaled_inv_root_dt,
                     cell.t_hash,
                     dx, dr,
                     kappa, r0, 

@@ -2,6 +2,7 @@
 #define basic_dpd_engine_hpp
 
 #include "dpd/core/dpd_engine.hpp"
+#include "dpd/core/logging.hpp"
 
 #include "dpd/maths/dpd_maths_core_half_step.hpp"
 
@@ -16,23 +17,10 @@
 #include <array>
 #include <cstdint>
 #include <math.h>
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include <iostream>
 #endif
 
-
-// Calculate checksum except for the last 4 bytes (assumed to be the checksum field).
-    template<class T>
-    static uint32_t calc_checksum(const T &x)
-    {
-        static_assert( (sizeof(T) % 4) == 0 );
-        const uint32_t *src=(const uint32_t*)&x;
-        uint32_t res=0;
-        for(unsigned i=0; i<sizeof(T)/4-1; i++){
-            res = res + (res>>16) + src[i];
-        }
-        return res;
-    }
 
 /*
     This is a minimal engine which models the data requirements of working
@@ -64,7 +52,8 @@ private:
     friend class BasicDPDEngineV4;
     friend class BasicDPDEngineV3Raw;
     friend class BasicDPDEngineV4Raw;
-    friend class BasicDPDEngineV5Raw;
+    template<bool NoBonds, bool NoRandom>
+    friend class BasicDPDEngineV5RawImpl;
     friend class BasicDPDEngineV6Raw;
     template<bool USE_X_CACHE>
     friend class BasicDPDEngineV7Raw;
@@ -175,13 +164,13 @@ public:
                     bond_r0=b.r0;
                 }else{
                     if(! (float(b.kappa) == bond_kappa) ){
-                        #ifndef TINSEL
+                        #ifndef PDPD_TINSEL
                         std::cerr<<" b.kappa="<<b.kappa<<", "<<bond_kappa<<"\n";
                         #endif
                         return "All bonds must have same kappa.";
                     }
                     if( !(float(b.r0) == bond_r0) ){
-                        #ifndef TINSEL
+                        #ifndef PDPD_TINSEL
                         std::cerr<<" b.r0="<<b.kappa<<", "<<bond_r0<<"\n";
                         #endif
                         return "All bonds must have same r0.";
@@ -703,8 +692,8 @@ protected:
 
             if(EnableLogging && ForceLogging::logger()){
                 ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, bead.get_hash_code(), BeadHash{tail->bead_hash}, "f_next_angle_head", headForce);
-                ForceLogging::logger()->LogBeadTripleProperty(bead.get_hash_code(), BeadHash{head->bead_hash}, BeadHash{tail->bead_hash}, "f_next_angle_mid", middleForce);
-                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{tail->bead_hash}, BeadHash{head->bead_hash}, bead.get_hash_code(), "f_next_angle_tail", tailForce);
+                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, bead.get_hash_code(), BeadHash{tail->bead_hash}, "f_next_angle_mid", middleForce);
+                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, bead.get_hash_code(), BeadHash{tail->bead_hash}, "f_next_angle_tail", tailForce);
             }
 
             bead.f += middleForce;

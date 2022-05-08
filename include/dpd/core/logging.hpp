@@ -13,6 +13,7 @@ public:
     {}
 
     virtual void SetTime(long t)=0;
+    virtual void SetPrefix(const std::string &)=0;
     virtual void LogProperty(const char *name, int dims, const double *x)=0;
     virtual void LogBeadProperty(BeadHash b1, const char *name, int dims, const double *x)=0;
     virtual void LogBeadPairProperty(BeadHash bead_id0,BeadHash bead_id1, const char *name, int dims, const double *x)=0;
@@ -26,7 +27,6 @@ public:
 
     static void set_logger(ForceLogging *s)
     {
-        assert(!logger());
         logger()=s;
     }
 

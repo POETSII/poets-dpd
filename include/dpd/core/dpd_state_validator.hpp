@@ -134,8 +134,16 @@ inline void validate(const WorldState &s, double max_r=1)
             }
             REQUIRE(b.x[i] < s.box[i]);
 
+            if(!(-max_v <= b.v[i] && b.v[i] <= max_v)){
+                std::cerr<<"  bead "<<i<<", v="<<b.v<<", max_v="<<max_v<<"\n";
+                exit(1);
+            }
             REQUIRE( -max_v <= b.v[i] && b.v[i] <= max_v);
 
+            if(!(-max_f <= b.f[i] && b.f[i] <= max_f)){
+                std::cerr<<"  bead "<<i<<", f="<<b.f<<", max_v="<<max_f<<"\n";
+                exit(1);
+            }
             REQUIRE( -max_f <= b.f[i] && b.f[i] <= max_f );
         }
 

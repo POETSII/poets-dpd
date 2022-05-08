@@ -89,7 +89,7 @@ public:
 
                 m_box.extract(dst.box);
                 dst.dt=m_state->dt;
-                dst.inv_root_dt=pow_half(24/m_state->dt);
+                dst.scaled_inv_root_dt=pow_half(24/m_state->dt);
                 dst.bond_r0=m_bond_r0;
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -183,8 +183,8 @@ public:
         for(auto &cell : m_cells){
             for(auto &b : cell.beads){
                 raw_bead_resident_t bb;
-                Handlers::copy_bead_resident(&bb, &b);
-                bb.t=0;
+                Handlers::copy_bead_resident::copy(&bb, &b);
+                bb.t=m_state->t;
 
                 // Pre-correct one-step backwards in time, as handlers will do one too many
                 dpd_maths_core_half_step_raw::update_mom((float)-m_state->dt, bb);
@@ -234,8 +234,8 @@ public:
             return carry_on;
         };
 
-        unsigned final_slice_t=interval_size*interval_count;
-        unsigned next_slice_t=interval_size; // time of the next slice to be added to slices
+        unsigned final_slice_t=m_state->t + interval_size*interval_count;
+        unsigned next_slice_t=m_state->t + interval_size; // time of the next slice to be added to slices
         int finished_slice_t=-1;
 
         auto process_output=[&](raw_bead_resident_t &output) -> bool
@@ -256,7 +256,7 @@ public:
                     next_slice_t += interval_size;
                 }
                 output_slice &s = slices.at(slice_i);
-                require(output.t >= s.time, "Time does not match a slice time.");
+                //require(output.t >= s.time, "Time does not match a slice time.");
                 if(output.t == s.time){
                     //fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                     bool prev_comp=s.complete();

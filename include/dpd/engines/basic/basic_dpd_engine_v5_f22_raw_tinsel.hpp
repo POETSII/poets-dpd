@@ -3,13 +3,16 @@
 
 #include "dpd/engines/basic/basic_dpd_engine_v5_f22_raw.hpp"
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include "POLiteSWSim_PGraph.h"
 #include <iostream>
 #include <unistd.h>
 #endif
 
+#include "POLite/PerfCounterAccumulator.h"
 #include "POLiteHW.h"
+
+#include "dpd/core/AsyncHostLink.hpp"
 
 template<class Impl = POLiteHW<>>
 class BasicDPDEngineV5F22RawTinsel
@@ -47,8 +50,8 @@ public:
     };
 
     static constexpr bool UseDevicePerfCounters = false;
-    static constexpr bool ENABLE_CORE_PERF_COUNTERS = false; //UseDevicePerfCounters;
-    static constexpr bool ENABLE_THREAD_PERF_COUNTERS = false; //UseDevicePerfCounters;
+    static constexpr bool ENABLE_CORE_PERF_COUNTERS = UseDevicePerfCounters;
+    static constexpr bool ENABLE_THREAD_PERF_COUNTERS = UseDevicePerfCounters;
 
     struct State
     {
@@ -180,8 +183,8 @@ public:
           ENABLE_THREAD_PERF_COUNTERS
         >;
 
-#ifndef TINSEL
-    std::shared_ptr<typename Impl::HostLink> m_hostlink;
+#ifndef PDPD_TINSEL
+    AsyncHostLink<Impl> m_hostlink;
     std::shared_ptr<typename Impl::template PGraph<Device, State, None, Message>> m_graph;
     int m_meshLenX;
     int m_meshLenY;
@@ -192,7 +195,7 @@ public:
         m_meshLenX=Impl::BoxMeshXLen;
         m_meshLenY=Impl::BoxMeshYLen;
         if(getenv("PDPD_BOX_MESH_X")){
-            int v=atoi(getenv(PDPD_BOX_MESH_X));
+            int v=atoi(getenv("PDPD_BOX_MESH_X"));
             if(v<1 || v>m_meshLenX){
                 throw std::runtime_error("Invalid PDPD_BOX_MESH_X");
             }
@@ -200,32 +203,38 @@ public:
             fprintf(stderr, "Setting boxMeshLenX to %d\n", m_meshLenX);
         }
         if(getenv("PDPD_BOX_MESH_Y")){
-            int v=atoi(getenv(PDPD_BOX_MESH_Y));
+            int v=atoi(getenv("PDPD_BOX_MESH_Y"));
             if(v<1 || v>m_meshLenY){
                 throw std::runtime_error("Invalid PDPD_BOX_MESH_Y");
             }
             m_meshLenY=v;
             fprintf(stderr, "Setting boxMeshLenY to %d\n", m_meshLenY);
         }
+
+        typename Impl::HostLinkParams params;
+        params.numBoxesX=m_meshLenX;
+        params.numBoxesY=m_meshLenY;
+        m_hostlink.SetParams(params);
     }
 
-    void ensure_hostlink()
+    virtual void PrepareResources()
     {
-        if(!m_hostlink){
-            //std::cerr<<"Opening hostlink\n";
-            typename Impl::HostLinkParams params;
-            params.numBoxesX=m_meshLenX;
-            params.numBoxesY=m_meshLenY;
-            //std::cerr<<"  boxx="<<params.numBoxesX<<", boxy="<<params.numBoxesY<<"\n";
-            m_hostlink = std::make_shared<typename Impl::HostLink>(params);
-        }
+        m_hostlink.beginAquisition();
     }
 
     void Attach(WorldState *state) override
     {
-        ensure_hostlink();
+        if(state){
+            m_hostlink.beginAquisition();
+        }else{
+            m_hostlink.reset();
+        }
         
         BasicDPDEngineV5F22Raw::Attach(state);
+
+        if(!state){
+            return;
+        }
 
         //std::cerr<<"Building graph\n";
 
@@ -277,7 +286,7 @@ public:
         std::function<bool(raw_bead_resident_f22_t &output)> callback
     ) override
     {
-        ensure_hostlink();
+        m_hostlink.completeAquisition();
 
         unsigned nBeads=m_state->beads.size();
 
@@ -288,9 +297,9 @@ public:
             graph.devices[i]->state.state.t = m_state->t;
             graph.devices[i]->state.state.t_hash = m_t_hash;
             graph.devices[i]->state.state.t_seed = m_state->seed;
-            if(states[i].resident.n==0){
+            /*if(states[i].resident.n==0){
                 fprintf(stderr, "device %u at %u,%u,%u is empty\n", i, states[i].location_f0[0], states[i].location_f0[1], states[i].location_f0[2]);
-            }
+            }*/
         }
 
         //std::cerr<<"Writing graph\n";
@@ -308,75 +317,118 @@ public:
             return ts.tv_sec+1e-9*ts.tv_nsec;
         };
 
-        /*
-        std::vector<std::vector<uint32_t>> perf_counters(states.size(), std::vector<uint32_t>(Device::NumDevicePerfCounters,0));
-        unsigned perf_counters_seen=0;
-
-        auto filter=[&](uint32_t threadId, const char *line) -> bool
-        {
-            // Pattern is: "DPC:%x,%x,%x,%x\n",  threadId,deviceOffset,counterOffset,counterValue
-
-            int len=strlen(line);
-            if(len < 4){
-                return false;
-            }
-            if(strncmp("DPC:",line,4)){
-                return false;
-            }
-
-            unsigned gotThreadId, deviceOffset, counterOffset,counterValue;
-            if(4!=sscanf(line, "DPC:%x,%x,%x,%x", &gotThreadId, &deviceOffset, &counterOffset, &counterValue)){
-                return false;
-            }
-            if(gotThreadId!=threadId){
-                fprintf(stderr, "Corrupted DPCs.\n");
-                exit(1);
-            }
-
-            unsigned deviceId=graph.getDeviceId(threadId, deviceOffset);
-            perf_counters.at(deviceId).at(counterOffset)=counterValue;
-
-            perf_counters_seen++;
-
-            return true;
-        };
-
-        m_hostlink->setStdOutFilterProc(filter);
-
-        */
-
         PolitePerfCounterAccumulator<decltype(*m_graph),Thread> perf_counters(*m_graph, m_hostlink.get());
 
         m_hostlink->setStdOutFilterProc([&](uint32_t threadId, const char *line){
             return perf_counters.process_line(threadId, line);
         });
-        
+
+        std::vector<char> message_buffer;
+        message_buffer.resize(4096);
+        int message_buffer_valid=0;
+
+        double sum_batch_size=0;
+        double num_batches=0;
+
         //std::cerr<<"Waiting for output\n";
         unsigned seen=0;
         double tStart=now();
         double tPrint=tStart+4;
-        while(1){
-            while(m_hostlink->pollStdOut(stderr));
+        if(0){
+            AsyncMessageMover<Impl> mover(m_hostlink.get());
 
-            typename Impl::template PMessage<Message> msg;
-            if(m_hostlink->canRecv()){
-                ++seen;
-                m_hostlink->recvMsg(&msg, sizeof(msg));
-                if(!callback(msg.payload.bead_resident)){
+            std::vector<char> page;
+            while(1){
+                while(m_hostlink->pollStdOut(stderr));
+
+                bool quit=false;
+                mover.pull_page(page);
+                int num_msgs=page.size()/mover.BytesPerMsg;
+                for(int i=0; i<num_msgs; i++){
+                    char *raw_msg=&page[i*mover.BytesPerMsg];
+                    auto msg = (typename Impl::template PMessage<Message> *)raw_msg;
+                    ++seen;
+                    if(!callback(msg->payload.bead_resident)){
+                        quit=true;
+                        std::cerr<<"mean batch size = "<<sum_batch_size/num_batches<<"\n";
+                        break;
+                    }
+                }
+                num_batches++;
+                sum_batch_size+=num_msgs;
+                
+                if(quit){
                     break;
                 }
-                if(seen==1){
+            }
+
+        }else if(0){
+            while(1){
+                while(m_hostlink->pollStdOut(stderr));
+
+                bool quit=false, got_any=false;
+                int batch_size=0;
+                m_hostlink->recvBulkNonBlock(
+                    message_buffer.size(),
+                    &message_buffer_valid,
+                    &message_buffer[0],
+                    [&](void *raw_msg){
+                        if(quit){
+                            return;
+                        }
+
+                        got_any=true;
+                        auto msg = (typename Impl::template PMessage<Message> *)raw_msg;
+                        ++seen;
+                        ++batch_size;
+                        if(!callback(msg->payload.bead_resident)){
+                            quit=true;
+                            std::cerr<<"mean batch size = "<<sum_batch_size/num_batches<<"\n";
+                            return;
+                        }
+                        
+                        
+                        if(seen==1){
+                            double tNow=now();
+                            uint64_t nSteps = m_devices[0].interval_size * (uint64_t)m_devices[0].intervals_todo;
+                            //std::cerr<<"First bead, t="<<(tNow-tStart)<<", nBeads="<<nBeads<<", nSteps="<<nSteps<<", bead*step/sec="<< (nBeads*nSteps) / (tNow-tStart)<<"\n";
+                        }
+                    }
+                );
+                if(!got_any){
                     double tNow=now();
-                    uint64_t nSteps = m_devices[0].interval_size * (uint64_t)m_devices[0].intervals_todo;
-                    //std::cerr<<"First bead, t="<<(tNow-tStart)<<", nBeads="<<nBeads<<", nSteps="<<nSteps<<", bead*step/sec="<< (nBeads*nSteps) / (tNow-tStart)<<"\n";
+                    if(tNow>tPrint){
+                        std::cerr<<"  got "<<seen<<" out of "<<nBeads<<", buffer_valid="<<message_buffer_valid<<"\n";
+                        tPrint=tStart+1.5*(tNow-tStart);
+                    }
+                    usleep(1);
+                }else{
+                    num_batches++;
+                    sum_batch_size+=batch_size;
                 }
-            }else{
-                double tNow=now();
-                if(tNow>tPrint){
-                    std::cerr<<"  got "<<seen<<" out of "<<nBeads<<"\n";
-                    tPrint=tStart+1.5*(tNow-tStart);
+                if(quit){
+                    break;
                 }
-                usleep(1);
+            }
+        }else{
+            while(1){
+                while(m_hostlink->pollStdOut(stderr));
+
+                typename Impl::template PMessage<Message> msg;
+                if(m_hostlink->canRecv()){
+                    ++seen;
+                    m_hostlink->recvMsg(&msg, sizeof(msg));
+                    if(!callback(msg.payload.bead_resident)){
+                        break;
+                    }
+                }else{
+                    double tNow=now();
+                    if(tNow>tPrint){
+                        std::cerr<<"  got "<<seen<<" out of "<<nBeads<<"\n";
+                        tPrint=tStart+1.5*(tNow-tStart);
+                    }
+                    usleep(1);
+                }
             }
         }
 
@@ -406,6 +458,7 @@ public:
            perf_counters.dump_combined_thread_counters(stdout);
        }
 
+        // TODO: this is working round the inability to restart things on a hostlink.
         m_hostlink.reset();
     }
 #endif

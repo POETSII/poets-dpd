@@ -19,6 +19,11 @@
 */
 struct BeadHash
 {
+    static const unsigned MONOMER_ID_BITS = 27;
+    static const unsigned POLYMER_ID_BITS = 21;
+    static const unsigned BEAD_TYPE_BITS = 32 - MONOMER_ID_BITS - 1;
+    static const unsigned POLYMER_OFFSET_BITS = 32 - BEAD_TYPE_BITS - 1 - POLYMER_ID_BITS;
+
     uint32_t hash;
 
     BeadHash()
@@ -37,6 +42,18 @@ struct BeadHash
         base |= uint32_t(is_monomer)<<27;
         base |= bead_type << 28;
         return BeadHash(base);
+    }
+
+    static BeadHash construct_checked(uint32_t bead_type, bool is_monomer, uint32_t polymer_id, uint32_t polymer_offset)
+    {
+        if(bead_type >= (1<<BEAD_TYPE_BITS)) throw std::runtime_error("bead_type is too large for hash.");
+        if(is_monomer){
+            if(polymer_id >= (1<<MONOMER_ID_BITS)) throw std::runtime_error("monomer id is too large for hash.");
+        }else{
+            if(polymer_offset >= (1<<POLYMER_OFFSET_BITS)) throw std::runtime_error("polymer offset is too large for hash.");
+            if(polymer_id >= (1<<POLYMER_ID_BITS)) throw std::runtime_error("polymer id is too large for hash.");
+        }
+        return construct(bead_type, is_monomer, polymer_id, polymer_offset);
     }
 
     bool is_monomer() const
@@ -120,13 +137,22 @@ struct Bead
     uint32_t get_bead_type() const
     { return bead_type; }
 
-    // This is a completely standardised hash-code, so that we get repeatable results across implementations.
-    /*  0000 1ppp pppp pppp  pppp pppp pppp pppp  : monomer, up to 2^27 instances
-        0000 0ooo ooop pppp  pppp pppp pppp pppp  : polymer, up to 2^21 instances, and 64 beads per polymer
-    */
     BeadHash get_hash_code() const
     {
         return BeadHash::construct(bead_type, is_monomer, polymer_id, polymer_offset);
+    }
+
+    BeadHash get_hash_code_checked() const
+    {
+        return BeadHash::construct(bead_type, is_monomer, polymer_id, polymer_offset);
+    }
+
+    void set_hash_code(BeadHash h)
+    {
+        bead_type=h.get_bead_type();
+        is_monomer=h.is_monomer();
+        polymer_id=h.get_polymer_id();
+        polymer_offset=h.get_polymer_offset();
     }
 };
 

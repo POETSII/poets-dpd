@@ -1,0 +1,169 @@
+<?xml version='1.0' encoding='ASCII'?>
+<Graphs xmlns="https://poets-project.org/schemas/virtual-graph-schema-v4" formatMinorVersion="0">
+  <GraphType id="basic_dpd_engine_v5___NO_BONDS_STR__r0">
+    <Properties/>
+    <SharedCode><![CDATA[
+    #define NDEBUG 1
+
+    #ifdef POETS_LEGACY_HAS_HANDLER_EXIT
+        #define _do_handler_exit(code) handler_exit(code)
+        #else
+        #define _do_handler_exit(code) ((void)0)
+        #endif
+
+        #define fake_handler_exit(code) \
+        { \
+            if((code)==0){ \
+                handler_log(0, "_HANDLER_EXIT_SUCCESS_9be65737_"); \
+            }else{ \
+                handler_log(0, "_HANDLER_EXIT_FAIL_9be65737_"); \
+            } \
+            _do_handler_exit(code); \
+        }   
+
+        #include <cmath>
+
+        __SHARED_CODE_C__
+
+        using DPDHandlers = BasicDPDEngineV5RawHandlersImpl<__NO_BONDS__>;
+    ]]></SharedCode>
+    <MessageTypes>
+        <MessageType id="share"><Message><![CDATA[
+            
+            __MESSAGE_TYPE_SHARE_C__
+        ]]></Message></MessageType>
+
+        <MessageType id="migrate"><Message><![CDATA[
+            __MESSAGE_TYPE_MIGRATE_C__
+        ]]></Message></MessageType>
+
+        <MessageType id="force"><Message><![CDATA[
+            __MESSAGE_TYPE_FORCE_C__
+        ]]></Message></MessageType>
+    </MessageTypes>
+
+    <DeviceTypes>
+        <DeviceType id="reaper"> 
+            <Properties><![CDATA[
+            uint32_t numBeads;
+            uint32_t expectedFinalTime;
+            uint32_t expectedCheckSum;
+            float checkBeadMaxDistSqr;
+            float half_box[3];    
+            uint32_t checkBeadCount;
+            struct{
+                uint32_t id; 
+                float x[3];  
+            }checkBeads[16];
+            ]]></Properties>
+            <State><![CDATA[
+            uint32_t beadsSeen;
+            uint32_t combinedHash;
+            ]]></State>
+
+            <SharedCode />
+
+            <InputPin name="output_in" messageTypeId="migrate">
+                <Properties />
+                <State />
+                <OnReceive><![CDATA[
+                auto raw=[](float x) -> uint32_t
+                {
+                    union{
+                        uint32_t i;
+                        float f;
+                    }tt;
+                    tt.f=x;
+                    return tt.i;
+                };
+
+                if(deviceState->beadsSeen==0){
+                    handler_log(1, "a8f23f7c94100804_BEGIN[t=%x,numBeads=%x]", message->t, deviceProperties->numBeads);
+                }
+                handler_log(3, "a8f23f7c94100804_BEAD[id=%x,t=%x,x=[%x,%x,%x],v=[%x,%x,%x],f=[%x,%x,%x]]", message->id, message->t,
+                    raw(message->x[0]), raw(message->x[1]), raw(message->x[2]),
+                    raw(message->v[0]), raw(message->v[1]), raw(message->v[2]),
+                    raw(message->f[0]), raw(message->f[1]), raw(message->f[2])
+                );
+                deviceState->beadsSeen++;
+
+                for(unsigned i=0; i<deviceProperties->checkBeadCount;i++){
+                    if(deviceProperties->checkBeads[i].id==message->id){
+                        float dist_sqr=0;
+                        for(unsigned d=0; d<3; d++){
+                            float dist=deviceProperties->checkBeads[i].x[d] - message->x[d];
+                            if(dist < 0){
+                                dist=-dist;
+                            }
+                            if(dist > deviceProperties->half_box[i]){
+                                dist -= 2*deviceProperties->half_box[i];
+                            }
+                            dist_sqr += dist*dist;
+                        }
+                        handler_log(3, "  dist_sqr=%g, exp=%f,%f,%f, got=%f,%f,%f", dist_sqr, deviceProperties->checkBeads[i].x[0],deviceProperties->checkBeads[i].x[1],deviceProperties->checkBeads[i].x[2], message->x[0], message->x[1], message->x[2]);
+                        if(dist_sqr > deviceProperties->checkBeadMaxDistSqr){
+                            handler_log(0, "Bead id %x is too far from expected position.", message->id);
+                            fake_handler_exit(1);
+                        }
+                        handler_log(2, "Bead id %x passes position check.", message->id);
+                    }
+                }
+
+                deviceState->combinedHash += message->id;
+                handler_log(6, "  beads seen=%x, total=%x", deviceState->beadsSeen, deviceProperties->numBeads);
+                if(deviceState->beadsSeen==deviceProperties->numBeads){
+                    handler_log(1, "a8f23f7c94100804_END[checksum=%x]", deviceState->combinedHash);
+                    handler_log(1, "Final checksum = %x, expected= %x", deviceState->combinedHash, deviceProperties->expectedCheckSum);
+                    if(deviceProperties->expectedCheckSum!=0){
+                        fake_handler_exit( deviceProperties->expectedCheckSum != deviceState->combinedHash );
+                    }else{
+                        fake_handler_exit(0);
+                    }
+                }
+                ]]></OnReceive>
+            </InputPin>
+
+            <ReadyToSend />
+            <OnInit />
+            <OnDeviceIdle />
+            <OnHardwareIdle />
+        </DeviceType>
+
+        <DeviceType id="cell"> 
+            <Properties />
+            <State><![CDATA[
+                __DEVICE_STATE_C__
+            ]]></State>
+            <SharedCode/>
+
+            <InputPin name="in" messageTypeId="message">
+                <Properties/>
+                <State/>
+                <OnReceive><![CDATA[
+                    DPDHandlers::on_recv(*deviceState, *message);
+                ]]></OnReceive>
+            </InputPin>
+
+            <OutputPin name="out" messageTypeId="message">
+                <OnSend><![CDATA[
+                    DPDHandlers::on_send(*deviceState, *message);
+                ]]></OnSend>
+            </OutputPin>
+
+            <ReadyToSend><![CDATA[
+                *readyToSend=DPDHandlers::calc_rts(*deviceState);
+            ]]></ReadyToSend>
+
+            <OnInit><![CDATA[
+                DPDHandlers::on_init(*deviceState);
+            ]]></OnInit>
+
+            <OnDeviceIdle />
+
+            <OnHardwareIdle><![CDATA[
+                DPDHandlers::on_barrier(*deviceState);
+            ]]></OnHardwareIdle>
+        </DeviceType>
+    </DeviceTypes>
+</GraphType>
+</Graphs>

@@ -7,6 +7,7 @@
 
 #include "dpd/core/vec3.hpp"
 #include "dpd/core/hash.hpp"
+#include "dpd/core/logging.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -54,6 +55,7 @@ class NaiveDPDEngineHalfStepTBB
 
     std::vector<Polymer*> m_polymers_with_angles;
 
+public:
     void Attach(WorldState *s) override
     {
         m_locked_cells.clear();
@@ -69,9 +71,14 @@ class NaiveDPDEngineHalfStepTBB
             }
         }
     }
+protected:
 
     void step() override
     {
+        if(ForceLogging::logger()){
+            ForceLogging::logger()->SetTime(m_state->t);
+        }
+
         using range1d_t = tbb::blocked_range<int>;
 
         m_t_hash=get_t_hash(m_state->t, m_state->seed);
@@ -104,13 +111,13 @@ class NaiveDPDEngineHalfStepTBB
         }else{
             // Move the beads, and then assign to cells based on x(t+dt)
             tbb::parallel_for(range1d_t(0, m_locked_cells.size(), 64), [&](const range1d_t &r){
-                for(unsigned i=r.begin(); i<r.end(); i++){
+                for(int i=r.begin(); i<r.end(); i++){
                     auto &c = m_locked_cells[i];
                     for(int j=c.beads.size()-1; j>=0; j--){
                         auto *b = c.beads[j];
                         dpd_maths_core_half_step::update_pos(dt, m_state->box, *b);
                         unsigned index=world_pos_to_cell_index(b->x);
-                        if(index!=i){
+                        if(index!=(unsigned)i){
                             // Add to dst
                             assert(m_locked_cells.at(index).index==index);
                             m_locked_cells.at( index ).new_beads.push_back(b); // push into concurrent_vector
@@ -181,6 +188,12 @@ class NaiveDPDEngineHalfStepTBB
             }
         });
 
+        if(ForceLogging::logger()){
+            for(auto &b : m_state->beads){
+                double x[3]={b.x[0],b.x[1],b.x[2]};
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x_next",3,x);
+            }
+        }
 
         m_state->t += 1;
     }

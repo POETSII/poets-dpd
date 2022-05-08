@@ -11,6 +11,9 @@
 #include <variant>
 #include <random>
 
+#include "dpd/external/robin_hood.h"
+
+
 class BasicDPDEngineV5F22Raw
     : public BasicDPDEngine
 {
@@ -56,7 +59,7 @@ public:
     std::vector<device_state_f22_t> m_devices;
     std::unordered_map<vec3i_t,device_state_f22_t*> m_location_to_device;
     std::unordered_map<device_state_f22_t*,std::vector<device_state_f22_t*>> m_neighbour_map;
-    std::unordered_map<BeadHash,uint32_t> m_bead_hash_to_original_id;
+    robin_hood::unordered_flat_map<BeadHash,uint32_t> m_bead_hash_to_original_id;
 
     void set_bead_id(raw_bead_resident_f22_t &b, bool is_monomer, unsigned polymer_id, unsigned polymer_offset, unsigned bead_type)
     {
@@ -116,12 +119,12 @@ public:
         unsigned time;
         unsigned num_seen;
         std::vector<raw_bead_resident_f22_t> beads;
-        std::unordered_map<BeadHash,uint32_t> *bead_hash_to_id;
+        robin_hood::unordered_flat_map<BeadHash,uint32_t> *bead_hash_to_id;
 
         output_slice(output_slice &&) = default;
         output_slice &operator=(output_slice &&) = default;
 
-        output_slice(unsigned _time, std::unordered_map<BeadHash,uint32_t> &_bead_hash_to_id)
+        output_slice(unsigned _time, robin_hood::unordered_flat_map<BeadHash,uint32_t> &_bead_hash_to_id)
             : time(_time)
             , num_seen(0)
             , bead_hash_to_id(&_bead_hash_to_id)
@@ -143,7 +146,7 @@ public:
                 // This is a replicate, and should be exactly the same
                 require( memcmp(&b, &dst, sizeof(b))==0, "Replicate bead does not match." );
             }
-            
+            num_seen++;            
         }
 
         bool complete() const
@@ -178,7 +181,7 @@ public:
             for(auto &b : cell.beads){
                 raw_bead_resident_f22_t bb;
                 Handlers::copy_bead_resident_plain_to_f22(&bb, &b);
-                bb.t=0;
+                bb.t=m_state->t;
 
                 // Pre-correct one-step backwards in time, as handlers will do one too many
                 dpd_maths_core_half_step_raw::update_mom((float)-m_state->dt, bb);
@@ -231,8 +234,8 @@ public:
             return carry_on;
         };
 
-        unsigned final_slice_t=interval_size*interval_count;
-        unsigned next_slice_t=interval_size; // time of the next slice to be added to slices
+        unsigned final_slice_t=m_state->t + interval_size*interval_count;
+        unsigned next_slice_t=m_state->t + interval_size; // time of the next slice to be added to slices
         int finished_slice_t=-1;
 
         auto process_output=[&](raw_bead_resident_f22_t &output) -> bool
@@ -253,7 +256,10 @@ public:
                     next_slice_t += interval_size;
                 }
                 output_slice &s = slices.at(slice_i);
-                require(output.t >= s.time, "Time does not match a slice time.");
+                if(output.t < s.time){
+                    fprintf(stderr, "  Bead %u, Slice %u, time=%u, size=%u\n", (unsigned)output.t, (unsigned)slice_i, (unsigned)s.time, (unsigned)s.num_seen);
+                }
+                //require(output.t >= s.time, "Time does not match a slice time.");
                 if(output.t == s.time){
                     //fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                     bool prev_comp=s.complete();

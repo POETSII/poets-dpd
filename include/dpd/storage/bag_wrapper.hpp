@@ -51,6 +51,15 @@ struct bag_wrapper
     T &back()
     { assert(!empty()); return storage.elements[storage.n-1]; }
 
+    T &reserve_after_back()
+    { assert(storage.n < MAX_N); return storage.elements[storage.n]; }
+
+    void commit_after_back()
+    {
+        assert(storage.n < MAX_N);
+        storage.n+=1; 
+    }
+
     const T &front() const
     { assert(!empty()); return storage.elements[0]; }
 
@@ -69,14 +78,13 @@ struct bag_wrapper
         if(TUnsafe || new_n < MAX_N){
             storage.n=new_n;
         }else{
-            #ifdef TINSEL
-            printf("Lost");
+            #ifdef PDPD_TINSEL
+            //puts("Lost");
             #else
             assert(false);
             #endif
         }
     }
-
     void push_back(const T &x)
     {
         if(TUnsafe || storage.n<MAX_N){
@@ -84,7 +92,23 @@ struct bag_wrapper
             storage.elements[storage.n]=x;
             storage.n=storage.n+1;
         }else{
-            #ifdef TINSEL
+            #ifdef PDPD_TINSEL
+            //printf("Lost\n");
+            #else
+            assert(false);
+            #endif
+        }
+    }
+
+    template<class TCopier,class TIn>
+    void push_back_copier(const TIn &x)
+    {
+        if(TUnsafe || storage.n<MAX_N){
+            // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
+            TCopier::copy(storage.elements+storage.n, &x);
+            storage.n=storage.n+1;
+        }else{
+            #ifdef PDPD_TINSEL
             //printf("Lost\n");
             #else
             assert(false);
@@ -93,24 +117,33 @@ struct bag_wrapper
     }
 
     //! Allocate a new entry, but leave it unitinialised
-    void alloc_back()
+    T &alloc_back()
     {
         if(TUnsafe || storage.n<MAX_N){
             // We are defensive here. Prefer to lose entries rather than overflow and corrupt memory
             storage.n=storage.n+1;
         }else{
-            #ifdef TINSEL
+            #ifdef PDPD_TINSEL
             //printf("Lost");
             #else
             assert(false);
             #endif
         }
+        return storage.elements[storage.n-1];
     }
 
     void pop_back()
     {
         assert(!empty());
         --storage.n;
+    }
+
+    template<class TCopier, class TOut>
+    void pop_back(TOut &dst)
+    {
+        assert(!empty());
+        --storage.n;
+        TCopier::copy(&dst, storage.elements+storage.n);
     }
 
     void erase(iterator it)

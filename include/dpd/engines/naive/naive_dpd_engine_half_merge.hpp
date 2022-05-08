@@ -149,7 +149,7 @@ private:
 
     vec3i_t index_to_cell_pos(unsigned index) const
     {
-        assert(index<m_dims[0]*m_dims[1]*m_dims[2]);
+        assert(index<unsigned(m_dims[0]*m_dims[1]*m_dims[2]));
         return { (int)(index/(m_dims[1]*m_dims[2])) , int((index/m_dims[2])%m_dims[1]) , int(index%m_dims[2]) };
     }
 

@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <cassert>
 
+#if __x86_64__ 
+#include <immintrin.h>
+#endif
+
 inline uint64_t splitmix64(uint64_t z)
 {
 
@@ -24,6 +28,20 @@ inline uint64_t riscv_mix64_m2(uint64_t x)
     x = x ^ (x>>32);     // 1
     return x;
 }
+
+#if 0
+// Does hash on 4 64-bit integers
+inline __m256i riscv_mix64_m2_v4q(__m256i x)
+{
+    const __m256i C=_mm256_set1_epi64x (0xd392d2a7); // 2
+    x = x ^ _mm256_srli_epi64(x,32);     // 1
+    x = x * C;           // 4
+    x = x ^ _mm256_srli_epi64(x,32);     // 1
+    x = x * C;           // 4
+    x = x ^ _mm256_srli_epi64(x,32);     // 1
+    return x;
+}
+#endif
 
 inline uint64_t riscv_mix64_m3(uint64_t x)
 {
@@ -79,5 +97,18 @@ inline uint32_t hash_rng_sym_crappy(uint64_t t_hash, uint32_t a, uint32_t b)
     aa += a+b+(t_hash>>32); 
     return aa * 0xed85aebful;
 }
+
+// Calculate checksum except for the last 4 bytes (assumed to be the checksum field).
+    template<class T>
+    static uint32_t calc_checksum(const T &x)
+    {
+        static_assert( (sizeof(T) % 4) == 0 );
+        const uint32_t *src=(const uint32_t*)&x;
+        uint32_t res=0;
+        for(unsigned i=0; i<sizeof(T)/4-1; i++){
+            res = res + (res>>16) + src[i];
+        }
+        return res;
+    }
 
 #endif

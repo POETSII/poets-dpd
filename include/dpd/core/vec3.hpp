@@ -6,7 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cassert>
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include <sstream>
 #endif
 
@@ -125,7 +125,7 @@ struct vec3g_t
     }
 };
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 template<class T>
 std::ostream &operator<<(std::ostream &dst, const vec3g_t<T> &x)
 {
@@ -135,7 +135,7 @@ std::ostream &operator<<(std::ostream &dst, const vec3g_t<T> &x)
 
 using vec3r_t = vec3g_t<double>;
 using vec3f_t = vec3g_t<float>;
-using vec3i_t = vec3g_t<int>;
+using vec3i_t = vec3g_t<int32_t>;
 
 inline vec3r_t normalise(const vec3r_t &x)
 {
@@ -192,6 +192,23 @@ inline vec3g_t<T> vec_wrap(const vec3g_t<T> &x, const vec3g_t<T> &bounds)
     };
 }
 
+template<class T, class TC>
+inline T vec3_wrapped_distance(const vec3g_t<T> &a, const vec3g_t<T> &b, const vec3g_t<TC> &box)
+{
+    T dist_sqr=0;
+    for(unsigned i=0; i<3; i++){
+        T dist=a[i]-b[i];
+        if(dist<0){
+            dist=-dist;
+        }
+        if(2*dist > box[i]){
+            dist -= box[i];
+        }
+        dist_sqr += dist*dist;
+    }
+    return sqrt(dist_sqr);
+}
+
 namespace std
 {
     template<>
@@ -235,6 +252,10 @@ inline void vec3_neg(T dst[3])
 { for(int i=0; i<3; i++){ dst[i] = -dst[i]; } }
 
 template<class T>
+inline void vec3_neg(T dst[3], const T src[3])
+{ for(int i=0; i<3; i++){ dst[i] = -src[i]; } }
+
+template<class T>
 inline void vec3_add_mul(T dst[3], const T x[3], T s)
 { for(int i=0; i<3; i++){ dst[i] += x[i] * s; } }
 
@@ -261,15 +282,14 @@ template<class T>
 inline void vec3_floor_nn(int32_t dst[3], const T x[3])
 { for(int i=0; i<3; i++){ assert(x[i]>=0); dst[i] = floor_nn(x[i]); } }
 
-
-inline int round_impl(float x)
+template<class T>
+inline vec3i_t vec3_floor(vec3g_t<T> x)
 {
-#ifdef TINSEL
-    return (int)x; // Tinsel only does round nearest even
-#else
-    return std::roundf(x);
-#endif
+    vec3i_t res;
+    vec3_floor(&res.x[0], &x.x[0]);
+    return res;
 }
+
 
 
 template<class D, class T>
@@ -289,6 +309,10 @@ inline bool vec3_equal(const T *x, const T *y)
 template<class T>
 inline void vec3_clear(T x[3])
 { for(int i=0; i<3; i++){ x[i]=0; } }
+
+template<class T>
+inline bool vec3_is_zero(const T *x)
+{ return x[0]==0 && x[1]==0 && x[2]==0; }
 
 
 #endif

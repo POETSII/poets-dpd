@@ -7,7 +7,7 @@
 
 #include "dpd/core/logging.hpp"
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include <iostream>
 #endif
 
@@ -25,7 +25,7 @@ namespace dpd_maths_core_half_step
         TBead &b
     )
     {
-        // x(t+dt) = x(t) + v(t)*dt + f(t)*dt*dt
+        // x(t+dt) = x(t) + v(t)*dt + f(t)*dt*dt/2
         // v(t+dt/2) = v(t) + dt*f(t)/2
 
         auto x = b.x + b.v*dt + b.f*half(dt*dt);
@@ -34,7 +34,7 @@ namespace dpd_maths_core_half_step
             x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
             assert(0<=x[i] && x[i] < dims[i]);
         }
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
         //std::cerr<<"  alt: x="<<x<<", b.x'="<<b.x<<", v="<<b.v<<"\n";
 #endif
         b.x = x;
@@ -110,13 +110,13 @@ void calc_force(
     TScalar dr0=r0-dr;
     TScalar hookeanForce=kappa*dr0;
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
     //std::cerr<<"  fhook="<<dx*hookeanForce<<", dx="<<dx<<",  xh="<<home.x<<", xt="<<other.x<<"\n";
     #endif
 
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
     //std::cerr<<"  "<<home.get_hash_code()<<" -> "<<other.get_hash_code()<<" : "<<conForce<<", "<<dissForce<<", "<<randForce<<", "<<hookeanForce<<"\n";
 #endif
 
@@ -148,6 +148,24 @@ void calc_force(
 
     //std::cerr<<"ref :   dr="<<dr<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<"\n";
         
+}
+
+template<
+    bool EnableLogging,
+    class TScalar, class TVector,
+    class TForce
+>
+void calc_hookean_force(
+    TScalar kappa, TScalar r0,
+    TVector dx, TScalar dr,
+
+    TForce & head_force, TForce &tail_force
+) {
+    TScalar dr0=r0-dr;
+    TScalar hookeanForce=kappa*dr0; 
+
+    head_force = - dx * (hookeanForce / dr);
+    tail_force = - head_force;
 }
 
 template<class TScalar, class TVector, class TForce>

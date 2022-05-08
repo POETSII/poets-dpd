@@ -16,7 +16,8 @@
     - Multiple time-steps within loop.
     - Output is via message.
 */
-class BasicDPDEngineV5Raw
+template<bool NoBonds, bool NoRandom=false>
+class BasicDPDEngineV5RawImpl
     : public BasicDPDEngine
 {
 public:
@@ -31,15 +32,15 @@ public:
 
     static constexpr bool EnableLogging = false;
 
-    using Handlers = BasicDPDEngineV5RawHandlers;
+    using Handlers = BasicDPDEngineV5RawHandlersImpl<NoBonds,NoRandom>;
 
-    using OutputFlags = Handlers::OutputFlags;
-    using raw_bead_view_t = Handlers::raw_bead_view_t;
-    using raw_angle_bond_info_t = Handlers::raw_angle_bond_info_t;
-    using raw_bead_resident_t = Handlers::raw_bead_resident_t;
-    using raw_cached_bond_t = Handlers::raw_cached_bond_t;
-    using raw_force_input_t = Handlers::raw_force_input_t;
-    using device_state_t = Handlers::device_state_t;
+    using OutputFlags = typename Handlers::OutputFlags;
+    using raw_bead_view_t = typename Handlers::raw_bead_view_t;
+    using raw_angle_bond_info_t = typename  Handlers::raw_angle_bond_info_t;
+    using raw_bead_resident_t = typename Handlers::raw_bead_resident_t;
+    using raw_cached_bond_t = typename Handlers::raw_cached_bond_t;
+    using raw_force_input_t = typename Handlers::raw_force_input_t;
+    using device_state_t = typename Handlers::device_state_t;
 
     struct message_t
     {
@@ -52,6 +53,15 @@ public:
         if(s->bead_types.size()>1){
             if(s->bead_types.size() > MAX_BEAD_TYPES){
                 return "Too many bead types.";
+            }
+        }
+
+        if(NoBonds){
+            for(auto p : s->polymers){
+                auto pt = s->polymer_types.at(p.polymer_type);
+                if(pt.bonds.size()>0){
+                    return "This engine does not support bonds (DPD forces only).";
+                }
             }
         }
 
@@ -86,9 +96,13 @@ public:
                 device_state_t &dst=m_devices[i];
                 const cell_t &src=m_cells[i];
 
+                int32_t loc[3];
+                src.location.extract(loc);
+
                 m_box.extract(dst.box);
                 dst.dt=m_state->dt;
-                dst.inv_root_dt=pow_half(24 * dpd_maths_core_half_step::kT / m_state->dt);
+                dst.scaled_inv_root_dt=pow_half(24 / m_state->dt);
+                dst.edge_bits = create_wrap_bits(&m_box.x[0], loc);
                 dst.bond_r0=m_bond_r0;
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -155,17 +169,16 @@ public:
         { return num_seen==beads.size(); }
     };
 
-    virtual unsigned Run(
-        int interval_count,
-        unsigned interval_size,
-        std::function<bool()> interval_callback
-    ) {
+protected:
+    void PreRun(int interval_count, unsigned interval_size)
+    {
         assert(interval_count*interval_size>0);
 
         import_beads();
 
         for(auto &device : m_devices){
             device.phase=Handlers::PreMigrate;
+            device.t=m_state->t;
             device.interval_size=interval_size;
             device.intervals_todo=interval_count;
             device.interval_offset=interval_size;
@@ -180,8 +193,8 @@ public:
         for(auto &cell : m_cells){
             for(auto &b : cell.beads){
                 raw_bead_resident_t bb;
-                Handlers::copy_bead_resident(&bb, &b);
-                bb.t=0;
+                Handlers::copy_bead_resident::copy(&bb, &b);
+                bb.t=m_state->t;
 
                 // Pre-correct one-step backwards in time, as handlers will do one too many
                 dpd_maths_core_half_step_raw::update_mom((float)-m_state->dt, bb);
@@ -194,6 +207,15 @@ public:
                 resident.push_back(bb);
             }
         }
+    }
+
+public:
+    virtual unsigned Run(
+        int interval_count,
+        unsigned interval_size,
+        std::function<bool()> interval_callback
+    ) {
+        PreRun(interval_count, interval_size);
 
         unsigned nBeads=m_state->beads.size();
 
@@ -231,8 +253,8 @@ public:
             return carry_on;
         };
 
-        unsigned final_slice_t=interval_size*interval_count;
-        unsigned next_slice_t=interval_size; // time of the next slice to be added to slices
+        unsigned final_slice_t=m_state->t + interval_size*interval_count;
+        unsigned next_slice_t=m_state->t + interval_size; // time of the next slice to be added to slices
         int finished_slice_t=-1;
 
         auto process_output=[&](raw_bead_resident_t &output) -> bool
@@ -253,7 +275,10 @@ public:
                     next_slice_t += interval_size;
                 }
                 output_slice &s = slices.at(slice_i);
-                require(output.t >= s.time, "Time does not match a slice time.");
+                if(output.t < s.time){
+                    fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
+                }
+                //require(output.t >= s.time, "Time does not match a slice time.");
                 if(output.t == s.time){
                     //fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                     bool prev_comp=s.complete();
@@ -287,6 +312,7 @@ public:
         Run(1, nSteps, []() -> bool { return false; });
     }
 
+protected:
     virtual void step_all(
         std::vector<device_state_t> &states,
         std::unordered_map<device_state_t*, std::vector<device_state_t*>> &neighbour_map,
@@ -313,14 +339,14 @@ public:
         unsigned next_msg_t = interval_size;
         while(1){
             for(auto &message : messages){
-                if(rng()&1){
+                if((rng()&7)==0){
                     messages_next.push_back(message);
                 }else if(std::holds_alternative<raw_force_input_t>(message.payload)){
                     assert(message.dst);
                     Handlers::on_recv_force(*message.dst, std::get<raw_force_input_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_view_t>(message.payload)){
                     assert(message.dst);
-                    Handlers::on_recv_share<EnableLogging>(*message.dst, std::get<raw_bead_view_t>(message.payload));
+                    Handlers::template on_recv_share<EnableLogging>(*message.dst, std::get<raw_bead_view_t>(message.payload));
                 }else if(std::holds_alternative<raw_bead_resident_t>(message.payload)){
                     if(message.dst==0){
                         bool carry_on=callback(std::get<raw_bead_resident_t>(message.payload));
@@ -344,7 +370,7 @@ public:
                     continue;
                 }
                 active=true;
-                if(rng()&1){
+                if((rng()&7)==0){
                     continue;
                 }
                 decltype(message_t::payload) payload;
@@ -402,5 +428,9 @@ public:
 
 
 };
+
+using BasicDPDEngineV5Raw = BasicDPDEngineV5RawImpl<false>;
+
+using BasicDPDEngineV5RawNoBonds = BasicDPDEngineV5RawImpl<true>;
 
 #endif

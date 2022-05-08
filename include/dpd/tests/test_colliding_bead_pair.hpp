@@ -121,8 +121,8 @@ public:
             }
             
             if( s.t == 2){
-                require_close( normalise(m_dx), normalise(s.beads[0].v), "Bead 0 should move along +dx at time-step 1." );
-                require_close( normalise(-m_dx), normalise(s.beads[1].v), "Bead 1 should move along -dx at time-step 1." );
+                require_close( normalise(m_dx), normalise(s.beads[0].v), 1e-5, "Bead 0 should move along +dx at time-step 1." );
+                require_close( normalise(-m_dx), normalise(s.beads[1].v), 1e-5, "Bead 1 should move along -dx at time-step 1." );
             }
 
             if(m_prev_dist < 1 && dist < 1){

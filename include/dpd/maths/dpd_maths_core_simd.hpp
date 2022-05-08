@@ -5,7 +5,7 @@
 
 #include "dpd/core/hash.hpp"
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include <iostream>
 #endif
 

@@ -2,17 +2,40 @@
 #define dpd_maths_core_half_step_raw_hpp
 
 #include "dpd/maths/dpd_maths_core.hpp"
-
 #include "dpd/core/hash.hpp"
+#include "dpd/core/logging.hpp"
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
 #include <iostream>
 #endif
 
 namespace dpd_maths_core_half_step_raw
 {
+    enum Options{
+        DisableRandom = 1,
+        Default=0
+    };
+
 
     using dpd_maths_core::default_hash;
+
+    // After this method b.f is dead
+    template<class TScalar, class TBead>
+    void update_pos_no_wrap(
+        TScalar dt,
+        TBead &b
+    )
+    {
+        float x[3];
+        vec3_mul(x, b.f, half(dt));
+        vec3_add(x, b.v);
+        vec3_mul(x, dt);
+        vec3_add(x, b.x);
+
+        vec3_copy(b.x, x);
+        vec3_add_mul(b.v, b.f, half(dt));
+        vec3_clear(b.f);
+    }
 
     // After this method b.f is dead
     template<class TScalar, class TDims, class TBead>
@@ -36,14 +59,10 @@ namespace dpd_maths_core_half_step_raw
 
         
         for(int i=0; i<3; i++){
-            x[i] += (x[i]<0 ? dims[i] : 0);
-            x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
-            if(x[i] < 0){
-                printf("<\n");
-            }
-            if(x[i] >= dims[i]){
-                printf(">\n");
-            }
+            x[i] += (x[i]<0.0f ? dims[i] : 0.0f);
+            x[i] -= (x[i]>=dims[i] ? dims[i] : 0.0f);
+            assert(x[i] >= 0.0f);
+            assert(x[i] < dims[i]);
         }
         vec3_copy(b.x, x);
         vec3_add_mul(b.v, b.f, half(dt));
@@ -81,12 +100,8 @@ namespace dpd_maths_core_half_step_raw
         for(int i=0; i<3; i++){
             nx[i] += (nx[i]<0 ? dims_f22[i] : 0);
             nx[i] -= (nx[i]>=dims_f22[i] ? dims_f22[i] : 0);
-            if(nx[i] < 0){
-                printf("<\n");
-            }
-            if(nx[i] >= dims_f22[i]){
-                printf(">\n");
-            }
+            assert(nx[i] >= 0);
+            assert(nx[i] < dims_f22[i]);
         }
         vec3_copy(b.x_f22, nx);
         
@@ -107,7 +122,7 @@ void update_mom(
 }
 
 template<
-    bool EnableLogging, class TScalar, class TVector, class TForce
+    bool EnableLogging, class TScalar, class TVector, class TForce,  Options TOptions=Options::Default
 >
 void calc_force(
     TScalar scale_inv_sqrt_dt,
@@ -125,6 +140,8 @@ void calc_force(
 
     TForce & force_home
 ) {
+    const bool DisableRandom = TOptions & Options::DisableRandom;
+
     assert(home_hash != other_hash);
     assert(0 < dr && dr < 1);
 
@@ -145,16 +162,20 @@ void calc_force(
     TScalar sqrt_gammap = sqrtDissStrength*wr;
 
     TScalar dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
-    TScalar u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
-    TScalar randScale = sqrt_gammap * scale_inv_sqrt_dt ;
-    TScalar randForce = randScale * u;
+    TScalar u;
+    if(DisableRandom){
+        u=0.000001f;
+    }else{
+        u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
+    }
+    TScalar randForce = sqrt_gammap * scale_inv_sqrt_dt * u;
 
     TScalar dr0=r0-dr;
     TScalar hookeanForce=kappa*dr0;
 
     TScalar scaled_force = conForce + dissForce + randForce + hookeanForce;
 
-#ifndef TINSEL
+#ifndef PDPD_TINSEL
     //std::cerr<<"  DUT: home="<<home_hash.hash<<", other="<<other_hash.hash<<", t_hash="<<t_hash<<", dx=("<<(dx[0]*dr)<<","<<(dx[1]*dr)<<","<<(dx[2]*dr)<<"), r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook="<<hookeanForce<<"\n";
     //std::cerr<<"     sqrt_gammap="<<sqrt_gammap<<", rdotv="<<rdotv<<", pow_half(dissStrength)="<<sqrtDissStrength<<"\n";
 #endif
@@ -180,12 +201,107 @@ void calc_force(
             ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rng", 1, &u);
             ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-con",1, &conForce);
             ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-diss", 1,&dissForce);
-            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rng-scale",1, &randScale);
             ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rand",1, &randForce);
             double dpd_force=conForce + dissForce + randForce;
             double ff[3]={dx[0]*dpd_force,dx[1]*dpd_force,dx[2]*dpd_force};
             ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"f_next_dpd", 3,ff);
             if(kappa!=0){
+                double fh[3]={dx[0]*hookeanForce,dx[1]*hookeanForce,dx[2]*hookeanForce};
+                ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"f_next_hookean", 3,fh);
+            }
+        }
+    }
+}
+
+template<
+    bool EnableLogging, class TScalar, class TVector, class TForce, Options TOptions=Options::Default
+>
+void calc_force(
+    TScalar scale_inv_sqrt_dt,
+    uint64_t t_hash,
+
+    TVector dx, TScalar dr,
+    bool is_bonded, TScalar kappa, TScalar r0,
+
+    TScalar conStrength,
+    TScalar sqrtDissStrength,
+    BeadHash home_hash,
+    BeadHash other_hash,
+    const TVector &home_v,
+    const TVector &other_v,
+
+    TForce & force_home
+) {
+    const bool DisableRandom = TOptions & Options::DisableRandom;
+
+    assert(home_hash != other_hash);
+    assert(0 < dr && dr < 1);
+
+    TScalar inv_dr = recip(dr);
+        
+    TVector dv;
+    vec3_sub(dv, home_v, other_v);
+
+    TScalar wr = (1 - dr);
+        
+    TScalar conForce = conStrength*wr;
+
+    float dx_orig[3]={dx[0],dx[1],dx[2]};
+
+    vec3_mul(dx, inv_dr);
+        
+    TScalar rdotv = dx[0]*dv[0] + dx[1]*dv[1] + dx[2]*dv[2];
+    TScalar sqrt_gammap = sqrtDissStrength*wr;
+
+    TScalar dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
+    TScalar u;
+    if(DisableRandom){
+        u=0.0001f;
+    }else{
+        u = dpd_maths_core::default_hash(t_hash, home_hash, other_hash);
+    }
+    TScalar randForce = sqrt_gammap * scale_inv_sqrt_dt * u;
+
+    TScalar scaled_force = conForce + dissForce + randForce;
+
+    TScalar dr0, hookeanForce;
+    if(is_bonded){
+        dr0=r0-dr;
+        hookeanForce=kappa*dr0;
+        scaled_force += hookeanForce;
+    }
+
+#ifndef PDPD_TINSEL
+    //std::cerr<<"  DUT: home="<<home_hash.hash<<", other="<<other_hash.hash<<", t_hash="<<t_hash<<", dx=("<<(dx[0]*dr)<<","<<(dx[1]*dr)<<","<<(dx[2]*dr)<<"), r="<<dr<<", u="<<u<<", con="<<conForce<<", diss="<<dissForce<<", ran="<<randForce<<", hook="<<hookeanForce<<"\n";
+    //std::cerr<<"     sqrt_gammap="<<sqrt_gammap<<", rdotv="<<rdotv<<", pow_half(dissStrength)="<<sqrtDissStrength<<"\n";
+#endif
+
+    vec3_mul(force_home, dx , scaled_force);
+
+    for(int i=0; i<3; i++){
+        assert(abs(force_home[i])<1000);
+    }
+
+    if(EnableLogging){
+        if(ForceLogging::logger()){
+           
+            double ddx[3]={dx_orig[0],dx_orig[1],dx_orig[2]};
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dx", 3,ddx);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dr", 1,&dr);
+            double dd=sqrtDissStrength*sqrtDissStrength;
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-diss-strength", 1, &dd);
+            double tt=scale_inv_sqrt_dt;
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-invrootdt", 1, &tt);
+            double gammap=sqrt_gammap*sqrt_gammap;
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-gammap", 1, &gammap);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rng", 1, &u);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-con",1, &conForce);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-diss", 1,&dissForce);
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"dpd-rand",1, &randForce);
+            double dpd_force=conForce + dissForce + randForce;
+            double ff[3]={dx[0]*dpd_force,dx[1]*dpd_force,dx[2]*dpd_force};
+            ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"f_next_dpd", 3,ff);
+            if(is_bonded){
                 double fh[3]={dx[0]*hookeanForce,dx[1]*hookeanForce,dx[2]*hookeanForce};
                 ForceLogging::logger()->LogBeadPairProperty(home_hash,other_hash,"f_next_hookean", 3,fh);
             }

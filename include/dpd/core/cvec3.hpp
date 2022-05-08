@@ -120,4 +120,85 @@ public:
 
 static_assert(sizeof(CVec3)==8);
 
+/*
+struct CVec3Polar
+{
+private:
+    // This is a compressed version of CVec3 that packs
+    // into 32 bits using polar co-ordinates
+    union{
+        struct {
+            uint32_t r_exp  :  6; // exponent, biased by 32
+            uint32_t r_frac :  9; // fraction, in [0.5,1) with 1 implicit bit
+            uint32_t phi    :  9; // angle
+            uint32_t theta  :  8; // azimuth
+        };
+        uint32_t bits;
+    };
+
+    // Zero is recorded as all components zero.
+    //
+    // Inf and nan are not supported.
+
+    static std::pair<double,double> sincos(uint angle)
+    {
+        assert(angle < 512);
+        bool table_inited=false;
+        static std::array<std::pair<double,double>,512> table;
+
+        return table.at(angle);
+    }
+public:
+    CVec3Polar()
+    {
+        bits=0;
+    }
+
+    CVec3Polar(double x, double y, double z)
+    {
+        double p[3]={x,y,z};
+        set(p);
+    }
+
+    CVec3Polar(const vec3r_t &v)
+    {
+        set(&v.x[0]);
+    }
+
+    void set(const double p[3])
+    {
+        if(p[0]==0 && p[1]==0 && p[2]==0){
+            bits = 0;
+            return;
+        }
+
+        float full_r = sqrtf(p[0]*p[0]+p[1]*p[1]+p[2]*p[2]);
+        float full_theta = atan2f(sqrt(p[0]*p[0] + p[1]*p[1]), p[2]);
+        float full_phi = atan2f(y,x);
+
+        int full_r_exp;
+        full_r_frac = frexp( full_r, full_r_exp );
+
+        TODO
+    }
+
+
+    vec3r_t get_vec3r() const
+    {
+        if(r_frac==0){
+            return {0,0,0};
+        }
+
+        auto sc_theta=sincos(theta);
+        auto sc_phi=sincos(phi);
+        double full_frac = r_frac | (1u<<9);
+        double r = ldexp(full_frac, r_exp-32-9 );
+
+        return { r * sc_phi.second * sc_theta.first, r * sc_phi.first * sc_theta.first, r * sc_theta.second };
+    }
+};
+
+static_assert(sizeof(CVec3Polar)==4);
+*/
+
 #endif
