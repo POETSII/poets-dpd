@@ -1,12 +1,17 @@
+
 CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall -O0
 CPPFLAGS += -Wno-unused-variable -fmax-errors=2 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable
 CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 #LDFLAGS += -fuse-ld=gold
 
+CPPFLAGS += -I/home/dbt1c21/packages/tbb2019_20180718oss/include/
+
 CPPFLAGS += -DNDEBUG=1 
 CPPFLAGS += -O3 -march=native -ffast-math
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined
+
+CPPFLAGS += -DTBB_PREVIEW_GLOBAL_CONTROL=1
 
 TINSEL_ROOT = tinsel
 
@@ -21,6 +26,8 @@ CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 
 CPPFLAGS += -I ~/local/include
 LDFLAGS += -L ~/local/lib
+
+LDFLAGS += -L/home/dbt1c21/packages/tbb2019_20180718oss/lib/intel64/gcc4.7
 
 LDLIBS += -ltbb
 
