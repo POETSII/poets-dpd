@@ -8,7 +8,7 @@
 
 std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
 {
-    int water_bead=0;
+    int water_bead=-1;
     for(const BeadType &bt : s.bead_types){
         if(bt.name=="W"){
             water_bead=bt.id;

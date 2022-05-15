@@ -84,7 +84,7 @@ int main(int argc, const char *argv[])
             usage();
         }
 
-        int steps=100;
+        int steps=10;
         if(argc>4){
             steps=std::stoi(argv[4]);
         }
@@ -92,7 +92,7 @@ int main(int argc, const char *argv[])
         double max_r_tol=0.9;
         if(argc>5){
             max_r_tol=strtod(argv[5], 0);
-            if(max_r_tol < 0.1 || max_r_tol > 1){
+            if(max_r_tol < 0.1 || max_r_tol >= 2){
                 fprintf(stderr, "max_r_tol = %f doesn't make sense (?)\n", max_r_tol);
                 exit(1);
             }
@@ -123,11 +123,16 @@ int main(int argc, const char *argv[])
 
         engine->Attach(&state);
 
-        unsigned batches=0;
-        while(1){
-            ++batches;
-            fprintf(stderr, "Starting batch %d\n", batches);
-            engine->Run(steps);
+        auto calc_worst = [&]() -> double
+        {
+
+            double sumSqMom=0;
+            for(const auto &b : state.beads){
+                for(int d=0; d<3; d++){
+                    sumSqMom += b.x[d] * b.x[d];
+                }
+            }
+            double temperature=sumSqMom/(3.0*state.beads.size());
 
             double worst=0;
             double sum=0;
@@ -144,8 +149,19 @@ int main(int argc, const char *argv[])
                     n += 1;
                 }
             }
-            fprintf(stderr, "  Target=%f, worst=%f, mean=%f\n", max_r_tol, worst, sum/n);
+            fprintf(stderr, "  t=%d, Temperature=%g, Angles: Target=%f, worst=%f, mean=%f\n", state.t, temperature, max_r_tol, worst, sum/n);
+            return worst;
+        };
 
+        calc_worst();
+
+        unsigned batches=0;
+        while(1){
+            ++batches;
+            fprintf(stderr, "Starting batch %d\n", batches);
+            engine->Run(steps);
+
+            double worst=calc_worst();
             if(worst < max_r_tol){
                 break;
             }

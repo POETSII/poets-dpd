@@ -111,6 +111,7 @@ int main(int argc, const char *argv[])
 
     //tbb::global_control global_limit(tbb::global_control::max_allowed_parallelism, 1);
 
+    double tRatePrev=0;
     for(int todo=nStart; todo<1000000; todo=std::max(2,todo*3/2)){
         double t0=now();
 
@@ -134,7 +135,14 @@ int main(int argc, const char *argv[])
         }
         fprintf(stdout, "\n");
 
-        
+	fflush(stdout);        
+
+	double tRate=(t2-t0)/todo;
+	fprintf(stderr, "%g\n", abs((tRate-tRatePrev)/tRatePrev) );
+	if( tRatePrev>0 && (t2-t0)>10 && abs((tRate-tRatePrev)/tRatePrev) < 0.05  ){
+		break;
+	}
+	tRatePrev=tRate;
     }
 
     return 0;

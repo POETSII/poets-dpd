@@ -21,6 +21,13 @@
 class NaiveDPDEngineHalfMerge
     : public DPDEngine
 {
+    static double now()
+    {
+        timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        return ts.tv_sec+1e-9*ts.tv_nsec;
+    };
+
 public:
     friend class NaiveDPDEngineHalfMergeTBB;
 
@@ -40,26 +47,44 @@ public:
     {
         m_state=state;
         if(m_state){
+            m_timings=timings_t{};
+
+            double start=now();
             check_constraints_and_setup();
+            m_timings.configure += now()-start;
         }
     }
 
     virtual void Run(unsigned nSteps) override
     {
+        double start=now();
+
         for(unsigned i=0; i<nSteps; i++){
             step();
         }
+
+        double end=now();
+        m_timings.execute_to_first_bead += end-start;
+        m_timings.execute_to_last_bead += end-start;
+    }
+
+    virtual bool GetTimings(DPDEngine::timings_t &timings)
+    {
+        timings = m_timings;
+        return true;
     }
 
 private:
     WorldState *m_state;
+    timings_t m_timings;
 
     struct Packed
     {
-        float x[3];
-        uint32_t id;
-        float v[3];
-        uint32_t _pad_;
+        uint32_t hash;
+        vec3f_t x;
+        vec3f_t v;
+        vec3f_t f;
+        Bead *bead;
     };
 
     struct Cell
@@ -67,11 +92,13 @@ private:
         unsigned index;
         vec3i_t pos;
         bool is_edge;
-        std::vector<Bead*> beads;
         std::vector<Cell*> neighbours;
-        std::vector<Bead*> incoming;
+
+        std::vector<Bead*> beads;
+        std::vector<Bead*> incoming_beads;
 
         std::vector<Packed> packed;
+        std::vector<Packed> incoming_packed;
 
         std::mutex mutex;
     };
@@ -117,7 +144,7 @@ private:
                 c.is_edge |= c.pos[d]==0 || c.pos[d]==m_dims[d]-1;
             }
             c.beads.clear();
-            c.incoming.clear();
+            c.incoming_beads.clear();
 
             c.neighbours.clear();
             for(auto d : rel_nhood){
@@ -206,7 +233,7 @@ private:
                 unsigned index=world_pos_to_cell_index(b->x);
                 if(index!=c.index){
                     //std::cerr<<"Migrate at "<<m_state->t<<", "<<c.pos<<" -> "<<m_cells.at(index).pos<<"\n";
-                    m_cells.at(index ).incoming.push_back(b);
+                    m_cells.at(index ).incoming_beads.push_back(b);
                     c.beads[bi]=c.beads.back();
                     c.beads.pop_back();
                 }
@@ -218,9 +245,9 @@ private:
         // Idempotent function to moving incoming to beads. Should be fast in case where incoming is empty
         auto transfer_incoming=[&](Cell &c)
         {
-            if(!c.incoming.empty()){
-                c.beads.insert(c.beads.end(), c.incoming.begin(), c.incoming.end());
-                c.incoming.clear();
+            if(!c.incoming_beads.empty()){
+                c.beads.insert(c.beads.end(), c.incoming_beads.begin(), c.incoming_beads.end());
+                c.incoming_beads.clear();
             }
         };
 

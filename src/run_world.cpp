@@ -118,7 +118,9 @@ int main(int argc, const char *argv[])
 
         std::shared_ptr<DPDEngine> engine = DPDEngineFactory::create(engine_name);
 
+        fprintf(stderr, "Validating with max_r=%f....\n", engine->GetMaxBondLength());
         validate(state, engine->GetMaxBondLength());
+        fprintf(stderr, "  ok\n");
 
         std::string ok=engine->CanSupport(&state);
         if(!ok.empty()){
@@ -153,21 +155,14 @@ int main(int argc, const char *argv[])
             t1=t2;
 
             std::vector<char> tmp(baseName.size()+100);
-            std::ofstream output;
 
             if( (slice_i%state_modulus) == 0 ){
-        	    snprintf(&tmp[0], tmp.size()-1, "%s.%09d.state", baseName.c_str(), (int)state.t);
-                output.open(&tmp[0]);
-
-                    if(!output.is_open()){
-                        fprintf(stderr, "Couldnt create file %s\n", &tmp[0]);
-                        exit(1);
-                    }
-                    write_world_state(output, state);
-                    output.close();
+        	    snprintf(&tmp[0], tmp.size()-1, "%s.%09d.state.gz", baseName.c_str(), (int)state.t);
+                    write_world_state(std::string(&tmp[0]), state, true);
             }
 
             if( (slice_i%vtk_modulus) == 0){
+		std::ofstream output;
              snprintf(&tmp[0], tmp.size()-1, "%s.%09d.vtk", baseName.c_str(), (int)state.t);
              output.open(&tmp[0]);
              if(!output.is_open()){

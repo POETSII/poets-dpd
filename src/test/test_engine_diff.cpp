@@ -13,6 +13,9 @@
 
 #include <random>
 
+#define TBB_PREVIEW_GLOBAL_CONTROL 1
+#include <tbb/global_control.h>
+
 void usage()
 {
     fprintf(stderr, "test_dpd_engine : engine-name [filter]\n");
@@ -25,6 +28,14 @@ void usage()
 
 int main(int argc, const char *argv[])
 {
+    int max_parallelism=tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism);
+    if(getenv("PDPD_NUM_THREADS")){
+        max_parallelism=std::atoi(getenv("PDPD_NUM_THREADS"));
+    }
+    std::cerr<<"TBB is using "<<max_parallelism<<" threads.\n";
+    tbb::global_control tbb_control_threads(tbb::global_control::max_allowed_parallelism, max_parallelism);
+      
+
     std::string engine_name;
     if(argc>1){
         engine_name=argv[1];

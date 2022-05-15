@@ -240,6 +240,10 @@ void calc_angle_force(
         assert(isfinite(tailForce));
 
         middleForce = -( headForce + tailForce );
+    }else{
+        headForce.clear();
+        tailForce.clear();
+        middleForce.clear();
     }
 }
 

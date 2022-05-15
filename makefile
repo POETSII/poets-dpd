@@ -6,14 +6,26 @@ CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 LDFLAGS += -fuse-ld=gold
 
-CPPFLAGS += -I/home/dbt1c21/packages/tbb2019_20180718oss/include/
-
+# Hacks for Soton HPC/AMD systems
+# TODO : guard/gate these somehow
+CXX=g++-11
+CPPFLAGS += -I/home/dbt1c21/packages/oneTBB-2019/include
+CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
 LDFLAGS += -L/home/dt10/.linuxbrew/lib
+LDFLAGS += -L/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0_libc2.17_kernel3.10.0_release/
+
 
 CPPFLAGS += -g3 -O0 -mavx2
 
 CPPFLAGS += -DNDEBUG=1 
-CPPFLAGS += -O3 -march=native
+CPPFLAGS += -O3
+
+## Iridis cpuinfo:
+## AMD: flags           : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush          mmx fxsr sse sse2    ht        syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc art                       rep_good nopl           nonstop_tsc extd_apicid aperfmperf eagerfpu pni pclmulqdq        monitor                        ssse3      fma cx16                    sse4_1 sse4_2 x2apic movbe popcnt                    aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch     osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_l2 cpb cat_l3 cdp_l3 hw_pstate sme retpoline_amd                                    ssbd     ibrs ibpb stibp vmmcall                                       fsgsbase            bmi1     avx2 smep bmi2                  cqm     rdt_a                  rdseed adx smap clflushopt clwb sha_ni                            xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif umip overflow_recov succor smca
+## Intel:                 fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx                 pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc             aperfmperf eagerfpu pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm                                   abm                   3dnowprefetch epb                                                                              cat_l3 cdp_l3                             invpcid_single intel_ppin intel_pt ssbd mba ibrs ibpb stibp         tpr_shadow vnmi flexpriority ept vpid fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm cqm mpx rdt_a avx512f avx512dq rdseed adx smap clflushopt clwb        avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts hwp_epp pku ospke md_clear spec_ctrl intel_stibp flush_l1d
+
+CPPFLAGS += -mavx2 -mfma
+
 #-mavx512f -mprefer-vector-width=512
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined 
 #CPPFLAGS += -fsanitize=undefined -fsanitize=thread
@@ -38,9 +50,7 @@ CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 CPPFLAGS += -I ~/local/include
 LDFLAGS += -L ~/local/lib
 
-LDFLAGS += -L/home/dbt1c21/packages/tbb2019_20180718oss/lib/intel64/gcc4.7
-
-ENGINE_LDLIBS += -ltbb -lscotch
+ENGINE_LDLIBS += -ltbb
 
 
 TEST_BIN := bin/test/test_engine bin/test/test_engine_diff \
@@ -55,7 +65,7 @@ ifeq ($(DISABLE_RISCV),)
 ENGINES_RISCV := $(filter %.riscv,$(patsubst src/engines/%.cpp,%, $(filter-out src/engines/memcpy.riscv.cpp, $(wildcard src/engines/*.cpp))))
 ENGINE_LDFLAGS += -L $(TINSEL_ROOT)/hostlink
 ENGINE_LDLIBS += -l:hostlink.a
-ENGINE_LDLIBS += -lmetis
+ENGINE_LDLIBS += -lmetis -lscotch
 else
 ENGINES_RISCV := 
 ENGINES := $(filter-out %tinsel_hw,$(ENGINES))
