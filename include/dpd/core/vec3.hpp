@@ -44,6 +44,14 @@ struct vec3g_t
         }
     }
 
+    template<class TT>
+    void operator=(const vec3g_t<TT> _x)
+    {
+        for(int i=0; i<3; i++){
+            x[i]=_x[i];
+        }
+    }
+
     T operator[](size_t i) const
     { return x[i]; }
 

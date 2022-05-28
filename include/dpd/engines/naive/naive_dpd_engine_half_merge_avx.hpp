@@ -1,5 +1,5 @@
-#ifndef naive_dpd_engine_half_merge_hpp
-#define naive_dpd_engine_half_merge_hpp
+#ifndef naive_dpd_engine_half_merge_avx_hpp
+#define naive_dpd_engine_half_merge_avx_hpp
 
 #include "dpd/core/dpd_engine.hpp"
 #include "dpd/engines/naive/naive_dpd_engine.hpp"
@@ -15,10 +15,11 @@
 #include <array>
 #include <unordered_set>
 #include <mutex>
+#include <array>
 
 #include <immintrin.h>
 
-class NaiveDPDEngineHalfMerge
+class NaiveDPDEngineHalfMergeAVX
     : public DPDEngine
 {
     static double now()
@@ -33,6 +34,12 @@ public:
 
     std::string CanSupport(const WorldState *s) const override
     {
+        for(const PolymerType &pt : s->polymer_types){
+            if(pt.bead_types.size()>1){
+                return "Polymersnot yet supported.";
+            }
+        }
+
         for(int d=0;d<3;d++){
             int l=round(s->box[d]);
             require(l==s->box[d], "World bounds must be integer.");
@@ -55,28 +62,12 @@ public:
         }
     }
 
-    virtual void sync_packed_to_beads()
-    {
-        for(Cell &c : m_cells){
-            for(Packed &p : c.packed){
-                auto b=p.bead;
-                p.x=b->x;
-                p.v=b->v;
-                p.f=b->f;
-            }
-        }
-    }
-
     virtual void Run(unsigned nSteps) override
     {
         double start=now();
 
         for(unsigned i=0; i<nSteps; i++){
             step();
-        }
-
-        if(m_packed){
-            sync_packed_to_beads();
         }
 
         double end=now();
@@ -94,30 +85,85 @@ protected:
     WorldState *m_state;
     timings_t m_timings;
 
-    bool m_packed = false;
-
     struct Packed
     {
         uint32_t hash;
         vec3f_t x;
         vec3f_t v;
         vec3f_t f;
-        Bead *bead; // Needed for angle bond lookups
     };
+
+    const unsigned VEC_WIDTH = 4;
+
+    #error "Another half-arsed attempt"
 
     struct Cell
     {
         unsigned index;
         vec3i_t pos;
         bool is_edge;
-        std::vector<Cell*> neighbours;
+        std::array<uint32_t,13> neighbour_indices;
 
-        // Implementations use one or the other of raw beads or packed beads.
-        std::vector<Bead*> beads;
-        std::vector<Bead*> incoming_beads;
+        uint32_t n; // Number of local cells
+        uint32_t todo; // Number of local cells not yet moved. 0 <= todo <= n
+
+        float vec_x[3][VEC_WIDTH];
+        float vec_v[3][VEC_WIDTH];
+        uint32_t vec_hash[VEC_WIDTH];
+        float vec_f[3][VEC_WIDTH];
 
         std::vector<Packed> packed;
-        std::vector<Packed> incoming_packed;
+
+        void remove(unsigned i)
+        {
+            assert(i<=n);
+            if(i>=VEC_WIDTH){
+                // Bead to deleteis in packed area
+                if( i<n ){
+                   packed[i-VEC_WIDTH] = packed.back();
+                }
+                packed.pop_back();
+            }else if(i==VEC_WIDTH-1){
+                // Bead to delete is the last beack in the vec area
+                if(i<n){
+                    // ... and there are also beads in the packed area
+                    for(int d=0; d<3; d++){
+                        vec_x[d][i] = packed.back().x[d];
+                        vec_v[d][i] = packed.back().v[d];
+                        vec_f[d][i] = packed.back().f[d];
+                    }
+                    vec_hash[i] = packed.back().hash;
+                    packed.pop_back();
+                }
+            }else{
+                // Bead to delete is in vec area and not the last
+                if(i<n){
+                    // .. and there is another vec bead after
+                    for(int d=0; d<3; d++){
+                        vec_x[d][i] = vec_x[d][n-1];
+                        vec_v[d][i] = vec_v[d][n-1];
+                        vec_f[d][i] = vec_f[d][n-1];
+                    }
+                    vec_hash[i] = vec_hash[n-1];
+                }
+            }
+            --n;
+        }
+
+        void insert(const Packed &b)
+        {
+            if(n>=VEC_WIDTH){
+                packed.push_back(b);
+            }else{
+                for(int d=0; d<3; d++){
+                    vec_x[d][n] = b.x[d];
+                    vec_v[d][n] = b.v[d];
+                    vec_f[d][n] = b.f[d];
+                }
+                vec_hash[d][n] = b.hash[d];
+            }
+            ++n;
+        }
     };
 
     unsigned m_numBeadTypes;
@@ -160,36 +206,29 @@ protected:
             for(int d=0; d<3; d++){
                 c.is_edge |= c.pos[d]==0 || c.pos[d]==m_dims[d]-1;
             }
-            c.beads.clear();
-            c.incoming_beads.clear();
+
+            c.n=0;
+            c.todo=0;
             c.packed.clear();
-            c.incoming_packed.clear();
 
             c.neighbours.clear();
+            unsigned offset=0;
             for(auto d : rel_nhood){
                 vec3i_t neighbour=vec_wrap(c.pos+d, m_dims);
-                c.neighbours.push_back(&m_cells.at(cell_pos_to_index(neighbour)));
+                c.
+                c.neighbours[offset++]=cell_pos_to_index(neighbour);
             }
         }
 
-        if(!m_packed){
-            for(auto &b : m_state->beads)
-            {
-                vec3i_t pos=floor(b.x);
-                m_cells.at(cell_pos_to_index(pos)).beads.push_back(&b);
-            }
-        }else{
-            for(auto &b : m_state->beads)
-            {
-                vec3i_t pos=floor(b.x);
-                Packed p;
-                p.bead=&b;
-                p.f=b.f;
-                p.v=b.v;
-                p.x=b.x;
-                p.hash=b.get_hash_code().hash;
-                m_cells.at(cell_pos_to_index(pos)).packed.push_back(p);
-            }
+        for(auto &b : m_state->beads)
+        {
+            vec3i_t pos=floor(b.x);
+            Packed p;
+            p.f=b->f;
+            p.v=b->v;
+            p.x=b->x;
+            p.hash=b->GetHash();
+            m_cells.at(cell_pos_to_index(pos)).insert(p);
         }
     }
 
@@ -231,31 +270,6 @@ protected:
         assert(!m_packed);
 
         m_t_hash=get_t_hash(m_state->t, m_state->seed);
-
-        if(EnableLogging && ForceLogging::logger()){
-            ForceLogging::logger()->SetTime(m_state->t);
-            ForceLogging::logger()->LogProperty("dt", 1, &m_state->dt);
-            double seed_low=m_state->seed &0xFFFFFFFFul;
-            double seed_high=m_state->seed>>32;
-            ForceLogging::logger()->LogProperty("seed_lo", 1, &seed_low);
-            ForceLogging::logger()->LogProperty("seed_high", 1, &seed_high);
-            double t_hash_low=m_t_hash&0xFFFFFFFFul;
-            double t_hash_high=m_t_hash>>32;
-            ForceLogging::logger()->LogProperty("t_hash_lo", 1, &t_hash_low);
-            ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
-            for(auto &b : m_state->beads){
-                double h=b.get_hash_code().hash;
-                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(), "b_hash", 1, &h);
-                double x[3]={b.x[0],b.x[1],b.x[2]};
-                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x",3,x);
-                Bead bt=b;
-                dpd_maths_core_half_step::update_mom(m_state->dt/2, bt);
-                double v[3]={bt.v[0],bt.v[1],bt.v[2]};
-                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"v",3,v);
-                double f[3]={b.f[0],b.f[1],b.f[2]};
-                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f",3,f);
-            }
-        }
 
         double dt=m_state->dt;
 
@@ -419,7 +433,7 @@ protected:
             for(int j=i+1; j<(int)home.beads.size(); j++){
                 Bead *ob=home.beads[j];
 
-                vec3r_t dx =  hb->x - ob->x;
+                vec3f_t dx =  hb->x - ob->x;
                 double dr2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
                 if(dr2 >= 1 || dr2<MIN_DISTANCE_CUTOFF_SQR){
                     continue;
@@ -440,7 +454,7 @@ protected:
             for(int j=i+1; j<(int)home.packed.size(); j++){
                 Packed &ob=home.packed[j];
 
-                vec3f_t dx =  hb.x - ob.x;
+                vec3f_t dx =  hb->x - ob->x;
                 float dr2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
                 if(dr2 >= 1 || dr2<(float)MIN_DISTANCE_CUTOFF_SQR){
                     continue;
@@ -492,8 +506,8 @@ protected:
             m_t_hash,
             dx, dr,
             0, 0, // kappa and r0
-            hb,
-            ob,
+            *hb,
+            *ob,
             f
         );
 

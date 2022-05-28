@@ -68,5 +68,4 @@ fi
 ## Step the initial state
 
 >&2 echo "${WORKING_DIR}/${BASE_NAME}.begin.state.gz" 
-${POETS_DPD_DIR}/bin/run_world ${ENGINE} ${WORKING_DIR}/${BASE_NAME}.begin.state.gz ${WORKING_DIR}/${BASE_NAME}- ${INTERVAL_COUNT} ${INTERVAL_SIZE}
-
+${POETS_DPD_DIR}/bin/run_world ${ENGINE} ${WORKING_DIR}/${BASE_NAME}.begin.state.gz ${WORKING_DIR}/${BASE_NAME}- ${INTERVAL_COUNT} ${INTERVAL_SIZE} ${INTERVAL_SIZE} --gzip-snapshot --povray-render --povray-snapshot

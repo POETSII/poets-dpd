@@ -195,7 +195,8 @@ private:
         double dt=m_state->dt;
 
         // Move the beads, and then assign to cells based on x(t+dt)
-        parallel_for_each(m_cells, 256, [&](Cell &c){
+        parallel_for_each_cell_blocked([&](Cell *pc){
+            Cell &c=*pc;
             for(int bi=c.beads.size()-1; bi>=0; bi--){
                 Bead *b=c.beads[bi];
                 //std::cerr<<"In "<<c.pos<<" at "<<m_state->t<<"\n";
@@ -205,7 +206,7 @@ private:
                     //std::cerr<<"Migrate at "<<m_state->t<<", "<<c.pos<<" -> "<<m_cells.at(index).pos<<"\n";
                     auto &dst_cell=m_cells[index];
                     {
-                        std::unique_lock<std::mutex> lk(dst_cell.mutex);
+                        // We don't need the lock because of the conflict groups!
                         dst_cell.incoming_beads.push_back(b);
                     }
                     c.beads[bi]=c.beads.back();
@@ -226,7 +227,7 @@ private:
         parallel_for_each_cell_blocked([&](Cell *c){ process_cell<EnableLogging>(c); } );
 
         // Update all bonds
-        if(0){
+        if(1){
             parallel_for_each(m_non_monomers, m_non_monomer_grain, [&](const Polymer *p){
                 const auto &pt = m_state->polymer_types.at(p->polymer_type);
                 for(const auto &bond : pt.bonds){

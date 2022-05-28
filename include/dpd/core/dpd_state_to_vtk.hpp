@@ -2,6 +2,7 @@
 #define dpd_state_to_vtk_hpp
 
 #include "dpd_state.hpp"
+#include "dpd/core/with_optional_gzip_stream.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -61,6 +62,13 @@ std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
 */
 
     return dst;
+}
+
+void write_to_vtk(std::string dst_path, const WorldState &state1)
+{
+    with_optional_gzip_ostream(dst_path, [&](std::ostream &dst){
+        write_to_vtk(dst, state1);
+    });
 }
 
 struct VTKSnapshotter
