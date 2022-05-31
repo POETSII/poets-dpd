@@ -4,6 +4,7 @@
 #include "vec3.hpp"
 
 #include <cmath>
+#include <cfloat>
 #include <iostream>
 
 struct CVec3
@@ -119,7 +120,17 @@ static_assert(sizeof(CVec3)==8);
 
 struct CVec3Half
 {
+public:
+    static const int EXP_MIN =-14;
+    static const int EXP_MAX = 15;
+
+    static double min_non_zero_val()
+    {
+        return ldexp(1, EXP_MIN);
+    }
+
 private:
+
     // Packs a direction vector into 4 bytes
     uint32_t exponent : 5; // Exponent in the range 0=0, 1=2^-14, 2=2^-12, ..., 30=2^15, 31=invalid
     int32_t fx : 9; // Value in (-1,+1) encoded as twos-complement integer with 8 fractional bits and a sign bit
@@ -149,12 +160,23 @@ private:
         }
 
 
+        int biggest_index=-1;
+        double biggest_value=-DBL_MIN;
         int es[3];
         double fs[3];
         int e=INT16_MIN;
         for(int i=0; i<3; i++){
-            fs[i]=frexp(p[i], &es[i]);
-            e=std::max(e, es[i]);
+            if(p[i]==0){
+                fs[i]=0;
+            }else{
+                fs[i]=frexp(p[i], &es[i]);
+                //std::cerr<<"  "<<p<<" -> e="<<es[i]<<", f="<<fs[i]<<"\n";
+                e=std::max(e, es[i]);
+                if(std::abs(p[i]) > std::abs(biggest_value)){
+                    biggest_index=i;
+                    biggest_value=p[i];
+                }
+            }
         }
         assert(e!=INT16_MIN); // Onecomponent is non-zero.
 
@@ -166,6 +188,12 @@ private:
             memset(this, 0, sizeof(CVec3Half));
             return;
         }
+
+#ifndef NDEBUG
+        double scale=ldexp(0.5, e);
+        //std::cerr<<"scale=2^"<<e<<"="<<scale<<", biggest="<<biggest_value<<"\n";
+        assert( scale <= std::abs(biggest_value) && std::abs(biggest_value) < 2*scale);
+#endif
 
         double frs[3];
         bool overflow=false;
@@ -221,6 +249,11 @@ public:
 
     double get_z() const
     { return to_double(fz); }
+
+    double get_exponent() const
+    {
+        return ldexp(1.0, exponent-15-8);
+    }
 
     vec3r_t get_vec3r() const
     {

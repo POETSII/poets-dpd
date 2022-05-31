@@ -15,6 +15,42 @@ void require(bool cond, const char *msg)
 int main()
 {
     {
+        std::cerr<<"Testing chosen cases\n";
+
+        std::vector<vec3r_t> cases={
+            {0.0497372,-0.0723867,0}
+        };
+        for(auto xyz : cases){
+            auto x=xyz[0];
+            auto y=xyz[1];
+            auto z=xyz[2];
+            
+            CVec3Half h(x,y,z);
+
+            if(h.is_zero()){
+                REQUIRE( std::abs(x) <= ldexp(0.5, -14));
+                REQUIRE( std::abs(y) <= ldexp(0.5, -14));
+                REQUIRE( std::abs(z) <= ldexp(0.5, -14));
+            }else{
+                double largest=std::max(std::abs(x),std::max(std::abs(y),std::abs(z)));
+
+                std::cerr<<"  x="<<x<<", get_x()="<<h.get_x()<<", largest="<<largest<<", err="<<std::abs((h.get_x() - x) / largest)<<"\n";
+                std::cerr<<"  y="<<y<<", get_y()="<<h.get_y()<<", largest="<<largest<<", err="<<std::abs((h.get_y() - y) / largest)<<"\n";
+                std::cerr<<"  z="<<z<<", get_z()="<<h.get_z()<<", largest="<<largest<<", err="<<std::abs((h.get_z() - z) / largest)<<"\n";
+                std::cerr<<"    scale="<<h.get_exponent()<<"\n";
+                REQUIRE( std::abs((h.get_x() - x) / largest) < 1.0/128 );
+                REQUIRE( std::abs((h.get_y() - y) / largest) < 1.0/128 );
+                REQUIRE( std::abs((h.get_z() - z) / largest) < 1.0/128 );
+
+                double tr=vec3r_t(x,y,z).l2_norm();
+                double gr=h.get_vec3r().l2_norm();
+                //std::cerr<<" tr="<<tr<<", gr="<<gr<<"\n";
+                REQUIRE( std::abs( (tr-gr) / gr ) < 1.0/64.0 ); // Not sure exactly what relative precision in magnitude should be.
+            }
+        }
+    }
+
+    {
         CVec3Half h;
     
         REQUIRE(h.get_x()==0);
@@ -107,6 +143,7 @@ int main()
             }
         }
     }
+
 
     std::cerr<<"Ok\n";
 

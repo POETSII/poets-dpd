@@ -17,7 +17,7 @@ LDFLAGS += -L/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0
 
 CPPFLAGS += -g3 -O0 -mavx2
 
-CPPFLAGS += -DNDEBUG=1 
+#CPPFLAGS += -DNDEBUG=1 
 CPPFLAGS += -O3
 
 ## Iridis cpuinfo:
