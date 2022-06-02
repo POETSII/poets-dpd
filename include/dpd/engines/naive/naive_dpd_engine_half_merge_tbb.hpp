@@ -20,26 +20,6 @@ public:
         return 1000;
     }
 
-    std::string CanSupport(const WorldState *s) const override
-    {
-        std::string base=NaiveDPDEngineHalfMerge::CanSupport(s);
-        if(!base.empty()){
-            return base;
-        }
-
-        if( fmod(s->box[0],4) !=0  ){
-            return "x-dim not a multiple of 4.";
-        }
-        if( fmod(s->box[1],4) !=0  ){
-            return "y-dim not a multiple of 4.";
-        }
-        if( fmod(s->box[2],4) !=0  ){
-            return "z-dim not a multiple of 4.";
-        }
-
-        return "";
-    }
-
     void Attach(WorldState *s) override
     {
         std::string m=CanSupport(s);

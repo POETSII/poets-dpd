@@ -825,6 +825,12 @@ private:
     }
 public:
 
+    bool CanSupportHookeanBonds() const
+    { return true; }
+
+    bool CanSupportAngleBonds() const
+    { return true; } // Let the specific error messagecome through.
+
     std::string CanSupport(const WorldState *world) const override
     {
         if(world->bead_types.size() > MAX_BEAD_TYPES){
@@ -837,7 +843,7 @@ public:
             }
         }
 
-        return {};
+        return DPDEngine::CanSupport(world);
     }
 
     void Attach(WorldState *state) override

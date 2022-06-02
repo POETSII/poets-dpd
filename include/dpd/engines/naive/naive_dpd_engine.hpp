@@ -66,6 +66,14 @@ public:
         }
     }
 
+    bool CanSupportSpatialDPDParameters() const override
+    { return true; }
+
+    bool CanSupportHookeanBonds() const override
+    { return true; }
+
+    bool CanSupportAngleBonds() const override
+    { return true; }
 
     struct bp_hash
     {
@@ -82,6 +90,9 @@ private:
         unsigned index;
         vec3i_t pos;
         std::vector<Bead*> beads;
+
+        // Spatially varying DPD only
+        std::vector<InteractionStrength> local_interactions;
     };
 
     unsigned m_numBeadTypes;
@@ -93,6 +104,8 @@ private:
     double m_inv_root_dt;
 
     uint64_t m_t_hash;
+
+    bool m_has_spatially_varying_dpd_parameters=false;
 
     
 
@@ -120,6 +133,51 @@ private:
 
         m_numBeadTypes=m_state->bead_types.size();
         m_inv_root_dt=recip_pow_half(m_state->dt);
+
+        m_has_spatially_varying_dpd_parameters=false;
+        for(auto i : m_state->interactions){
+            if(!i.conservative.is_constant() || !i.dissipative.is_constant()){
+                m_has_spatially_varying_dpd_parameters=true;
+            }
+        }
+
+        std::unordered_map<std::string,double> bindings;
+
+        // Reset all cell information
+        m_cells.resize(calc_num_cells());
+        unsigned ci=0;
+        for(auto &c : m_cells){
+            c.index=ci;
+            c.pos=index_to_cell_pos(ci);
+            assert(c.index==cell_pos_to_index(c.pos));
+            c.beads.clear();
+
+            if(!m_has_spatially_varying_dpd_parameters){
+                c.local_interactions.clear();
+            }else{
+                c.local_interactions.resize(m_state->interactions.size());
+
+                bindings["x"]=c.pos[0];
+                bindings["y"]=c.pos[1];
+                bindings["z"]=c.pos[2];
+                bindings["ux"]= (c.pos[0] + 0.5 ) / m_dims[0] ;
+                bindings["uy"]= (c.pos[1] + 0.5 ) / m_dims[1] ;
+                bindings["uz"]= (c.pos[2] + 0.5 ) / m_dims[2] ;
+                
+                //std::cerr<<"  x="<<c.pos[0]<<" ";
+                for(unsigned i=0; i<m_state->interactions.size(); i++){
+                    c.local_interactions[i].conservative =
+                        m_state->interactions[i].conservative.evaluate(bindings);
+                    c.local_interactions[i].dissipative =
+                        m_state->interactions[i].dissipative.evaluate(bindings);
+                    //std::cerr<<" "<<c.local_interactions[i].conservative;
+                    
+                }
+                //std::cerr<<"\n";
+            }
+
+            ++ci;
+        }
     }
 
     unsigned calc_num_cells() const
@@ -219,14 +277,8 @@ private:
         
 
         // Clear all cell information
-        m_cells.resize(calc_num_cells());
-        unsigned ci=0;
         for(auto &c : m_cells){
-            c.index=ci;
-            c.pos=index_to_cell_pos(ci);
-            assert(c.index==cell_pos_to_index(c.pos));
             c.beads.clear();
-            ++ci;
         }
 
         m_forces.assign(m_state->beads.size(), vec3r_t{0,0,0});
@@ -285,6 +337,10 @@ private:
     {
         auto &home=m_cells[cell_pos_to_index(pos)];
         //std::cerr<<"  cell["<<pos<<"] -> "<<home.size()<<"\n";
+        const InteractionStrength *home_interactions=nullptr;
+        if(m_has_spatially_varying_dpd_parameters){
+            home_interactions=&home.local_interactions[0];
+        }
 
         vec3i_t dir;
         for(dir[0]=-1; dir[0]<=+1; dir[0]++){
@@ -293,21 +349,32 @@ private:
                     auto [other_pos,other_delta] = make_relative_cell_pos(pos, dir);
                     const auto &other=m_cells[cell_pos_to_index(other_pos)];
                     assert(other.pos==other_pos);
+                    const InteractionStrength *other_interactions=nullptr;
+                    if(m_has_spatially_varying_dpd_parameters){
+                        other_interactions=&other.local_interactions[0];
+                    }
+
                     if(!home.beads.empty() && !other.beads.empty()){
                         //std::cerr<<"  base="<<pos<<", dir="<<dir<<", pos="<<other_pos<<", delta="<<other_delta<<"\n";
-                        update_cell_forces(home.beads, other.beads, other_delta);
+                        update_cell_forces(home.beads, home_interactions, other.beads, other_delta, other_interactions);
                     }
                 }
             }
         }
     }
 
-    void __attribute__((noinline)) update_cell_forces(std::vector<Bead*> &home, const std::vector<Bead*> &other, const vec3r_t &other_delta)
+    void __attribute__((noinline)) update_cell_forces(
+        std::vector<Bead*> &home, 
+        const InteractionStrength *home_interactions,
+        const std::vector<Bead*> &other,
+        const vec3r_t &other_delta,
+        const InteractionStrength *other_interactions
+    )
     {
         for(Bead *hb : home){
             for(const Bead *ob : other)
             {
-                update_bead_forces(hb, ob, other_delta);
+                update_bead_forces(hb, home_interactions, ob, other_delta, other_interactions);
             }
         }
     }
@@ -355,7 +422,13 @@ private:
         return u;
     }
 
-    void update_bead_forces(Bead *hb, const Bead *ob, const vec3r_t &other_delta)
+    void update_bead_forces(
+        Bead *hb,
+        const InteractionStrength *home_interactions,
+        const Bead *ob,
+        const vec3r_t &other_delta,
+        const InteractionStrength *other_interactions
+    )
     {
         if(hb==ob){
             return;
@@ -364,13 +437,35 @@ private:
         vec3r_t dx = vec3r_t(hb->x) - vec3r_t(ob->x) - other_delta; 
         double dr=dx.l2_norm();
 
+        auto get_interaction_conservative=[&](unsigned atype, unsigned btype)
+        {
+            unsigned index=atype*m_numBeadTypes+btype;
+            if(m_has_spatially_varying_dpd_parameters){
+                double res=(home_interactions[index].conservative+other_interactions[index].conservative)*0.5;
+                return res;
+            }else{
+                return (double)m_state->interactions[index].conservative;
+            }
+        };
+
+        auto get_interaction_dissipative=[&](unsigned atype, unsigned btype)
+        {
+            unsigned index=atype*m_numBeadTypes+btype;
+            if(m_has_spatially_varying_dpd_parameters){
+                return (home_interactions[index].dissipative+other_interactions[index].dissipative)*0.5;
+            }else{
+                return (double)m_state->interactions[index].dissipative;
+            }
+        };
+
+
         if(UseMathsCore){
             vec3r_t f;
             if(dr < 1 && dr>=0.000000001){
                 dpd_maths_core::calc_force(
                     (m_state->lambda * m_state->dt), pow_half( dpd_maths_core::kT * 24 / m_state->dt),
-                    [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
-                    [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].dissipative; },
+                    get_interaction_conservative,
+                    get_interaction_dissipative,
                     m_t_hash,
                     dx, dr,
                     *hb,
@@ -394,8 +489,6 @@ private:
         if(dr>=1 || dr < 0.000000001){
             return;
         }
-        
-        const auto &interactions=m_state->interactions[hb->bead_type*m_numBeadTypes+ob->bead_type];
 
         double lambda_dt = (m_state->lambda * m_state->dt);
         vec3r_t hb_v = hb->v + hb->f * lambda_dt;
@@ -406,10 +499,10 @@ private:
         double wr = (1.0 - dr);
         double wr2 = wr*wr;
         
-        double conForce = interactions.conservative*wr;
+        double conForce = get_interaction_conservative(hb->bead_type,ob->bead_type)*wr;
         
         double rdotv = (dx[0]*dv[0] + dx[1]*dv[1] + dx[2]*dv[2]) * inv_dr;
-		double gammap = interactions.dissipative*wr2;
+		double gammap = get_interaction_dissipative(hb->bead_type,ob->bead_type)*wr2;
 
         double dissForce = -gammap*rdotv;
         double u = RandSym(hb->get_hash_code(), ob->get_hash_code());
@@ -436,7 +529,7 @@ private:
             double ddx[3]={dx[0],dx[1],dx[2]};
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dx", 3,ddx);
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dr", 1,&dr);
-            double dd=interactions.dissipative;
+            double dd=get_interaction_dissipative(hb->bead_type,ob->bead_type);
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-diss-strength", 1, &dd);
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-invrootdt", 1, &scaled_inv_root_dt);
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-gammap", 1, &gammap);
@@ -486,7 +579,7 @@ private:
         vec3r_t f;
 
         if(UseMathsCore){
-            dpd_maths_core::calc_hookean_force(
+            dpd_maths_core::calc_hookean_force<double,vec3r_t,vec3r_t>(
                 b.kappa, b.r0, 
                 dx, r, 1.0/r,
                 f
@@ -541,7 +634,7 @@ private:
         vec3r_t headForce, middleForce, tailForce;
 
         if(UseMathsCore){
-            dpd_maths_core::calc_angle_force(
+            dpd_maths_core::calc_angle_force<double,vec3r_t,vec3r_t>(
                 bp.kappa, cos(bp.theta0), sin(bp.theta0), 
                 first, FirstLength,
                 second, SecondLength,

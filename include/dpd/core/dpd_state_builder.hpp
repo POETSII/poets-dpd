@@ -71,7 +71,7 @@ public:
         return index;
     }
 
-    void set_interaction_strength(const index_or_name_t &a, const index_or_name_t &b, double conservative, double dissipative)
+    void set_interaction_strength(const index_or_name_t &a, const index_or_name_t &b, Parameter conservative, Parameter dissipative)
     {
         unsigned ia=get_bead_type(a);
         unsigned ib=get_bead_type(b);

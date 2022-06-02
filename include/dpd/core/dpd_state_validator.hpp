@@ -49,10 +49,15 @@ inline void validate(const WorldState &s, double max_r=1)
         unsigned a=i / s.bead_types.size();
         unsigned b=i % s.bead_types.size();
         unsigned j = s.bead_types.size() * b + a;
-        REQUIRE(s.interactions.at(i).conservative == s.interactions.at(j).conservative);
-        REQUIRE(s.interactions.at(i).dissipative == s.interactions.at(j).dissipative);
-        REQUIRE(0<= s.interactions.at(i).conservative);
-        REQUIRE(0<= s.interactions.at(i).dissipative);
+        
+        if(s.interactions.at(i).conservative.is_constant()){
+            REQUIRE(s.interactions.at(i).conservative == s.interactions.at(j).conservative);
+            REQUIRE(0<= s.interactions.at(i).conservative);
+        }
+        if(s.interactions.at(i).dissipative.is_constant()){
+            REQUIRE(s.interactions.at(i).dissipative == s.interactions.at(j).dissipative);
+            REQUIRE(0<= s.interactions.at(i).dissipative);
+        }
     }
 
     std::unordered_set<std::string> polymer_type_names;

@@ -37,16 +37,14 @@ public:
     
     std::string CanSupport(const WorldState *s) const override
     {
+        auto r=DPDEngine::CanSupport(s);
+        if(!r.empty()){
+            return r;
+        }
+
         if(s->bead_types.size()>1){
             if(s->bead_types.size() > MAX_BEAD_TYPES){
                 return "Too many bead types.";
-            }
-        }
-
-        for(auto p : s->polymers){
-            auto pt = s->polymer_types.at(p.polymer_type);
-            if(pt.bonds.size()>0){
-                return "This engine does not support bonds (DPD forces only).";
             }
         }
 

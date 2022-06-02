@@ -556,7 +556,7 @@ protected:
 
         vec3r_t headForce, middleForce, tailForce;
 
-        dpd_maths_core_half_step::calc_angle_force(
+        dpd_maths_core_half_step::calc_angle_force<double,vec3r_t,vec3r_t>(
             bp.kappa, cos(bp.theta0), sin(bp.theta0), 
             first, FirstLength,
             second, SecondLength,

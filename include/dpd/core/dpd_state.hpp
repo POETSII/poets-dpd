@@ -7,6 +7,8 @@
 #include <cassert>
 #include <unordered_map>
 
+#include "dpd/core/expression.hpp"
+
 #include "vec3.hpp"
 
 // Here we generally assume that 32-bit is enough for indices and ids
@@ -165,8 +167,8 @@ struct BeadType
 
 struct Bond
 {
-    double kappa;
-    double r0;
+    Parameter kappa;
+    Parameter r0;
     uint32_t bead_offset_head = -1;
     uint32_t bead_offset_tail = -1;
 
@@ -176,8 +178,8 @@ struct Bond
 
 struct BondPair
 {
-    double kappa;
-    double theta0;
+    Parameter kappa;
+    Parameter theta0;
     uint32_t bond_offset_head = -1;
     uint32_t bond_offset_tail = -1;
 
@@ -211,11 +213,11 @@ struct Polymer
 
 struct InteractionStrength
 {
-    double conservative;
-    double dissipative;
+    Parameter conservative;
+    Parameter dissipative;
 
-    bool operator==(const InteractionStrength &o) const
-    { return conservative==o.conservative && dissipative==o.dissipative; }
+    //bool operator==(const InteractionStrength &o) const
+    //{ return conservative==o.conservative && dissipative==o.dissipative; }
 };
 
 struct WorldState

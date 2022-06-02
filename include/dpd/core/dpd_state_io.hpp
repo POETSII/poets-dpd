@@ -527,13 +527,13 @@ WorldState read_world_state(std::istream &src, int &line_no)
         for(unsigned i=0; i<numBeadTypes; i++){
             p=read_prefixed_line_and_split_on_space(src, "ConservativeStrength", numBeadTypes+2, line_no);
             for(unsigned j=0; j<numBeadTypes; j++){
-                res.interactions[i*numBeadTypes+j].conservative=p.double_at(2+j);
+                res.interactions[i*numBeadTypes+j].conservative=p.expression_at(2+j);
             }
         }
         for(unsigned i=0; i<numBeadTypes; i++){
             p=read_prefixed_line_and_split_on_space(src, "DissipativeStrength", numBeadTypes+2, line_no);
             for(unsigned j=0; j<numBeadTypes; j++){
-                res.interactions[i*numBeadTypes+j].dissipative=p.double_at(2+j);
+                res.interactions[i*numBeadTypes+j].dissipative=p.expression_at(2+j);
             }
         }
 

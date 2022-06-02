@@ -59,6 +59,12 @@ public:
         m_timings=DPDEngine::timings_t();
     }
 
+    bool CanSupportHookeanBonds() const override
+    { return true; }
+
+    bool CanSupportAngleBonds() const override
+    { return true; }
+
     virtual void Run(unsigned nSteps) override
     {
         double start=now();
@@ -425,7 +431,7 @@ private:
         vec3r_t headForce, middleForce, tailForce;
 
         dpd_maths_core_half_step::calc_angle_force(
-            bp.kappa, cos(bp.theta0), sin(bp.theta0), 
+            (double)bp.kappa, cos((double)bp.theta0), sin((double)bp.theta0), 
             first, FirstLength,
             second, SecondLength,
             headForce, middleForce, tailForce

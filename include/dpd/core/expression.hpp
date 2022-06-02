@@ -2,9 +2,11 @@
 #define expression_hpp
 
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <iostream>
 
+#include <cmath>
 #include <cstdlib>
 #include <stdexcept>
 #include <memory>
@@ -17,25 +19,36 @@ class Expression
 public:
     using leaf_value_t = double;
 
+    virtual bool is_constant() const
+    { return false; }
+
     virtual std::string as_string() const =0;
+
+    virtual void collect_variables(std::unordered_set<std::string> &params) const=0;
 
     virtual double evaluate(
         const std::unordered_map<std::string,leaf_value_t> &bindings
     ) const = 0;
 };
 
-struct ExprLiteral
+struct ExprConstant
     : public Expression
 {
     leaf_value_t m_value;
 
 public:
-    ExprLiteral(leaf_value_t value )
+    ExprConstant(leaf_value_t value )
         : m_value(value)
     {}
 
+    virtual bool is_constant() const
+    { return true; }
+
     std::string as_string() const override
     { return std::to_string(m_value); }
+
+    void collect_variables(std::unordered_set<std::string> &params) const override
+    {}
 
     double evaluate(
         const std::unordered_map<std::string,leaf_value_t> &bindings
@@ -58,6 +71,11 @@ public:
     std::string as_string() const override
     { return m_name; }
 
+    void collect_variables(std::unordered_set<std::string> &params) const override
+    {
+        params.insert(m_name);
+    }
+
     double evaluate(
         const std::unordered_map<std::string,leaf_value_t> &bindings
     ) const override {
@@ -79,9 +97,14 @@ public:
         , m_right(right)
     {}
 
-
     std::string as_string() const override
-    { return "(" + m_left->as_string() + " + " + m_right->as_string() + ")"; }
+    { return "(" + m_left->as_string() + "+" + m_right->as_string() + ")"; }
+
+    void collect_variables(std::unordered_set<std::string> &params) const override
+    {
+        m_left->collect_variables(params);
+        m_right->collect_variables(params);
+    }
 
     double evaluate(
         const std::unordered_map<std::string,leaf_value_t> &bindings
@@ -101,8 +124,13 @@ public:
     {}
 
     std::string as_string() const override
-    { return "(" + m_left->as_string() + " - " + m_right->as_string() + ")"; }
+    { return "(" + m_left->as_string() + "-" + m_right->as_string() + ")"; }
 
+    void collect_variables(std::unordered_set<std::string> &params) const override
+    {
+        m_left->collect_variables(params);
+        m_right->collect_variables(params);
+    }
 
     double evaluate(
         const std::unordered_map<std::string,leaf_value_t> &bindings
@@ -123,7 +151,13 @@ public:
     {}
 
     std::string as_string() const override
-    { return "(" + m_left->as_string() + " * " + m_right->as_string() + ")"; }
+    { return "(" + m_left->as_string() + "*" + m_right->as_string() + ")"; }
+
+    void collect_variables(std::unordered_set<std::string> &params) const override
+    {
+        m_left->collect_variables(params);
+        m_right->collect_variables(params);
+    }
 
     double evaluate(
         const std::unordered_map<std::string,leaf_value_t> &bindings
@@ -144,8 +178,13 @@ public:
 
 
     std::string as_string() const override
-    { return "(" + m_left->as_string() + " / " + m_right->as_string() + ")"; }
+    { return "(" + m_left->as_string() + "/" + m_right->as_string() + ")"; }
 
+    void collect_variables(std::unordered_set<std::string> &params) const override
+    {
+        m_left->collect_variables(params);
+        m_right->collect_variables(params);
+    }
 
     double evaluate(
         const std::unordered_map<std::string,leaf_value_t> &bindings
@@ -164,13 +203,12 @@ std::pair<std::shared_ptr<Expression>,int> parse_expression_base(const std::vect
 
 
 
-std::pair<std::shared_ptr<Expression>,int> parse_expression_terms(const std::vector<std::variant<std::string,double> > &tokens, int pos)
+inline std::pair<std::shared_ptr<Expression>,int> parse_expression_terms(const std::vector<std::variant<std::string,double> > &tokens, int pos)
 {
     auto curr=parse_expression_factors(tokens, pos);
     while(curr.second < (int)tokens.size() ){
         auto next= std::get<std::string>(tokens[curr.second]);
         std::cerr<<"terms "<<curr.second<<" "<<next<<"\n";
-
 
         if(next==")"){
             break;
@@ -189,7 +227,7 @@ std::pair<std::shared_ptr<Expression>,int> parse_expression_terms(const std::vec
     return curr;
 }
 
-std::pair<std::shared_ptr<Expression>,int> parse_expression_factors(const std::vector<std::variant<std::string,double> > &tokens, int pos)
+inline std::pair<std::shared_ptr<Expression>,int> parse_expression_factors(const std::vector<std::variant<std::string,double> > &tokens, int pos)
 {
     auto curr=parse_expression_base(tokens, pos);
     while(curr.second < (int)tokens.size() ){
@@ -215,10 +253,10 @@ std::pair<std::shared_ptr<Expression>,int> parse_expression_factors(const std::v
 }
 
 
-std::pair<std::shared_ptr<Expression>,int> parse_expression_base(const std::vector<std::variant<std::string,double> > &tokens, int pos)
+inline std::pair<std::shared_ptr<Expression>,int> parse_expression_base(const std::vector<std::variant<std::string,double> > &tokens, int pos)
 {
     if(std::holds_alternative<double>(tokens[pos])){
-        return { std::make_shared<ExprLiteral>( std::get<double>(tokens[pos]) ), pos+1 };
+        return { std::make_shared<ExprConstant>( std::get<double>(tokens[pos]) ), pos+1 };
     }
 
     std::string token=std::get<std::string>(tokens[pos]);
@@ -238,7 +276,7 @@ std::pair<std::shared_ptr<Expression>,int> parse_expression_base(const std::vect
     throw std::runtime_error("Unexpected token in parse_expression_base, token = "+token);
 }
 
-std::shared_ptr<Expression> parse_expression(const std::string &src)
+inline std::shared_ptr<Expression> parse_expression(const std::string &src)
 {
     std::vector<std::variant<std::string,double> > tokens;
     const char *curr=src.c_str(); // Gaurantees null terminated
@@ -270,14 +308,118 @@ std::shared_ptr<Expression> parse_expression(const std::string &src)
         }
     }
 
-    std::cerr<<"Tokenised\n";
+
 
     auto res=parse_expression_terms(tokens, 0);
-    if(res.second!=tokens.size()){
+    if(res.second!=(int)tokens.size()){
         throw std::runtime_error("Unconsumed tokens.");
     }
     return res.first;
 }
 
+/*
+Well-known parameters:
+- ux, uy, uz : Normalised positions within grid, i.e. in [0,1)^3
+- x, y, z : Absolute positions in the grid, in [0,w), [0,h), [0,d)
+*/
+struct Parameter
+{
+private:
+    double m_value;
+    std::shared_ptr<Expression> m_expr;
+
+    void set_expr(std::shared_ptr<Expression> expr)
+    {
+        if(expr->is_constant()){
+            auto p=std::dynamic_pointer_cast<ExprConstant>(expr);
+            *this = p->m_value;
+        }else{
+            m_value=std::nan("");
+            m_expr=expr;
+        }
+    }
+public:
+    Parameter()
+        : m_value(0.0)
+    {}
+
+    Parameter(double x)
+        : m_value(x)
+    {}
+
+    Parameter(std::shared_ptr<Expression> x)
+    {
+        set_expr(x);
+    }
+
+    Parameter &operator=(double x)
+    {
+        m_expr.reset();
+        m_value=x;
+        return *this;
+    }
+
+    Parameter &operator=(std::shared_ptr<Expression> x)
+    {
+        set_expr(x);
+        return *this;
+    }
+
+    bool operator==(const Parameter &o)
+    {
+        if(m_expr){
+            if(!m_expr){
+                return false;
+            }
+            return m_expr->as_string()==o.m_expr->as_string();
+        }else{
+            if(m_expr){
+                return false;
+            }
+            return m_value==o.m_value;
+        }
+    }
+
+    operator double() const
+    {
+        if(__builtin_expect(!!m_expr,0)){
+            throw std::runtime_error("Attempt to use expression with variables as a constant.");
+        }
+        return m_value;
+    }
+
+    double evaluate(const std::unordered_map<std::string,double> &x)
+    {
+        if(!m_expr){
+            return m_value;
+        }else{
+            return m_expr->evaluate(x);
+        }
+    }
+
+    std::string as_string() const
+    {
+        if(m_expr){
+            return m_expr->as_string();
+        }else{
+            return std::to_string(m_value);
+        }
+    }
+
+    bool is_constant() const
+    { return !m_expr; }
+
+    void collect_variables(std::unordered_set<std::string> &params) const
+    {
+        if(m_expr){
+            m_expr->collect_variables(params);
+        }
+    }
+};
+
+inline std::ostream &operator<<(std::ostream &dst, const Parameter &p)
+{
+    return dst<<p.as_string();
+}
 
 #endif

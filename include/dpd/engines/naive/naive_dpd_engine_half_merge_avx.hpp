@@ -47,7 +47,7 @@ public:
                 return "All dimensions must be a multiple of 4.";
             }
         }
-        return {};
+        return DPDEngine::CanSupport(s);
     }
 
     virtual void Attach(WorldState *state)

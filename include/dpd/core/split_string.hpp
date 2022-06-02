@@ -8,6 +8,8 @@
 #include <cassert>
 #include <cstring>
 
+#include "dpd/core/expression.hpp"
+
 // Ideally we would use charconv, but it's taking a while to get through
 //#include <charconv>
 
@@ -61,6 +63,13 @@ struct split_string
             throw std::runtime_error("Not all chars consumed while parsing '"+string_at(index)+"'");
         }
         return r;
+    }
+
+    Parameter expression_at(unsigned index) const
+    {
+        auto e=parts.at(index);
+        std::string part=data.substr(e.first,e.second);
+        return parse_expression(part);
     }
 
     uint64_t unsigned_at(unsigned index) const

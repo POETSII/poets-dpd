@@ -35,3 +35,6 @@ experiments/orch-scaling/outputs
 experiments/orch-scaling/outputs-safe
 out.txt
 experiments/benchmarks-2022-01-01-run/results/oilwater_monomer/oilwater_monomer-38x38x38.basic_v5-scotch.stderr.log
+experiments/julian-*
+*.state.bz2
+*.in
