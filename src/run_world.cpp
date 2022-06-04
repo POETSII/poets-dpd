@@ -237,7 +237,9 @@ int main(int argc, const char *argv[])
                             }
                             // Note: this ties up a thread, but is not too
                             // base for typicaly milti-core systems
-                            if(system( ("povray "+pov_name).c_str() )){
+                            std::stringstream cmd;
+                            cmd<<"povray -D -V +O"<<baseNameNow<<".png "<<pov_name<<" 2> /dev/null";
+                            if(system( cmd.str().c_str() )){
                                 fprintf(stderr, "povray failed. Cancelling povray_render\n");
                                 povray_render=false;
                                 return;

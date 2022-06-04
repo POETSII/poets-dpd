@@ -31,6 +31,15 @@ class NaiveDPDEngineHalfMerge
 public:
     friend class NaiveDPDEngineHalfMergeTBB;
 
+    bool CanSupportHookeanBonds() const override
+    { return true; }
+
+    bool CanSupportAngleBonds() const override
+    { return true; }
+
+    bool CanSupportSpatialDPDParameters() const override
+    { return true; }
+
     std::string CanSupport(const WorldState *s) const override
     {
         for(int d=0;d<3;d++){
@@ -40,7 +49,7 @@ public:
                 return "All dimensions must be a multiple of 4.";
             }
         }
-        return {};
+        return DPDEngine::CanSupport(s);
     }
 
     virtual void Attach(WorldState *state)
@@ -96,6 +105,12 @@ protected:
 
     bool m_packed = false;
 
+    struct interaction_strength
+    {
+        double conservative;
+        double sqrt_dissipative;
+    };
+
     struct Packed
     {
         uint32_t hash;
@@ -118,6 +133,8 @@ protected:
 
         std::vector<Packed> packed;
         std::vector<Packed> incoming_packed;
+
+        std::vector<interaction_strength> local_interactions;
     };
 
     unsigned m_numBeadTypes;
@@ -127,6 +144,10 @@ protected:
 
     double m_scaled_inv_root_dt;
     uint64_t m_t_hash;
+
+    std::vector<interaction_strength> m_global_interactions;
+
+    bool m_has_spatial_dpd_interactions;
 
     void require(bool cond, const char *msg) const
     {
@@ -147,6 +168,19 @@ protected:
 
         m_numBeadTypes=m_state->bead_types.size();
         m_scaled_inv_root_dt=pow_half(24*dpd_maths_core_half_step::kT / m_state->dt);
+
+        m_has_spatial_dpd_interactions=false;
+        m_global_interactions.resize(m_state->interactions.size());
+        for(unsigned index=0;index<m_state->interactions.size();index++){
+            const auto &ii=m_state->interactions[index];
+            if( !ii.conservative.is_constant() || !ii.dissipative.is_constant()){
+                m_has_spatial_dpd_interactions=true;
+                m_global_interactions.clear();
+                break;
+            }
+            m_global_interactions[index].conservative=ii.conservative;
+            m_global_interactions[index].sqrt_dissipative=sqrt(ii.dissipative);
+        }
 
         std::vector<vec3i_t> rel_nhood=make_relative_nhood_forwards(/*excludeCentre*/true);
 
@@ -169,6 +203,23 @@ protected:
             for(auto d : rel_nhood){
                 vec3i_t neighbour=vec_wrap(c.pos+d, m_dims);
                 c.neighbours.push_back(&m_cells.at(cell_pos_to_index(neighbour)));
+            }
+
+            if(m_has_spatial_dpd_interactions){
+                std::unordered_map<std::string,double> bindings;
+                bindings["x"]=c.pos[0];
+                bindings["y"]=c.pos[1];
+                bindings["z"]=c.pos[2];
+                bindings["ux"]=(c.pos[0]+0.5) / m_state->box[0];
+                bindings["uy"]=(c.pos[1]+0.5) / m_state->box[1];
+                bindings["uz"]=(c.pos[2]+0.5) / m_state->box[2];
+                c.local_interactions.resize(m_state->interactions.size());
+                for(unsigned index=0; index<c.local_interactions.size(); index++){
+                    c.local_interactions[index].conservative =
+                        m_state->interactions[index].conservative.evaluate(bindings);
+                    c.local_interactions[index].sqrt_dissipative =
+                        sqrt(m_state->interactions[index].dissipative.evaluate(bindings));
+                }
             }
         }
 
@@ -338,6 +389,14 @@ protected:
     {
         assert(!m_packed);
 
+        const interaction_strength *hinteractions = m_has_spatial_dpd_interactions
+            ? &home.local_interactions[0]
+            : &m_global_interactions[0];
+
+        const interaction_strength *ointeractions = m_has_spatial_dpd_interactions
+            ? &other.local_interactions[0]
+            : nullptr;
+
         vec3r_t other_delta;
         if(IsEdge){
             for(int d=0; d<3; d++){
@@ -366,7 +425,7 @@ protected:
                     continue;
                 }
 
-                update_bead_pair<EnableLogging>(hb, ob, dx, dr2);
+                update_bead_pair<EnableLogging>(hb, hinteractions, ob, ointeractions, dx, dr2);
             }
         }
     }
@@ -375,6 +434,10 @@ protected:
     void  __attribute__((noinline))  update_inter_forces_packed( Cell &home, Cell &other)
     {
         assert(m_packed);
+
+        if(m_has_spatial_dpd_interactions){
+            throw std::runtime_error("Not implemented for spatial interactions.");
+        }
 
         vec3r_t other_delta;
         if(IsEdge){
@@ -404,7 +467,7 @@ protected:
                     continue;
                 }
 
-                update_bead_pair<EnableLogging>(hb, ob, dx, dr2);
+                update_bead_pair<EnableLogging>(hb, &m_global_interactions[0], ob, nullptr, dx, dr2);
             }
         }
     }
@@ -413,6 +476,10 @@ protected:
     void  __attribute__((noinline))  update_intra_forces( Cell &home )
     {
         assert(!m_packed);
+
+        const interaction_strength *interactions = m_has_spatial_dpd_interactions
+            ? &home.local_interactions[0]
+            : &m_global_interactions[0];
 
         for(int i=0; i<(int)home.beads.size()-1; i++){
             Bead *hb=home.beads[i];
@@ -425,7 +492,7 @@ protected:
                     continue;
                 }
 
-                update_bead_pair<EnableLogging>(hb, ob, dx, dr2);
+                update_bead_pair<EnableLogging>(hb, interactions, ob, interactions, dx, dr2);
             }
         }
     }
@@ -434,6 +501,9 @@ protected:
     void  __attribute__((noinline))  update_intra_forces_packed( Cell &home )
     {
         assert(m_packed);
+        if(m_has_spatial_dpd_interactions){
+            throw std::runtime_error("Not implemented for spatial interactions.");
+        }
 
         for(int i=0; i<(int)home.packed.size()-1; i++){
             Packed &hb=home.packed[i];
@@ -446,24 +516,39 @@ protected:
                     continue;
                 }
 
-                update_bead_pair<EnableLogging>(hb, ob, dx, dr2);
+                update_bead_pair<EnableLogging>(hb, &m_global_interactions[0], ob, nullptr, dx, dr2);
             }
         }
     }
 
     template<bool EnableLogging>
-    void update_bead_pair(Bead *hb, Bead *ob, const vec3r_t &dx, double dr2)
+    void update_bead_pair(Bead *hb, const interaction_strength *hinteractions, Bead *ob, const interaction_strength *ointeractions, const vec3r_t &dx, double dr2)
     {
         assert(hb!=ob);
 
         double dr=pow_half(dr2);
 
         vec3r_t f;
+
+        auto get_conservative=[&](unsigned a, unsigned b)
+        {
+            unsigned index=a*m_numBeadTypes+b;
+            return ointeractions
+                ? (hinteractions[index].conservative+ointeractions[index].conservative)*0.5
+                : hinteractions[index].conservative;
+        };
+        auto get_sqrt_dissipative=[&](unsigned a, unsigned b)
+        {
+            unsigned index=a*m_numBeadTypes+b;
+            return ointeractions
+                ? (hinteractions[index].sqrt_dissipative+ointeractions[index].sqrt_dissipative)*0.5
+                : hinteractions[index].sqrt_dissipative;
+        };
         
         dpd_maths_core_half_step::calc_force<EnableLogging,double,vec3r_t>(
             m_scaled_inv_root_dt,
-            [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
-            [&](unsigned a, unsigned b){ return pow_half(m_state->interactions[a*m_numBeadTypes+b].dissipative); },
+            get_conservative,
+            get_sqrt_dissipative,
             m_t_hash,
             dx, dr,
             0, 0, // kappa and r0

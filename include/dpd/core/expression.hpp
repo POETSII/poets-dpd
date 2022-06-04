@@ -352,6 +352,16 @@ public:
         set_expr(x);
     }
 
+    Parameter(const std::string &str)
+    {
+        set_expr(parse_expression(str));
+    }
+
+    Parameter(const char *str)
+    {
+        set_expr(parse_expression(str));
+    }
+
     Parameter &operator=(double x)
     {
         m_expr.reset();
