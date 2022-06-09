@@ -120,14 +120,16 @@ public:
         unsigned num_seen;
         std::vector<raw_bead_resident_f22_t> beads;
         robin_hood::unordered_flat_map<BeadHash,uint32_t> *bead_hash_to_id;
+        const WorldState *state;
 
         output_slice(output_slice &&) = default;
         output_slice &operator=(output_slice &&) = default;
 
-        output_slice(unsigned _time, robin_hood::unordered_flat_map<BeadHash,uint32_t> &_bead_hash_to_id)
+        output_slice(unsigned _time, robin_hood::unordered_flat_map<BeadHash,uint32_t> &_bead_hash_to_id, const WorldState *_state)
             : time(_time)
             , num_seen(0)
             , bead_hash_to_id(&_bead_hash_to_id)
+            , state(_state)
         {
             raw_bead_resident_f22_t tmp;
             tmp.id=0xFFFFFFFFul;
@@ -138,6 +140,7 @@ public:
         {
             require(b.t==time, "Wrong time for slice.");
             auto id=bead_hash_to_id->at(Handlers::get_hash_code(b));
+            assert(state->beads.at(id).get_hash_code() == Handlers::get_hash_code(b));
             auto &dst=beads.at(id);
             if(dst.id==0xFFFFFFFFul){
                 dst=b;
@@ -210,6 +213,7 @@ public:
             auto &outputs = slice.beads;
             for(unsigned i=0; i<outputs.size(); i++){
                 auto &output=outputs[i];
+                assert(output.id!=0xFFFFFFFFul);
 
                 dpd_maths_core_half_step_raw::update_mom<float,raw_bead_resident_f22_t>((float)m_state->dt, output);
 
@@ -251,7 +255,7 @@ public:
             unsigned slice_i=0;
             while(1){
                 if(slice_i==slices.size()){
-                    slices.push_back(output_slice(next_slice_t, m_bead_hash_to_original_id));
+                    slices.push_back(output_slice(next_slice_t, m_bead_hash_to_original_id, m_state));
                     //fprintf(stderr, "Begin slice %u at time %u\n", slice_i, slices.back().time);
                     next_slice_t += interval_size;
                 }

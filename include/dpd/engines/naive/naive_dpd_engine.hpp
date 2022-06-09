@@ -66,6 +66,9 @@ public:
         }
     }
 
+    bool CanSupportStationaryBeadTypes() const override
+    { return true; }
+
     bool CanSupportSpatialDPDParameters() const override
     { return true; }
 
@@ -106,7 +109,7 @@ private:
     uint64_t m_t_hash;
 
     bool m_has_spatially_varying_dpd_parameters=false;
-
+    bool m_has_stationary_bead_types=false;
     
 
     std::unordered_set<std::pair<const Bead*,const Bead*>, bp_hash> m_seen_pairs;
@@ -133,6 +136,11 @@ private:
 
         m_numBeadTypes=m_state->bead_types.size();
         m_inv_root_dt=recip_pow_half(m_state->dt);
+
+        m_has_stationary_bead_types=false;
+        for(auto bt : m_state->bead_types){
+            m_has_stationary_bead_types |= bt.stationary;
+        }
 
         m_has_spatially_varying_dpd_parameters=false;
         for(auto i : m_state->interactions){
@@ -726,11 +734,15 @@ private:
     void update_bead_pos(Bead *b) const
     {
         if(UseMathsCore){
-            dpd_maths_core::update_pos(
-                m_state->dt,
-                m_state->box,
-                *b
-            );
+            if(m_has_stationary_bead_types && m_state->bead_types[b->bead_type].stationary){
+                // do nothing
+            }else{
+                dpd_maths_core::update_pos(
+                    m_state->dt,
+                    m_state->box,
+                    *b
+                );
+            }
             return;
         }
 
@@ -738,50 +750,65 @@ private:
 
         //x(t+dt) = x(t) + v(t)*dt + a(t)/2*dt^2
 
-        vec3r_t x = b->x + b->v*dt + b->f*(dt*dt/2);
-        vec3r_t adj, xa;
-        for(int i=0; i<3; i++){
-            int add=x[i] < 0;
-            int sub=x[i] >= m_state->box[i];
-            adj[i] = (add-sub) * m_lengths[i];
-            xa[i] = x[i] + adj[i];
-            assert( 0 <= xa[i] && xa[i] <= m_state->box[i] );
-            // Hack to get precise less than relationship on upper box.
-            xa[i] = std::min( xa[i] , std::nexttoward(m_state->box[i], -DBL_MAX) );
-            assert(xa[i] < m_state->box[i]);
+        if(m_has_stationary_bead_types && m_state->bead_types[b->bead_type].stationary){
+            // Do nothing
+        }else{
+
+            vec3r_t x = b->x + b->v*dt + b->f*(dt*dt/2);
+            vec3r_t adj, xa;
+            for(int i=0; i<3; i++){
+                int add=x[i] < 0;
+                int sub=x[i] >= m_state->box[i];
+                adj[i] = (add-sub) * m_lengths[i];
+                xa[i] = x[i] + adj[i];
+                assert( 0 <= xa[i] && xa[i] <= m_state->box[i] );
+                // Hack to get precise less than relationship on upper box.
+                xa[i] = std::min( xa[i] , std::nexttoward(m_state->box[i], -DBL_MAX) );
+                assert(xa[i] < m_state->box[i]);
+            }
+
+    #ifndef PDPD_TINSEL
+            //std::cerr<<"  ref: x="<<xa<<", x'="<<b->x<<", v="<<b->v<<"\n";
+    #endif
+
+            b->x = xa;
+            //std::cerr<<"Orig="<<orig<<", adj="<<adj<<", final="<<b->x<<"\n";
         }
-
-#ifndef PDPD_TINSEL
-        //std::cerr<<"  ref: x="<<xa<<", x'="<<b->x<<", v="<<b->v<<"\n";
-#endif
-
-        b->x = xa;
-        //std::cerr<<"Orig="<<orig<<", adj="<<adj<<", final="<<b->x<<"\n";
     }
 
     void update_bead_mom(Bead *b)
     {
         if(UseMathsCore){
-            dpd_maths_core::update_mom(
-                m_state->dt,
-                m_forces[b->bead_id],
-                *b
-            );
+            if(m_has_stationary_bead_types && m_state->bead_types[b->bead_type].stationary){
+                b->v.clear();
+                b->f.clear();
+            }else{
+                dpd_maths_core::update_mom(
+                    m_state->dt,
+                    m_forces[b->bead_id],
+                    *b
+                );
+            }
             return;
         }
 
-        double dt=m_state->dt;
+        if(m_has_stationary_bead_types && m_state->bead_types[b->bead_type].stationary){
+            b->v.clear();
+            b->f.clear();
+        }else{
+            double dt=m_state->dt;
 
-       // v(t+dt) = v(t) + dt*(f(t)+f(t+dt))/2
+            // v(t+dt) = v(t) + dt*(f(t)+f(t+dt))/2
 
-       vec3r_t fNow=m_forces[b->bead_id];
-       m_forces[b->bead_id]=vec3r_t();
+            vec3r_t fNow=m_forces[b->bead_id];
+            m_forces[b->bead_id]=vec3r_t();
 
-       b->v = b->v + (b->f + fNow) * (dt / 2);
-       b->f = fNow;
+            b->v = b->v + (b->f + fNow) * (dt / 2);
+            b->f = fNow;
 
-       assert( isfinite(b->v) );
-       assert( isfinite(b->f) );
+            assert( isfinite(b->v) );
+            assert( isfinite(b->f) );
+        }
     }
 };
 

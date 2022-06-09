@@ -16,6 +16,9 @@ protected:
     virtual bool CanSupportAngleBonds() const
     { return false; }
 
+    virtual bool CanSupportStationaryBeadTypes() const
+    { return false; }
+
     virtual bool CanSupportSpatialDPDParameters() const
     { return false; }
 
@@ -73,6 +76,12 @@ public:
                 if(!CanSupportGeneralDPDParameters()){
                     return "Engine does not support aribtrary varying DPD parameters.";
                 }
+            }
+        }
+
+        for(auto &b : s->bead_types){
+            if(b.stationary && !CanSupportStationaryBeadTypes()){
+                return "Engine does not support stationary bead types.";
             }
         }
 

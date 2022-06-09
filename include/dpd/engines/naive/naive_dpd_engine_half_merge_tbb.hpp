@@ -180,17 +180,21 @@ private:
             for(int bi=c.beads.size()-1; bi>=0; bi--){
                 Bead *b=c.beads[bi];
                 //std::cerr<<"In "<<c.pos<<" at "<<m_state->t<<"\n";
-                dpd_maths_core_half_step::update_pos(dt, m_lengths, *b);
-                unsigned index=world_pos_to_cell_index(b->x);
-                if(index!=c.index){
-                    //std::cerr<<"Migrate at "<<m_state->t<<", "<<c.pos<<" -> "<<m_cells.at(index).pos<<"\n";
-                    auto &dst_cell=m_cells[index];
-                    {
-                        // We don't need the lock because of the conflict groups!
-                        dst_cell.incoming_beads.push_back(b);
+                if(m_has_stationary_bead_types && m_state->bead_types[b->bead_type].stationary){
+                    // continue;
+                }else{
+                    dpd_maths_core_half_step::update_pos(dt, m_lengths, *b);
+                    unsigned index=world_pos_to_cell_index(b->x);
+                    if(index!=c.index){
+                        //std::cerr<<"Migrate at "<<m_state->t<<", "<<c.pos<<" -> "<<m_cells.at(index).pos<<"\n";
+                        auto &dst_cell=m_cells[index];
+                        {
+                            // We don't need the lock because of the conflict groups!
+                            dst_cell.incoming_beads.push_back(b);
+                        }
+                        c.beads[bi]=c.beads.back();
+                        c.beads.pop_back();
                     }
-                    c.beads[bi]=c.beads.back();
-                    c.beads.pop_back();
                 }
             }
         });
@@ -231,7 +235,12 @@ private:
 
         // Final mom
         parallel_for_each(m_state->beads, 1024, [&](Bead &b){
-            dpd_maths_core_half_step::update_mom(m_state->dt, b);
+            if(m_has_stationary_bead_types && m_state->bead_types[b.bead_type].stationary){
+                b.f.clear();
+                b.v.clear();
+            }else{
+                dpd_maths_core_half_step::update_mom(m_state->dt, b);
+            }
         });
 
         if(EnableLogging && ForceLogging::logger()){

@@ -12,16 +12,33 @@
 
 std::ostream &write_bead_type(std::ostream &dst, const BeadType &b, const WorldState &)
 {
-    return dst<<"BeadType "<<b.id<<" "<<b.name<<" "<<b.r<<"\n";
+    dst<<"BeadType "<<b.id<<" "<<b.name<<" "<<b.r;
+    if(b.stationary){
+        dst<<" stationary";
+    }
+    dst<<"\n";
+    return dst;
 }
 
 BeadType read_bead_type(std::istream &src, int &line_no)
 {
-    auto p=read_prefixed_line_and_split_on_space(src, "BeadType", 4, line_no);
+    auto p=read_prefixed_line_and_split_on_space(src, "BeadType", -1, line_no);
+    if(p.parts.size()!=4 && p.parts.size()!=5){
+        throw std::runtime_error("Expecting 4 or 5 elements for prefix BeadType on line "+std::to_string(line_no));
+    }
     BeadType res;
     res.id=p.unsigned_at(1);
     res.name=p.string_at(2);
     res.r=p.double_at(3);
+    res.stationary=false;
+    if(p.parts.size()>4){
+        std::string s=p.string_at(4);
+        if(s=="stationary"){
+            res.stationary=true;
+        }else{
+            throw std::runtime_error("Couldn't intepret BeadType flag "+s+" at line "+std::to_string(line_no));
+        }
+    }
     return res;
 }
 

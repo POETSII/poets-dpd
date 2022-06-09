@@ -18,8 +18,8 @@ struct WorldStateBuilderError
 class WorldStateBuilder
 {
 private:
-    double m_default_interaction_conservative = 1;
-    double m_default_interaction_dissipative = 0.1;
+    Parameter m_default_interaction_conservative = 1;
+    Parameter m_default_interaction_dissipative = 0.1;
     WorldState m_world;
 
     void require(bool cond, const std::string &msg)
@@ -45,14 +45,14 @@ public:
 
     using index_or_name_t = std::variant<unsigned,std::string>;
 
-    unsigned add_bead_type(std::string name)
+    unsigned add_bead_type(std::string name, bool stationary=false)
     {
         for(const auto &b : m_world.bead_types){
             require(b.name!=name, "Bead type name already exists.");
         }
         unsigned index=m_world.bead_types.size();
         m_world.bead_types.push_back({
-            name, 0.5, index
+            name, 0.5, index, stationary
         });
 
         unsigned n=m_world.bead_types.size();
@@ -69,6 +69,12 @@ public:
         std::swap(newInteractions, m_world.interactions);
 
         return index;
+    }
+
+    void set_default_interaction_strengths(Parameter conservative, Parameter dissipative)
+    {
+        m_default_interaction_conservative=conservative;
+        m_default_interaction_dissipative=dissipative;
     }
 
     void set_interaction_strength(const index_or_name_t &a, const index_or_name_t &b, Parameter conservative, Parameter dissipative)
@@ -198,6 +204,30 @@ public:
         return add_polymer(poly_type, {{x,v,f}});
     }
 
+    // Add 8 beads in each unit cell
+    // Note: these add a big computational load for these cells
+    // and the cells they are next too.
+    void add_grid_2x2x2(index_or_name_t poly_type, vec3i_t begin, vec3i_t end)
+    {
+        vec3i_t p;
+        for(p[0]=begin[0]; p[0]<end[0]; p[0]++){
+            for(p[1]=begin[1]; p[1]<end[1]; p[1]++){
+                for(p[2]=begin[2]; p[2]<end[2]; p[2]++){
+                    vec3r_t d;
+                    for(d[0]=0.25; d[0]<=0.75; d[0]+=0.5){
+                        for(d[1]=0.25; d[1]<=0.75; d[1]+=0.5){
+                            for(d[2]=0.25; d[2]<=0.75; d[2]+=0.5){
+                                add_monomer(
+                                    poly_type,
+                                    vec3r_t{p}+d
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     
 };
 

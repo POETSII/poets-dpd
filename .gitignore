@@ -19,6 +19,9 @@ obj
 *.fls
 *.csv
 *.log
+*.pov
+*.rst
+*.zip
 
 test_results
 working

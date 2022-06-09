@@ -68,7 +68,7 @@ int main(int argc, const char *argv[])
         WorldState state2=read_world_state(src2, line_no);
         validate(state2, 100);
 
-        #define COMPARE_PROP(p) if(state1. p != state2. p){ std::cerr<<"worlds differ on property "<< #p <<"\n"; exit(1); }
+        #define COMPARE_PROP(p) if( ! (state1. p == state2. p )){ std::cerr<<"worlds differ on property "<< #p <<"\n"; exit(1); }
 
         COMPARE_PROP(box);
         COMPARE_PROP(origin);
@@ -92,14 +92,13 @@ int main(int argc, const char *argv[])
             assert(bead2.bead_id==i);
             assert(bead1.bead_id==bead2.bead_id);
 
-            vec3r_t dist=vec_wrap(bead1.x-bead2.x, state1.box);
-            double err=dist.l2_norm();
+            double err= vec3_wrapped_distance(bead1.x, bead2.x, state1.box);
             if(err > 0.001){
-                std::cerr<<"  Bead id "<<i<<", x1="<<bead1.x<<", x2="<<bead2.x<<", dist="<<dist<<", err="<<err<<"\n";
+                std::cerr<<"  Bead id "<<i<<", x1="<<bead1.x<<", x2="<<bead2.x<<", dist="<<err<<"\n";
                 exit(2);
             }
 
-            dist=bead1.v-bead2.v;
+            vec3r_t dist=bead1.v-bead2.v;
             err=dist.l2_norm();
             if(err > 0.001){
                 std::cerr<<"  Bead id "<<i<<", v1="<<bead1.v<<", v2="<<bead2.v<<", err="<<err<<"\n";

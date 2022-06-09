@@ -208,7 +208,7 @@ inline std::pair<std::shared_ptr<Expression>,int> parse_expression_terms(const s
     auto curr=parse_expression_factors(tokens, pos);
     while(curr.second < (int)tokens.size() ){
         auto next= std::get<std::string>(tokens[curr.second]);
-        std::cerr<<"terms "<<curr.second<<" "<<next<<"\n";
+        //std::cerr<<"terms "<<curr.second<<" "<<next<<"\n";
 
         if(next==")"){
             break;
@@ -233,7 +233,7 @@ inline std::pair<std::shared_ptr<Expression>,int> parse_expression_factors(const
     while(curr.second < (int)tokens.size() ){
         auto next=std::get<std::string>(tokens[curr.second]);
 
-        std::cerr<<"factors "<<curr.second<<" "<<next<<"\n";
+        //std::cerr<<"factors "<<curr.second<<" "<<next<<"\n";
 
         if(next==")" || next=="+" || next=="-"){
             break;

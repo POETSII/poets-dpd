@@ -5,6 +5,7 @@
 #include "dpd/core/dpd_state_io.hpp"
 #include "dpd/core/dpd_state_to_vtk.hpp"
 #include "dpd/core/dpd_state_to_pov.hpp"
+#include "dpd/core/dpd_state_to_solvent_free.hpp"
 #include "dpd/core/dpd_state_validator.hpp"
 #include "dpd/core/with_optional_gzip_stream.hpp"
 
@@ -26,8 +27,9 @@ void usage()
     fprintf(stderr, "run_world : engine-name src-file output-base-name interval_count state_interval_size [snapshot_interval_size]\n");
     fprintf(stderr, "   --vtk-snapshot : Dump all non water beads into a vtk snapshot of positions.\n");
     fprintf(stderr, "   --povray-snapshot : Dump all non water beads into a povray snapshot of positions.\n");
+    fprintf(stderr, "   --solvent-free-snapshot : Dump all non water beads to an Osprey solvent-free snapshot.\n");
     fprintf(stderr, "   --povray-render : Dump positions and render to a png as well (implies --povray-snapshot).\n");
-    fprintf(stderr, "   --gzip-snapshot : Snapshots (e.g. povray and vtk) will be gzipped.\n");
+    fprintf(stderr, "   --gzip-snapshot : Snapshots (e.g. povray, vtk, solvent free) will be gzipped.\n");
     fprintf(stderr, "  engine names:\n");
     for(auto s : DPDEngineFactory::ListFactories()){
         fprintf(stderr, "    %s\n", s.c_str());
@@ -74,6 +76,7 @@ int main(int argc, const char *argv[])
       bool vtk_snapshot=false;
       bool povray_snapshot=false;
       bool povray_render=false;
+      bool solvent_free_snapshot=false;
       bool gzip_snapshot=false;
       
         std::vector<std::string> args;
@@ -84,6 +87,8 @@ int main(int argc, const char *argv[])
                 povray_render=true;
             }else if(!strcmp("--vtk-snapshot", argv[i])){
                 vtk_snapshot=true;
+            }else if(!strcmp("--solvent-free-snapshot", argv[i])){
+                solvent_free_snapshot=true;
             }else if(!strcmp("--gzip-snapshot", argv[i])){
                 gzip_snapshot=true;
             }else{
@@ -216,6 +221,15 @@ int main(int argc, const char *argv[])
                             name+=".gz";
                         }
                         write_to_vtk(name, *snapshot);
+                    });
+                }
+                if(solvent_free_snapshot){
+                    async_tasks.back()->run([=](){
+                        std::string name=baseNameNow+".rst";
+                        if(gzip_snapshot){
+                            name+=".gz";
+                        }
+                        write_to_solvent_free(name, *snapshot);
                     });
                 }
                 if(povray_render || povray_snapshot){

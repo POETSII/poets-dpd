@@ -38,6 +38,29 @@ std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
         dst<<b.x[0]<<" "<<b.x[1]<<" "<<b.x[2]<<"\n";
     }
 
+    /*
+    {
+        #error "This crashes paraview"
+
+    std::vector<std::pair<unsigned,unsigned>> bonds;
+    for(const auto &p : s.polymers){
+        for(const auto &bond : s.polymer_types[p.polymer_type].bonds){
+            bonds.push_back({ p.bead_ids[bond.bead_offset_head], p.bead_ids[bond.bead_offset_tail] });
+        }
+    }
+
+    dst<<"VERTICES "<<beads.size()<<" "<<2*beads.size()<<"\n";
+    for(unsigned i=0; i<beads.size(); i++){
+        dst<<"1 "<<i<<"\n";
+    }
+
+    dst<<"LINES "<<bonds.size()<<" "<<3*bonds.size()<<"\n";
+    for(auto bb : bonds){
+        dst<<"2 "<<bb.first<<" "<<bb.second<<"\n";
+    }
+    }
+    */
+
     dst<<"POINT_DATA "<<beads.size()<<"\n";
 
     dst<<"SCALARS bead_type double\n";

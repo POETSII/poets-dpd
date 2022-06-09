@@ -31,6 +31,9 @@ class NaiveDPDEngineHalfMerge
 public:
     friend class NaiveDPDEngineHalfMergeTBB;
 
+    bool CanSupportStationaryBeadTypes() const override
+    { return true; }
+
     bool CanSupportHookeanBonds() const override
     { return true; }
 
@@ -148,6 +151,7 @@ protected:
     std::vector<interaction_strength> m_global_interactions;
 
     bool m_has_spatial_dpd_interactions;
+    bool m_has_stationary_bead_types;
 
     void require(bool cond, const char *msg) const
     {
@@ -180,6 +184,14 @@ protected:
             }
             m_global_interactions[index].conservative=ii.conservative;
             m_global_interactions[index].sqrt_dissipative=sqrt(ii.dissipative);
+        }
+
+        m_has_stationary_bead_types=false;
+        for(const auto &bt : m_state->bead_types){
+            if(bt.stationary){
+                std::cerr<<"Bead "<<bt.name<<" is stationary\n";
+            }
+            m_has_stationary_bead_types |= bt.stationary;
         }
 
         std::vector<vec3i_t> rel_nhood=make_relative_nhood_forwards(/*excludeCentre*/true);
@@ -315,13 +327,18 @@ protected:
             for(int bi=c.beads.size()-1; bi>=0; bi--){
                 Bead *b=c.beads[bi];
                 //std::cerr<<"In "<<c.pos<<" at "<<m_state->t<<"\n";
-                dpd_maths_core_half_step::update_pos(dt, m_lengths, *b);
-                unsigned index=world_pos_to_cell_index(b->x);
-                if(index!=c.index){
-                    //std::cerr<<"Migrate at "<<m_state->t<<", "<<c.pos<<" -> "<<m_cells.at(index).pos<<"\n";
-                    m_cells.at(index ).incoming_beads.push_back(b);
-                    c.beads[bi]=c.beads.back();
-                    c.beads.pop_back();
+                if(m_has_stationary_bead_types && m_state->bead_types[b->bead_type].stationary){
+                    // do nothing
+                    std::cerr<<"  not moving "<<b->polymer_id<<"\n";
+                }else{
+                    dpd_maths_core_half_step::update_pos(dt, m_lengths, *b);
+                    unsigned index=world_pos_to_cell_index(b->x);
+                    if(index!=c.index){
+                        //std::cerr<<"Migrate at "<<m_state->t<<", "<<c.pos<<" -> "<<m_cells.at(index).pos<<"\n";
+                        m_cells.at(index ).incoming_beads.push_back(b);
+                        c.beads[bi]=c.beads.back();
+                        c.beads.pop_back();
+                    }
                 }
             }
         }
@@ -368,7 +385,12 @@ protected:
 
         // Final mom
         for(auto &b : m_state->beads){
-            dpd_maths_core_half_step::update_mom(m_state->dt, b);
+            if(m_has_stationary_bead_types && m_state->bead_types[b.bead_type].stationary){
+                b.f.clear();
+                b.v.clear();
+            }else{
+                dpd_maths_core_half_step::update_mom(m_state->dt, b);
+            }
         }
 
         if(EnableLogging && ForceLogging::logger()){
@@ -414,11 +436,17 @@ protected:
 
         for(Bead *ob : other.beads)
         {
+            bool other_stationary = m_has_stationary_bead_types && m_state->bead_types[ob->bead_type].stationary;
+
             vec3r_t ob_x = vec3r_t(ob->x);
             if(IsEdge){
                 ob_x += other_delta;
             }
             for(Bead *hb : home.beads){
+                if(other_stationary && m_state->bead_types[hb->bead_type].stationary){
+                    continue;
+                }
+
                 vec3r_t dx =  hb->x - ob_x;
                 double dr2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
                 if(dr2 >= 1 || dr2<MIN_DISTANCE_CUTOFF_SQR){
@@ -483,8 +511,15 @@ protected:
 
         for(int i=0; i<(int)home.beads.size()-1; i++){
             Bead *hb=home.beads[i];
+
+            bool home_stationary = m_has_stationary_bead_types && m_state->bead_types[hb->bead_type].stationary;
+
             for(int j=i+1; j<(int)home.beads.size(); j++){
                 Bead *ob=home.beads[j];
+
+                if(home_stationary && m_state->bead_types[ob->bead_type].stationary){
+                    continue;
+                }
 
                 vec3r_t dx =  hb->x - ob->x;
                 double dr2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];

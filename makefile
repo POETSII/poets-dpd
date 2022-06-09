@@ -1,3 +1,9 @@
+ifeq ($(DISABLE_RISCV),1)
+ENABLE_RISCV = 0
+endif
+
+ENABLE_RISCV ?= 0
+
 CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall -O0
 
 CPPFLAGS += -Wno-unused-variable -fmax-errors=2 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable
@@ -54,15 +60,25 @@ LDFLAGS += -L ~/local/lib
 ENGINE_LDLIBS += -ltbb
 
 
-TEST_BIN := bin/test/test_engine bin/test/test_engine_diff \
-	bin/extract_state_from_orch_log
+all : all_test_bin all_create_state_bin all_engines all_tools
+
+
+
+
+TEST_BIN := bin/test/test_engine bin/test/test_engine_diff
+
+all_test_bin : $(TEST_BIN)
 
 CREATE_STATE_BIN := $(patsubst src/create_state/%.cpp,bin/create_state/%,$(wildcard src/create_state/*.cpp))
+
+all_create_state_bin : $(CREATE_STATE_BIN)
+
+$(CREATE_STATE_BIN) : LDLIBS += -ltbb
 
 
 ENGINES := $(filter-out %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp)))
 
-ifeq ($(DISABLE_RISCV),)
+ifeq ($(ENABLE_RISCV),1)
 ENGINES_RISCV := $(filter %.riscv,$(patsubst src/engines/%.cpp,%, $(filter-out src/engines/memcpy.riscv.cpp, $(wildcard src/engines/*.cpp))))
 ENGINE_LDFLAGS += -L $(TINSEL_ROOT)/hostlink
 ENGINE_LDLIBS += -l:hostlink.a
@@ -80,14 +96,25 @@ ALL_ENGINE_BATS := $(foreach e,$(ENGINES),obj/engines/$(e).bats)
 
 all_engines : $(ALL_ENGINES_OBJS) $(ALL_ENGINE_RISCV) $(ALL_ENGINE_BATS)
 
-all : $(TEST_BIN) $(CREATE_STATE_BIN) all_engines
-
 test_results/%.txt : bin/%
-	mkdir -p test_results
+	mkdir -p test_results/$(dir $*)
 	-rm test_results/$*.failed
 	$< | tee $@ || touch test_results/$*.failed
 
 test : $(patsubst bin/%,test_results/%.txt,$(TEST_BIN))
+
+
+TEST_BATS := $(wildcard src/*.bats src/*/*.bats )
+
+test_results/%.bats.txt : src/%.bats
+	mkdir -p test_results/$(dir $*)
+	-rm test_results/$*.failed
+	(bats -t $< | tee $@) || touch test_results/$*.failed
+
+test_bats : $(patsubst src/%,test_results/%.txt,$(TEST_BATS))
+
+
+test : test_bats 
 
 obj/%.d: src/%.cpp
 	mkdir -p $(dir $@)
@@ -181,6 +208,8 @@ bin/$1 : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 bin/$1 : LDFLAGS += $(ENGINE_LDFLAGS)
 
 bin/$1 : LDLIBS += $(ENGINE_LDLIBS)
+
+all_tools += bin/$1
 endef
 
 bin/test/test_hash : LDLIBS += -ltestu01
@@ -191,8 +220,11 @@ $(eval $(call register_engine_user,benchmark_engine))
 $(eval $(call register_engine_user,benchmark_engine_intervals))
 $(eval $(call register_engine_user,run_world))
 $(eval $(call register_engine_user,step_world))
-$(eval $(call register_engine_user,engine_diff))
+$(eval $(call register_engine_user,test/engine_diff))
 $(eval $(call register_engine_user,relax_world))
+
+all_tools : bin/extract_state_from_orch_log
+all_tools : bin/create_xml_v5_graph_instance
 
 bin/create_xml_v5_graph_instance : LDFLAGS += -static
 

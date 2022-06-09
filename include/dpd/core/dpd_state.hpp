@@ -163,6 +163,7 @@ struct BeadType
     std::string name;
     double r;
     uint32_t id = -1;
+    bool stationary = false;
 };
 
 struct Bond
@@ -216,8 +217,8 @@ struct InteractionStrength
     Parameter conservative;
     Parameter dissipative;
 
-    //bool operator==(const InteractionStrength &o) const
-    //{ return conservative==o.conservative && dissipative==o.dissipative; }
+    bool operator==(const InteractionStrength &o) const
+    { return conservative==o.conservative && dissipative==o.dissipative; }
 };
 
 struct WorldState
