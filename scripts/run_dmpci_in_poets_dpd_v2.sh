@@ -6,7 +6,7 @@ IFS=$'\n\t'
 OSPREY_PATH=${OSPREY_PATH:-}
 if [[ "${OSPREY_PATH}" == "" ]] ; then
 	set +e
-	OSPREY_PATH=$(which dpd-poets)
+	OSPREY_PATH=$(which dpd-poets 2> /dev/null)
 	RES=$?
 	set -e
 fi
@@ -38,7 +38,9 @@ SRC_DMPCI=$1
 WORKING_DIR=$2
 OUTPUT_DIR=$3
 
+>&2 echo "SRC_DMPCI=${SRC_DMPCI}"
 >&2 echo "WORKING_DIR=${WORKING_DIR}"
+>&2 echo "OUTPUT_DIR=${OUTPUT_DIR}"
 
 [[ "${SRC_DMPCI}" != "" ]] || { >&2 echo "No src dmpci." ; exit 1 ; }
 
@@ -101,11 +103,11 @@ if [[ ! -f ${WORKING_DIR}/${BASE_NAME}.begin.state.gz ]] ; then
 			${WORKING_DIR}/${BASE_NAME}.tmp.state.gz ${STSS_TIME} 1.1
 		>&2 echo "Relaxation done"
 		
-		${POETS_DPD_DIR}/bin/change_world_dt ${WORKING_DIR}/${BASE_NAME}.tmp.state.gz ${WORKING_DIR}/${BASE_NAME}.begin.state.gz ${STSS_DT}
+		${POETS_DPD_DIR}/bin/change_world_dt --dt ${STSS_DT} --t 0 ${WORKING_DIR}/${BASE_NAME}.tmp.state.gz ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
 
 		rm ${WORKING_DIR}/${BASE_NAME}.tmp.state.gz
 	else
-		cp ${WORKING_DIR}/${BASE_NAME}.init.state.gz  ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
+		${POETS_DPD_DIR}/bin/change_world_dt --t 0 ${WORKING_DIR}/${BASE_NAME}.init.state.gz  ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
 	fi
 
 fi
@@ -115,7 +117,7 @@ fi
 
 >&2 echo "${WORKING_DIR}/${BASE_NAME}.begin.state.gz" 
 ${POETS_DPD_DIR}/bin/run_world ${ENGINE} ${WORKING_DIR}/${BASE_NAME}.begin.state.gz \
-	${OUTPUT_DIR}/${BASE_NAME}- \
+	${OUTPUT_DIR}/${BASE_NAME} \
 	${INTERVAL_COUNT} ${SNAPSHOT_PERIOD} ${DISPLAY_PERIOD} \
-		--gzip-snapshot --povray-render --povray-snapshot --solvent-free-snapshot
+		--gzip-snapshot --povray-render --solvent-free-snapshot
 

@@ -41,9 +41,9 @@ for i in ${DMPCI_FILES} ; do
     STATUS=$(cat ${STATUS_FILE})
     if [[ "$STATUS" == "Ready" ]] ; then   
         >&2 echo "Queuing up ${NAME}"
-        JOB_ID=$(sbatch --parsable) ${DMPCI_GRID_NAME}/${NAME}.sh --output ${DMPCI_GRID_NAME}/output/${NAME}/${NAME}.log
+        JOB_ID=$(sbatch --parsable --output ${DMPCI_GRID_NAME}/output/${NAME}/${NAME}.log ${DMPCI_GRID_NAME}/${NAME}.sh )
         # Very slight race condition here
-        echo "Queued,SlurmJobId=$JOB_ID,\$(date -Iseconds)" > ${STATUS_FILE}
+        echo "Queued,SlurmJobId=$JOB_ID,$(date -Iseconds)" > ${STATUS_FILE}
     fi
 
     STATUS=$(cat ${STATUS_FILE})

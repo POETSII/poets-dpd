@@ -25,7 +25,7 @@ fi
 POETS_DPD_DIR="$(dirname "$0")/.."
 POETS_DPD_DIR=$(realpath ${POETS_DPD_DIR})
 
-NEEDED_POETS_BINARIES="bin/run_world bin/relax_world bin/change_world_dt"
+NEEDED_POETS_BINARIES="bin/run_world bin/relax_world bin/change_world"
 for i in ${NEEDED_POETS_BINARIES} ; do
     if [[ ! -x ${POETS_DPD_DIR} ]] ; then
         >&2 echo "Missing poets binary ${i}, and this script is to cowardly to build it"
@@ -60,7 +60,9 @@ for i in ${DMPCI_FILES} ; do
     mkdir -p ${DMPCI_GRID_NAME}/working/${NAME}
     mkdir -p ${DMPCI_GRID_NAME}/output/${NAME}
 
-    >&2 echo "Generating script for ${NAME}"
+    DMPCI_SRC_FILE="${DMPCI_GRID_NAME}/input/${i}"
+
+    >&2 echo "Generating script for ${NAME}, DMPCI_SRC_FILE=${DMPCI_SRC_FILE}"
 
     STATUS_FILE=${DMPCI_GRID_NAME}/working/${NAME}/${NAME}.status.txt
     echo "Ready" > ${STATUS_FILE}
@@ -104,13 +106,13 @@ else
     echo "Running,PID=\$\$,\$(date -Iseconds)" > ${STATUS_FILE}
 fi
 
-if which module ; then
+if module list 2> /dev/null > /dev/null ; then
     # We are probably in iridis
     export LD_LIBRARY_PATH=/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0_libc2.17_kernel3.10.0_release
     module load gcc/11.1.0
 fi
 
-${POETS_DPD_DIR}/scripts/run_dmpci_in_poets_dpd_v2.sh $(realpath ${i} ) \
+${POETS_DPD_DIR}/scripts/run_dmpci_in_poets_dpd_v2.sh $(realpath ${DMPCI_SRC_FILE} ) \
     $(realpath ${DMPCI_GRID_NAME}/working/${NAME}) \
     $(realpath ${DMPCI_GRID_NAME}/output/${NAME})
 RES=\$?

@@ -393,7 +393,7 @@ public:
     operator double() const
     {
         if(__builtin_expect(!!m_expr,0)){
-            throw std::runtime_error("Attempt to use expression with variables as a constant.");
+            throw std::runtime_error("Attempt to use expression with variables as a constant. Expr=."+m_expr->as_string());
         }
         return m_value;
     }
