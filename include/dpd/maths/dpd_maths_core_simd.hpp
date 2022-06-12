@@ -24,7 +24,7 @@ namespace dpd_maths_core_simd
         state = state ^ _mm256_srli_epi32( state , 7 );
         state = state ^ _mm256_slli_epi32( state , 5 );
 
-        __m256i x = (init + state[0]);
+        __m256i x = _mm256_add_epi32(init , state);
         const __m256 scale = _mm256_set1_ps(0.00000000023283064365386962890625f);
         __m256 xf = _mm256_cvtepi32_ps(x);
         return xf*scale;
@@ -82,6 +82,10 @@ namespace dpd_maths_core_simd
     /* Returns true if there is any interaction (non-zero force), false otherwise.
         The f values are only valid iff it returns true. f is not set to zero
         if there are no interactions.
+
+        This function treats all home lanes as active. It is up to the caller to
+        make sure they are valid (e.g. by moving inactive lanes to an x value which
+        can't interact) or by applying masking externally.
     */
     template<unsigned MAX_BEAD_TYPES>
     static bool interact_vec8_to_scalar(
@@ -138,7 +142,10 @@ namespace dpd_maths_core_simd
         auto sqrt_gammap = sqrt_diss_strength*wr;
 
         auto dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
-        auto u = XorShift32( rng_state );
+        auto u = _mm256_setzero_ps(); //XorShift32( rng_state );
+        for(int d=0; d<3; d++){
+            assert(-0.5f <= u[d] && u[d] <= 0.5f );
+        }
         auto randScale = sqrt_gammap * _mm256_set1_ps( scale_inv_sqrt_dt );
         auto randForce = randScale * u;
 

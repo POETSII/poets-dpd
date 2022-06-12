@@ -13,7 +13,9 @@
 #include "dpd/maths/dpd_maths_core_half_step_raw.hpp"
 #include "dpd/maths/dpd_maths_core_half_step.hpp"
 
-class DPDEngineAVX2HalfMerge
+#include <tbb/parallel_for_each.h>
+
+class DPDEngineAVX2HalfMergeTBB
     : public DPDEngine
 {
 public:
@@ -23,6 +25,16 @@ public:
 
      std::string CanSupport(const WorldState *state) const override
     {
+        for(int d=0;d<3;d++){
+            int l=round(state->box[d]);
+            if(l!=state->box[d]){
+                return "World bounds must be integer.";
+            }
+            if( l%4 ){
+                return "All dimensions must be a multiple of 4.";
+            }
+        }
+
         return DPDEngine::CanSupport(state);
     }
 
@@ -39,7 +51,7 @@ public:
         m_dt=s->dt;
         m_scale_inv_sqrt_dt = pow_half( dpd_maths_core::kT * 24 / m_state->dt);
         for(unsigned i=0; i<s->bead_types.size(); i++){
-            for(unsigned j=0; i<s->bead_types.size(); j++){
+            for(unsigned j=0; j<s->bead_types.size(); j++){
                 const auto &ii = m_state->interactions[i*m_state->bead_types.size()+j];
                 m_conservative_matrix[i*MAX_BEAD_TYPES+j] = (double)ii.conservative;
                 m_sqrt_dissipative_matrix[i*MAX_BEAD_TYPES+j] = sqrtf((double)ii.dissipative);
@@ -81,10 +93,13 @@ public:
     void Run(unsigned nSteps)
     {
         for(unsigned i=0; i<nSteps; i++){
+            validate();
             step();
+            validate();
         }
 
         synchronise_beads_out();
+        fprintf(stderr, "Max occupancy = %u\n", max_occupancy);
     }
 
 
@@ -125,6 +140,8 @@ private:
 
     WorldState *m_state=0;
 
+    unsigned max_occupancy=0;
+
     __m256i make_rng_state(uint64_t seed, unsigned index)
     {
         // HACK! FIX ME
@@ -132,6 +149,29 @@ private:
             m_urng(), m_urng(), m_urng(), m_urng(),
             m_urng(), m_urng(), m_urng(), m_urng()
         );
+    }
+
+    template<class T,class F>
+    void parallel_for_each(std::vector<T> &x, unsigned grain, F &&f)
+    {
+        using range_t=tbb::blocked_range<size_t>;
+        tbb::parallel_for(range_t(0,x.size(),grain), [&](const range_t &r){
+            for(size_t i=r.begin(); i<r.end(); i++){
+                f(x[i]);
+            }
+        }, tbb::simple_partitioner{});
+    }
+
+    template<class F>
+    void parallel_for_each_cell_blocked(F &&f)
+    {
+        for(unsigned i=0; i<m_cell_waves.size(); i++){
+            parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<unsigned> &c) {
+                for(auto index : c){
+                    f(m_cells[index]);
+                }
+            });
+        }
     }
 
     unsigned get_cell_index(const vec3i_t &pos)
@@ -146,13 +186,26 @@ private:
     {
         assert(index<m_cells.size());
         vec3i_t res;
-        res[0] = index % m_dims[0];
-        index /= m_dims[0];
-        res[1] = index % m_dims[1];
-        index /= m_dims[1];
-        res[2] = index;
+        unsigned working=index;
+        res[0] = working % m_dims[0];
+        working /= m_dims[0];
+        res[1] = working % m_dims[1];
+        working /= m_dims[1];
+        res[2] = working;
         assert(get_cell_index(res)==index);
         return res;
+    }
+
+    void validate()
+    {
+        for(auto &cell : m_cells){
+            for(unsigned i=0; i<cell.n; i++){
+                auto &bead = cell.beads[i];
+                for(int d=0; d<3; d++){
+                    assert(!isnanf(bead.f[d]));
+                }
+            }
+        }
     }
 
     void make_conflict_groups()
@@ -193,6 +246,8 @@ private:
     }
     void import_beads()
     {
+        // This one is a bit difficult to parallelise, but it
+        // should not be on the critical path for most scenarios.
         for(const auto &b : m_state->beads){
             auto pos=vec3_floor(b.x);
             unsigned dst_index=get_cell_index(pos);
@@ -207,6 +262,9 @@ private:
             b.x.extract(p.x);
             b.v.extract(p.v);
             b.f.extract(p.f);
+            for(int d=0; d<3; d++){
+                assert(!isnanf(p.f[d]));
+            }
 
             // Pre-correct mom backwards
             dpd_maths_core_half_step_raw::update_mom(-m_dt, p);
@@ -219,7 +277,7 @@ private:
 
     void synchronise_beads_out()
     {
-        for(auto &cell : m_cells){
+        parallel_for_each(m_cells, 32, [&](Cell &cell){
             assert(cell.n==cell.n_move_pending);
             for(unsigned i=0; i<cell.n; i++){
                 auto &p=cell.beads[i];
@@ -228,7 +286,7 @@ private:
                 auto bead_index = polymer.bead_ids.at(bh.get_polymer_offset());
 
                 auto &b=m_state->beads[bead_index];
-                assert(b.get_hash() == bh);
+                assert(b.get_hash_code() == bh);
 
                 b.x.assign(p.x);
                 b.v.assign(p.v);
@@ -237,7 +295,7 @@ private:
                 // Post-correct for missing step
                 dpd_maths_core_half_step::update_mom(m_dt, b);
             }
-        }
+        });
     }
 
     void convert_AoS_to_SoA_vec8(
@@ -251,14 +309,26 @@ private:
         if(in.n > 8){ __builtin_unreachable(); }
 
         bead_type = _mm256_setzero_si256();
+        // Initialise positions somewhere that is guaranteed not to interact.
+        // This means force calculations will automatically return 0 for inactive lanes.
+        for(int d=0; d<3; d++){
+            x[d] = _mm256_set1_ps(-2.0f);
+        }
+
+        // Indexing into a _mm256i treats it as 4x64.
+        // It might be more efficient to do the floats this way as well.
+        uint32_t bead_types_tmp[8]={0,0,0,0, 0,0,0,0 };
 
         for(unsigned i=0; i<in.n; i++){
-            bead_type[i] = BeadHash{in.beads[i].id}.get_bead_type();
+            bead_types_tmp[i] = BeadHash{in.beads[i].id}.get_bead_type();
             for(int d=0; d<3; d++){
+                assert(!isnanf(in.beads[i].f[d]));
                 x[d][i] = in.beads[i].x[d];
                 v[d][i] = in.beads[i].v[d];
             }
         }
+        bead_type=_mm256_loadu_si256( (const __m256i *)bead_types_tmp );
+
     }
 
     virtual void step()
@@ -268,31 +338,25 @@ private:
         for(const auto &c : m_cells){
             assert(c.n==c.n_move_pending);
         }
+        validate();
 
-        for(auto &wave : m_cell_waves){
-            for(auto &group : wave){
-                for(auto index : group){
-                    move_cell(m_cells[index]);
-                }
-            }
-        }
+        parallel_for_each_cell_blocked([&](Cell &cell){
+            move_cell(cell);
+        });
 
-        for(const auto &c : m_cells){
-            assert(0==c.n_move_pending);
-        }
+        validate();
 
         // At this point cell.n==0
-        for(auto &wave : m_cell_waves){
-            for(auto &group : wave){
-                for(auto index : group){
-                    step_cell(m_cells[index]);
-                }
-            }
-        }
+        parallel_for_each_cell_blocked([&](Cell &cell){
+            step_cell(cell);
+        });
 
         for(const auto &c : m_cells){
             assert(c.n==c.n_move_pending);
         }
+        validate();
+
+        m_state->t++;
     }
 
     void move_cell(Cell &home)
@@ -309,6 +373,7 @@ private:
     {
         for(int bi=home.n_move_pending-1; bi>=0; bi--){
             auto &b=home.beads[bi];
+            //fprintf(stderr, "Bead %u\n", b.id);
             
             dpd_maths_core_half_step_raw::update_mom(m_dt, b);
 
@@ -347,6 +412,13 @@ private:
             throw std::runtime_error("Not implemented yet.");
         }
 
+        if(home.n==0){
+            return;
+        }
+
+        // TODO : remove
+        max_occupancy=std::max(max_occupancy, home.n);
+
         __m256i home_bead_type;
         __m256 home_x[3], home_v[3], home_f[3];
         __m256i rng_state;
@@ -357,7 +429,21 @@ private:
         }
         rng_state=home.rng_state;
 
+        for(int i=0; i<home.n; i++){
+            for(int d=0; d<3; d++){
+                assert(!isnanf(home_f[d][i]));
+                assert(!isnanf(home.beads[i].f[d]));
+            }
+        }
+
         step_cell_intra_vec8(home, rng_state, home_bead_type, home_x, home_v, home_f);
+
+        for(int i=0; i<home.n; i++){
+            for(int d=0; d<3; d++){
+                assert(!isnanf(home_f[d][i]));
+                assert(!isnanf(home.beads[i].f[d]));
+            }
+        }
         
         // flag is mostly true, and there is loads of iteration inside
         // so icache shouldn't be a problem
@@ -366,11 +452,19 @@ private:
         }else{
             step_cell_inter_vec8<false>(home, rng_state, home_bead_type, home_x, home_v, home_f);
         }
+
+        for(int i=0; i<home.n; i++){
+            for(int d=0; d<3; d++){
+                assert(!isnanf(home_f[d][i]));
+            }
+        }
         
         for(unsigned i=0; i<home.n; i++){
-            home.beads[i].f[0] += home_f[0][i];
-            home.beads[i].f[1] += home_f[1][i];
-            home.beads[i].f[2] += home_f[2][i];
+            for(int d=0; d<3; d++){
+                assert(!isnanf(home.beads[i].f[d]));
+                home.beads[i].f[d] += home_f[d][i];
+                assert(!isnanf(home.beads[i].f[d]));
+            }
         }
         home.rng_state=rng_state;
 
@@ -391,7 +485,7 @@ private:
 
         assert(home.n<=8);
 
-        __m256i iota=_mm256_set_epi32(0,1,2,3,4,5,6,7);
+        __m256i iota=_mm256_set_epi32(7,6,5,4,3,2,1,0);
 
         for(unsigned j=1; j<home.n; j++){
             auto &other_bead=home.beads[j];
@@ -413,11 +507,13 @@ private:
 
                 f
             )){
-                // Lanes on the "left" are at lower indices than "other_bead" at index j
-                __m256i left_active = iota < _mm256_set1_epi32(j);
+                // There is no less than in AVX2, so rely on greater than.
+                // Create a mask that is true for [0,j) and false for [j,8)
+                __m256i active = _mm256_cmpgt_epi32(_mm256_set1_epi32(j),iota);
                 for(int d=0; d<3; d++){
-                    home_f[d] = home_f[d] + _mm256_and_ps(f[d], _mm256_castsi256_ps(left_active));
-                    other_bead.f[d] -= dpd_maths_core_simd::_mm256_reduce_add_ps(f[d]);
+                    __m256 forces_active = _mm256_and_ps(f[d], _mm256_castsi256_ps(active));
+                    home_f[d] = home_f[d] + forces_active;
+                    other_bead.f[d] -= dpd_maths_core_simd::_mm256_reduce_add_ps(forces_active);
                 }
             }
         }
@@ -463,8 +559,13 @@ private:
                     f
                 )){
                     for(int d=0; d<3; d++){
+                        for(int i=0; i<home.n; i++){
+                            assert(!isnanf(f[d][i]));
+                        }
                         home_f[d] = home_f[d] + f[d];
+                        assert(!isnanf(other_bead.f[d]));
                         other_bead.f[d] -= dpd_maths_core_simd::_mm256_reduce_add_ps(f[d]);
+                        assert(!isnanf(other_bead.f[d]));
                     }
                 }
             }
