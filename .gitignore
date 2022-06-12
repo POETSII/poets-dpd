@@ -17,12 +17,13 @@ obj
 *.fdb_latemk
 *.pdf
 *.fls
-*.csv
 *.log
 
 test_results
 working
 working2
+results
+*.csv
 *.out
 .*/
 tmp.*

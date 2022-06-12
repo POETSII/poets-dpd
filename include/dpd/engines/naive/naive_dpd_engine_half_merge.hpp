@@ -23,6 +23,7 @@ class NaiveDPDEngineHalfMerge
 {
 public:
     friend class NaiveDPDEngineHalfMergeTBB;
+    friend class NaiveDPDEngineHalfMergeTBBV3;
 
     std::string CanSupport(const WorldState *s) const override
     {

@@ -1,163 +1,36 @@
-#ifndef naive_dpd_engine_half_merge_tbb_hpp
-#define naive_dpd_engine_half_merge_tbb_hpp
+#ifndef naive_dpd_engine_half_merge_tbb_v3_hpp
+#define naive_dpd_engine_half_merge_tbb_v3_hpp
 
-#include "dpd/engines/naive/naive_dpd_engine_half_merge.hpp"
+#include "dpd/engines/naive/naive_dpd_engine_half_merge_tbb.hpp"
 
-#include "dpd/maths/dpd_maths_core_half_step.hpp"
-
-#include "tbb/parallel_for.h"
-#include "tbb/blocked_range.h"
-
-#include <immintrin.h>
-#include <array>
-
-class NaiveDPDEngineHalfMergeTBB
-    : public NaiveDPDEngineHalfMerge
+class NaiveDPDEngineHalfMergeTBBV3
+    : public NaiveDPDEngineHalfMergeTBB
 {
 public:
-    std::string CanSupport(const WorldState *s) const override
-    {
-        std::string base=NaiveDPDEngineHalfMerge::CanSupport(s);
-        if(!base.empty()){
-            return base;
-        }
-
-        if( fmod(s->box[0],4) !=0  ){
-            return "x-dim not a multiple of 4.";
-        }
-        if( fmod(s->box[1],4) !=0  ){
-            return "y-dim not a multiple of 4.";
-        }
-        if( fmod(s->box[2],4) !=0  ){
-            return "z-dim not a multiple of 4.";
-        }
-
-        return "";
-    }
+    std::vector<std::pair<double,double>> m_interaction_matrix;
 
     void Attach(WorldState *s) override
     {
-        std::string m=CanSupport(s);
-        if(!m.empty()){
-            throw std::runtime_error("Can't support this world : "+m);
-        }
+        NaiveDPDEngineHalfMergeTBB::Attach(s);
 
-        NaiveDPDEngineHalfMerge::Attach(s);
         if(s){
-            make_conflict_groups();
-            collect_non_monomers();
+            m_interaction_matrix.resize(s->interactions.size());
+            for(unsigned i=0; i<m_interaction_matrix.size(); i++){
+                m_interaction_matrix[i]={
+                    s->interactions[i].conservative,
+                    sqrt(s->interactions[i].dissipative)
+                };
+            }
         }
     }
 
 private:
-    friend class NaiveDPDEngineHalfMergeTBBV3;
-
-    static constexpr bool USE_PACKED=true;
-
-    struct SuperCell
-    {
-        std::array<Cell*,8> members;
-    };
-
-    std::vector<std::vector<SuperCell>> m_conflict_groups;
-
-    std::vector<Polymer*> m_non_monomers;
-    size_t m_non_monomer_grain;
-
-    void collect_non_monomers()
-    {
-        m_non_monomers.clear();
-        size_t total_bonds=0, total_bond_pairs=0;
-        for(Polymer &p : m_state->polymers){
-            if(p.bead_ids.size()>1){
-                m_non_monomers.push_back(&p);
-                PolymerType &pt=m_state->polymer_types.at(p.polymer_type);
-                total_bonds += pt.bonds.size();
-                total_bond_pairs += pt.bond_pairs.size();
-            }
-        }
-        if(m_non_monomers.empty()){
-            m_non_monomer_grain=0;
-        }else{
-            double avg_ops_per_polymer=(total_bonds * 30 + total_bond_pairs * 50)/m_non_monomers.size();
-            m_non_monomer_grain=(unsigned)std::max(1.0, 1000000 / avg_ops_per_polymer);
-        }
-    }
-
-    void make_conflict_groups()
-    {
-        std::unordered_set<unsigned> seen;
-
-        m_conflict_groups.clear();
-        for(unsigned gx=0; gx<4; gx+=2){
-            for(unsigned gy=0; gy<4; gy+=2){
-                for(unsigned gz=0; gz<4; gz+=2){
-                    // This gives the origin of a 2x2x2 cube within a 4x4x4 block
-                    std::vector<SuperCell> group;
-                    // Loop over all super cells within group
-                    for(unsigned ix=gx; ix<(unsigned)m_dims[0]; ix+=4){
-                        for(unsigned iy=gy; iy<(unsigned)m_dims[1]; iy+=4){
-                            for(unsigned iz=gz; iz<(unsigned)m_dims[2]; iz+=4){
-                                SuperCell sc;
-                                unsigned off=0;
-                                for(int lx=0; lx<2; lx++){
-                                    for(int ly=0; ly<2; ly++){
-                                        for(int lz=0; lz<2; lz++){
-                                            unsigned index=cell_pos_to_index({int(ix+lx),int(iy+ly),int(iz+lz)});
-                                            if(!seen.insert(index).second){
-                                                throw std::runtime_error("Duplicate");
-                                            }
-                                            sc.members[off++]=&m_cells[index];
-                                        }
-                                    }
-                                }
-                                group.push_back(sc);
-                            }
-                        }
-                    }
-                    m_conflict_groups.push_back(group);
-                }
-            }
-        }
-    }
-
     virtual void step()
     {
         if(ForceLogging::logger()){
             step_impl<true>();
         }else{
             step_impl<false>();
-        }
-    }
-
-    template<class T,class F>
-    void parallel_for_each(std::vector<T> &x, unsigned grain, F &&f)
-    {
-        using range_t=tbb::blocked_range<size_t>;
-        tbb::parallel_for(range_t(0,x.size(),grain), [&](const range_t &r){
-            for(size_t i=r.begin(); i<r.end(); i++){
-                f(x[i]);
-            }
-        }, tbb::simple_partitioner{});
-    }
-
-    /*template<class F>
-    void parallel_for_each_cell_blocked(unsigned grain, F &&f)
-    {
-        for(unsigned i=0; i<m_conflict_groups.size(); i++){
-            parallel_for_each(m_conflict_groups[i], grain, f);
-        }
-    }*/
-
-    template<class F>
-    void parallel_for_each_cell_blocked(F &&f)
-    {
-        for(unsigned i=0; i<m_conflict_groups.size(); i++){
-            parallel_for_each(m_conflict_groups[i], 1, [&](const SuperCell &c) {
-                for(unsigned i=0; i<8; i++){
-                    f(c.members[i]);
-                }
-            });
         }
     }
 
@@ -302,6 +175,33 @@ private:
             }
             update_inter_forces<EnableLogging,IsEdge>(c, *curr);
         }
+    }
+
+    template<bool EnableLogging>
+    void update_bead_pair(Bead *hb, Bead *ob, const vec3r_t &dx, double dr2, vec3r_t &h_f)
+    {
+        assert(hb!=ob);
+
+        double dr=pow_half(dr2);
+
+        vec3r_t f;
+
+        auto ia=m_interaction_matrix[ hb->bead_type*m_numBeadTypes+ob->bead_type ];
+        
+        dpd_maths_core_half_step::calc_force<EnableLogging,double,vec3r_t>(
+            m_scaled_inv_root_dt,
+            [&](unsigned a, unsigned b){ return ia.first; },
+            [&](unsigned a, unsigned b){ return ia.second; },
+            m_t_hash,
+            dx, dr,
+            0, 0, // kappa and r0
+            *hb,
+            *ob,
+            f
+        );
+
+        h_f += f;
+        ob->f -= f;
     }
 
 };

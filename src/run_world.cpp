@@ -118,7 +118,9 @@ int main(int argc, const char *argv[])
 
         std::shared_ptr<DPDEngine> engine = DPDEngineFactory::create(engine_name);
 
+        fprintf(stderr, "Validating....\n");
         validate(state, engine->GetMaxBondLength());
+        fprintf(stderr, "  ok\n");
 
         std::string ok=engine->CanSupport(&state);
         if(!ok.empty()){

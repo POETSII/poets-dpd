@@ -18,7 +18,7 @@ public:
     {}
 };
 
-inline void validate(const WorldState &s, double max_r=1)
+inline void validate(const WorldState &s, double max_r=1, double max_dist_per_step=0.5)
 {
     auto require=[](bool cond, const char *msg)
     {
@@ -119,11 +119,11 @@ inline void validate(const WorldState &s, double max_r=1)
     std::unordered_map<BeadHash,const Bead *> seen_hashes;
 
     // Max speed allowed is half a box per time-step
-    double max_v = 0.5 / s.dt;
+    double max_v = max_dist_per_step / s.dt;
     // Max force would cause speed to increase by max_v in one time-step
     double max_f = max_v / s.dt;
     // or distance to change by more than 0.5 in one time-step
-    max_f = std::min(max_f, 1.0/(s.dt*s.dt));
+    max_f = std::min(max_f, 2*max_dist_per_step/(s.dt*s.dt));
     // TODO : double-check those velocity and force thresholds.
     for(const auto & b : s.beads){
         for(unsigned i=0; i<3; i++){
@@ -141,7 +141,7 @@ inline void validate(const WorldState &s, double max_r=1)
             REQUIRE( -max_v <= b.v[i] && b.v[i] <= max_v);
 
             if(!(-max_f <= b.f[i] && b.f[i] <= max_f)){
-                std::cerr<<"  bead "<<i<<", f="<<b.f<<", max_v="<<max_f<<"\n";
+                std::cerr<<"  bead "<<i<<", f="<<b.f<<", max_f="<<max_f<<"\n";
                 exit(1);
             }
             REQUIRE( -max_f <= b.f[i] && b.f[i] <= max_f );
