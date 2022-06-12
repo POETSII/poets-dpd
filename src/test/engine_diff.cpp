@@ -162,7 +162,7 @@ int main(int argc, const char *argv[])
             f_diff(f_err);
             if(f_err > worst_f_err){
                 std::cout.flush();
-                std::cout<<"# Worst f_err "<<f_err<<", b1="<<s1[j].get_hash_code().reduced_hash().hash<<", "<<s1[j].x<<","<<s1[j].v<<","<<s1[j].f<<", b1="<<s1[j].get_hash_code().reduced_hash().hash<<", "<<s2[j].x<<","<<s2[j].v<<","<<s2[j].f<<"\n";
+                //std::cout<<"# Worst f_err "<<f_err<<", b1="<<s1[j].get_hash_code().reduced_hash().hash<<", "<<s1[j].x<<","<<s1[j].v<<","<<s1[j].f<<", b1="<<s1[j].get_hash_code().reduced_hash().hash<<", "<<s2[j].x<<","<<s2[j].v<<","<<s2[j].f<<"\n";
                 worst_f_err=f_err;
             }
 

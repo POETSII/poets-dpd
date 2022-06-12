@@ -47,8 +47,8 @@ void with_optional_gzip_ostream(
 ){
     if(dst.size()>=4 && dst.substr(dst.size()-3)==".gz"){
 #ifdef __GLIBCXX__
-        std::string cmd="gzip -9 -c > "+dst;
-        FILE *f=popen(dst.c_str(), "w");
+        std::string cmd="gzip -c > "+dst;
+        FILE *f=popen(cmd.c_str(), "w");
         if(!f){
             throw std::runtime_error("Error when spawning gzip command '"+cmd+"'");
         }

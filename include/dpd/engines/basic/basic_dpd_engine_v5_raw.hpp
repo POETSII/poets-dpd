@@ -47,21 +47,18 @@ public:
         device_state_t *dst;
         std::variant<std::monostate,raw_bead_resident_t,raw_bead_view_t,raw_force_input_t> payload;
     };
+
+    bool CanSupportHookeanBonds() const override
+    { return !NoBonds; }
+
+    bool CanSupportAngleBonds() const override
+    { return !NoBonds; }
     
     std::string CanSupport(const WorldState *s) const override
     {
         if(s->bead_types.size()>1){
             if(s->bead_types.size() > MAX_BEAD_TYPES){
                 return "Too many bead types.";
-            }
-        }
-
-        if(NoBonds){
-            for(auto p : s->polymers){
-                auto pt = s->polymer_types.at(p.polymer_type);
-                if(pt.bonds.size()>0){
-                    return "This engine does not support bonds (DPD forces only).";
-                }
             }
         }
 

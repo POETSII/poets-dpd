@@ -60,6 +60,8 @@ namespace dpd_maths_core_half_step_raw
         
         for(int i=0; i<3; i++){
             x[i] += (x[i]<0.0f ? dims[i] : 0.0f);
+            // We want this to be dependent, as x[i]+dims[i] can
+            // equal dims[i] for tiny negative x[i]
             x[i] -= (x[i]>=dims[i] ? dims[i] : 0.0f);
             assert(x[i] >= 0.0f);
             assert(x[i] < dims[i]);

@@ -7,6 +7,8 @@
 #include <cassert>
 #include <unordered_map>
 
+#include "dpd/core/expression.hpp"
+
 #include "vec3.hpp"
 
 // Here we generally assume that 32-bit is enough for indices and ids
@@ -36,8 +38,8 @@ struct BeadHash
 
     static BeadHash construct(uint32_t bead_type, bool is_monomer, uint32_t polymer_id, uint32_t polymer_offset)
     {
-        assert( is_monomer ? (polymer_offset==0 && polymer_id<(1u<<27))
-                                        : (polymer_offset<64 && polymer_id<(1u<<21)));
+        assert( is_monomer ? polymer_id<(1u<<27) : polymer_id<(1u<<21));
+        assert( is_monomer ? polymer_offset==0 : polymer_offset<64 );
         uint32_t base=(uint32_t(polymer_offset)<<21) | polymer_id;
         base |= uint32_t(is_monomer)<<27;
         base |= bead_type << 28;
@@ -180,12 +182,13 @@ struct BeadType
     std::string name;
     double r;
     uint32_t id = -1;
+    bool stationary = false;
 };
 
 struct Bond
 {
-    double kappa;
-    double r0;
+    Parameter kappa;
+    Parameter r0;
     uint32_t bead_offset_head = -1;
     uint32_t bead_offset_tail = -1;
 
@@ -195,8 +198,8 @@ struct Bond
 
 struct BondPair
 {
-    double kappa;
-    double theta0;
+    Parameter kappa;
+    Parameter theta0;
     uint32_t bond_offset_head = -1;
     uint32_t bond_offset_tail = -1;
 
@@ -230,8 +233,8 @@ struct Polymer
 
 struct InteractionStrength
 {
-    double conservative;
-    double dissipative;
+    Parameter conservative;
+    Parameter dissipative;
 
     bool operator==(const InteractionStrength &o) const
     { return conservative==o.conservative && dissipative==o.dissipative; }

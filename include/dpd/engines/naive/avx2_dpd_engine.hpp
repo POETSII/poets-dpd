@@ -16,11 +16,11 @@
 #include <tbb/concurrent_vector.h>
 #include <tbb/blocked_range.h>
 
+template<unsigned MAX_LOCAL=8>
 class AVX2DPDEngine
     : public DPDEngine
 {
 private:
-    static const unsigned MAX_LOCAL = 16;
     static_assert(MAX_LOCAL==8 || MAX_LOCAL==16);
 
     static const unsigned MAX_BEAD_TYPES = 16;
@@ -567,24 +567,6 @@ private:
                     force[d] += scaled_force*dx[d];
                 }
                 assert(!isnanf(force[0]));
-
-                /*if(ForceLogging::logger()){    
-                    fprintf(stderr, "Logging\n");        
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dx", 3,ddx);
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dr", 1,&r);
-                    double tt=scale_inv_sqrt_dt;
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-invrootdt", 1, &tt);
-                    double gammap=sqrt_gammap*sqrt_gammap;
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-gammap", 1, &gammap);
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-rng", 1, &u);
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-con",1, &conForce);
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-diss", 1,&dissForce);
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-rng-scale",1, &randScale);
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"dpd-rand",1, &randForce);
-                    double dpd_force=conForce + dissForce + randForce;
-                    double ff[3]={(double)dx[0]*dpd_force,(double)dx[1]*dpd_force,(double)dx[2]*dpd_force};
-                    ForceLogging::logger()->LogBeadPairProperty( BeadHash{id},BeadHash{oid},"f_next_dpd", 3,ff);
-                }*/
             }
 
             #pragma GCC unroll 3
@@ -668,6 +650,19 @@ private:
         }
     }
 
+    vec3f_t calc_distance_from_to(const vec3f_t &base, const vec3f_t &other) const
+    {
+        vec3f_t res;
+        for(unsigned i=0; i<3; i++){
+            float len=m_dimsf[i];
+            float dx=other[i]-base[i];
+            int wrap_neg = dx > len*0.5;
+            int wrap_pos = dx < -len*0.5;
+            res[i] = dx + (wrap_pos - wrap_neg) * len;
+        }
+        return res;
+    }
+
     void __attribute__((noinline)) update_polymer_range(const range_t &r)
     {
         for(unsigned i=r.begin(); i<r.end(); i++){
@@ -722,29 +717,19 @@ private:
                 auto centre_pos=m_polymer_positions[centre_index];
                 auto tail_pos=m_polymer_positions[tail_index];
 
-                vec3f_t dx01 = centre_pos.x - head_pos.x ;
-                vec3f_t dx12 = tail_pos.x - centre_pos.x;
-                for(int d=0; d<3; d++){
-                    if(dx01[d] > 2.5){
-                        dx01[d] -= m_dimsf[d];
-                    }else if(dx01[d] < -2.5){
-                        dx01[d] += m_dimsf[d];
-                    }
-                    if(dx12[d] > 2.5){
-                        dx12[d] -= m_dimsf[d];
-                    }else if(dx12[d] < -2.5){
-                        dx12[d] += m_dimsf[d];
-                    }
-                }
-                // TODO : Calculating this every time is stupid
-                float sin_theta, cos_theta;
-                sincosf(bp.theta0, &sin_theta, &cos_theta);
+                auto first=calc_distance_from_to(head_pos.x, centre_pos.x);
+                auto second=calc_distance_from_to(centre_pos.x, tail_pos.x);
 
-                vec3f_t head_force, centre_force, tail_force;
-                dpd_maths_core::calc_angle_force(
-                    float(bp.kappa), cos_theta, sin_theta,
-                    dx01, dx01.l2_norm(), dx12, dx12.l2_norm(),
-                    head_force, centre_force, tail_force
+                float FirstLength   = first.l2_norm();
+                float SecondLength  = second.l2_norm();
+
+                vec3f_t headForce, middleForce, tailForce;
+
+                dpd_maths_core_half_step::calc_angle_force(
+                    (float)bp.kappa, cosf(bp.theta0), sinf(bp.theta0), 
+                    first, FirstLength,
+                    second, SecondLength,
+                    headForce, middleForce, tailForce
                 );
 
                 Cell &head_cell=m_cells[head_pos.cell_index];
@@ -752,9 +737,9 @@ private:
                 Cell &tail_cell=m_cells[tail_pos.cell_index];
 
                 for(int d=0; d<3; d++){
-                    head_cell.forces[d][head_pos.cell_offset] += head_force[d];
-                    centre_cell.forces[d][centre_pos.cell_offset] += centre_force[d];
-                    tail_cell.forces[d][tail_pos.cell_offset] += tail_force[d];
+                    head_cell.forces[d][head_pos.cell_offset] += headForce[d];
+                    centre_cell.forces[d][centre_pos.cell_offset] += middleForce[d];
+                    tail_cell.forces[d][tail_pos.cell_offset] += tailForce[d];
                 }
             }
         }
@@ -840,6 +825,12 @@ private:
     }
 public:
 
+    bool CanSupportHookeanBonds() const
+    { return true; }
+
+    bool CanSupportAngleBonds() const
+    { return true; } // Let the specific error messagecome through.
+
     std::string CanSupport(const WorldState *world) const override
     {
         if(world->bead_types.size() > MAX_BEAD_TYPES){
@@ -852,7 +843,7 @@ public:
             }
         }
 
-        return {};
+        return DPDEngine::CanSupport(world);
     }
 
     void Attach(WorldState *state) override

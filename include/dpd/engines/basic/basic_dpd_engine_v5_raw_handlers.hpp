@@ -3,7 +3,9 @@
 
 // Add orchestrator specific-patch to allow values in handler_log
 // No effect for other platforms.
+#ifdef TINSEL
 #include "mini_printf.hpp"
+#endif
 
 #include "dpd/storage/bag_wrapper.hpp"
 #include "dpd/maths/dpd_maths_core_half_step_raw.hpp"

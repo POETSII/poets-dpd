@@ -12,16 +12,33 @@
 
 std::ostream &write_bead_type(std::ostream &dst, const BeadType &b, const WorldState &)
 {
-    return dst<<"BeadType "<<b.id<<" "<<b.name<<" "<<b.r<<"\n";
+    dst<<"BeadType "<<b.id<<" "<<b.name<<" "<<b.r;
+    if(b.stationary){
+        dst<<" stationary";
+    }
+    dst<<"\n";
+    return dst;
 }
 
 BeadType read_bead_type(std::istream &src, int &line_no)
 {
-    auto p=read_prefixed_line_and_split_on_space(src, "BeadType", 4, line_no);
+    auto p=read_prefixed_line_and_split_on_space(src, "BeadType", -1, line_no);
+    if(p.parts.size()!=4 && p.parts.size()!=5){
+        throw std::runtime_error("Expecting 4 or 5 elements for prefix BeadType on line "+std::to_string(line_no));
+    }
     BeadType res;
     res.id=p.unsigned_at(1);
     res.name=p.string_at(2);
     res.r=p.double_at(3);
+    res.stationary=false;
+    if(p.parts.size()>4){
+        std::string s=p.string_at(4);
+        if(s=="stationary"){
+            res.stationary=true;
+        }else{
+            throw std::runtime_error("Couldn't intepret BeadType flag "+s+" at line "+std::to_string(line_no));
+        }
+    }
     return res;
 }
 
@@ -87,6 +104,9 @@ void read_bead(std::istream &src, int line_no, WorldState &s)
     s.beads[res.bead_id]=res;
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////
+// V1+V2 binary
+
 /*
     Positions in binary are encoded as 32-bit numbers with 16-bits of fractional precision.
     They are stored relative to the origin, the same as WorldState, but not like the text format.
@@ -97,6 +117,8 @@ void read_bead(std::istream &src, int line_no, WorldState &s)
 
     Typically this results in 2 + 12 + 8 + 8 = 30 bytes per bead, versus ~100 bytes per bead for the text version with default cout precision
 
+    For v2 we encode force and velocity as CVec3Half, so about 22 bytes per bead.
+
     Leading zeros should be common in the header and position, so can probably be compressed a little with conventional methods.
 */
 
@@ -105,6 +127,8 @@ struct BinaryIOWriteContext
     std::ostream &dst;
     uint32_t prev_polymer_id=0xFFFFFFFFul;
     uint32_t prev_bead_id=0xFFFFFFFFul;
+
+    bool use_v2_binary=false;
 
     template<class T>
     void write(const T &x)
@@ -134,6 +158,8 @@ struct BinaryIOReadContext
     std::istream &src;
     uint32_t prev_polymer_id=0xFFFFFFFFul;
     uint32_t prev_bead_id=0xFFFFFFFFul;
+
+    bool use_v2_binary=false;
 
     template<class T>
     void read(T &x)
@@ -198,11 +224,20 @@ void write_polymer_binary(const Polymer &p, const WorldState &s, BinaryIOWriteCo
 
         ctxt.write(pos);
 
-        CVec3 v(bead.v);
-        ctxt.write(v);
+        if(ctxt.use_v2_binary){
+            CVec3Half v(bead.v);
+            ctxt.write(v);
 
-        CVec3 f(bead.f);
-        ctxt.write(f);
+            CVec3Half f(bead.f);
+            ctxt.write(f);
+
+        }else{
+            CVec3 v(bead.v);
+            ctxt.write(v);
+
+            CVec3 f(bead.f);
+            ctxt.write(f);
+        }
 
         first=false;
     }
@@ -272,18 +307,27 @@ void read_polymer_binary(WorldState &s, BinaryIOReadContext &ctxt)
             bead.x[d]=x;
         }
 
-        CVec3 v;
-        ctxt.read(v);
-        bead.v=v.get_vec3r();
+        if(ctxt.use_v2_binary){
+            CVec3Half v;
+            ctxt.read(v);
+            bead.v=v.get_vec3r();
 
-        CVec3 f;
-        ctxt.read(f);
-        bead.f=f.get_vec3r();
+            CVec3Half f;
+            ctxt.read(f);
+            bead.f=f.get_vec3r();
+        }else{
+            CVec3 v;
+            ctxt.read(v);
+            bead.v=v.get_vec3r();
+
+            CVec3 f;
+            ctxt.read(f);
+            bead.f=f.get_vec3r();
+        }
 
         first=false;
     }
 }
-
 
 std::ostream &write_polymer_type(std::ostream &dst, const PolymerType &m, const WorldState &)
 {
@@ -347,7 +391,7 @@ void read_polymer_type(std::istream &src, int &line_no, WorldState &state)
             // dst<<"BondPair "<<bp.bond_offset_a<<" "<<bp.bond_offset_b<<" "<<bp.kappa<<" "<<bp.theta0<<"\n";
             res.bond_pairs[i].bond_offset_head=p.unsigned_at(1);
             res.bond_pairs[i].bond_offset_tail=p.unsigned_at(2);
-            res.bond_pairs[i].kappa=p.unsigned_at(3);
+            res.bond_pairs[i].kappa=p.double_at(3);
             res.bond_pairs[i].theta0=p.double_at(4);
 
             if(res.bond_pairs[i].bond_offset_head >= res.bonds.size()){
@@ -365,8 +409,11 @@ void read_polymer_type(std::istream &src, int &line_no, WorldState &state)
 
 std::ostream &write_world_state(std::ostream &dst, const WorldState &state, bool binary=false)
 {
+    bool use_v2_binary=true;
+        
     if(binary){
-        dst<<"WorldState v1binary "<<state.bead_types.size()<<" "<<state.polymer_types.size()<<" "<<state.beads.size()<<" "<<state.polymers.size()<<"\n";
+        dst<<"WorldState v2binary "<<state.bead_types.size()<<" "<<state.polymer_types.size()<<" "<<state.beads.size()<<" "<<state.polymers.size()<<"\n";
+        //dst<<"WorldState v1binary "<<state.bead_types.size()<<" "<<state.polymer_types.size()<<" "<<state.beads.size()<<" "<<state.polymers.size()<<"\n";
     }else{
         dst<<"WorldState v0 "<<state.bead_types.size()<<" "<<state.polymer_types.size()<<" "<<state.beads.size()<<" "<<state.polymers.size()<<"\n";
     }
@@ -409,6 +456,7 @@ std::ostream &write_world_state(std::ostream &dst, const WorldState &state, bool
         char ch=0;
         dst.write(&ch, 1);
         BinaryIOWriteContext ctxt{dst};
+        ctxt.use_v2_binary=use_v2_binary;
         for(const Polymer &p : state.polymers){
             write_polymer_binary(p, state, ctxt);
         }
@@ -456,7 +504,11 @@ WorldState read_world_state(std::istream &src, int &line_no)
     int world_state_line_no=line_no;
     try{
         bool is_binary=false;
-        if(p.string_at(1)=="v1binary"){
+        bool use_v2_binary=false;
+        if(p.string_at(1)=="v2binary"){
+            is_binary=true;
+            use_v2_binary=true;
+        }else if(p.string_at(1)=="v1binary"){
             is_binary=true;
         }else if(p.string_at(1)!="v0"){
             throw std::runtime_error("Expecting version 'v0' for WorldState, but got '"+p.string_at(1)+"'");
@@ -492,13 +544,13 @@ WorldState read_world_state(std::istream &src, int &line_no)
         for(unsigned i=0; i<numBeadTypes; i++){
             p=read_prefixed_line_and_split_on_space(src, "ConservativeStrength", numBeadTypes+2, line_no);
             for(unsigned j=0; j<numBeadTypes; j++){
-                res.interactions[i*numBeadTypes+j].conservative=p.double_at(2+j);
+                res.interactions[i*numBeadTypes+j].conservative=p.expression_at(2+j);
             }
         }
         for(unsigned i=0; i<numBeadTypes; i++){
             p=read_prefixed_line_and_split_on_space(src, "DissipativeStrength", numBeadTypes+2, line_no);
             for(unsigned j=0; j<numBeadTypes; j++){
-                res.interactions[i*numBeadTypes+j].dissipative=p.double_at(2+j);
+                res.interactions[i*numBeadTypes+j].dissipative=p.expression_at(2+j);
             }
         }
 
@@ -526,6 +578,7 @@ WorldState read_world_state(std::istream &src, int &line_no)
             }
 
             BinaryIOReadContext ctxt{src};
+            ctxt.use_v2_binary=use_v2_binary;
             for(unsigned i=0; i<res.polymers.size(); i++){
                 read_polymer_binary(res, ctxt);
             }

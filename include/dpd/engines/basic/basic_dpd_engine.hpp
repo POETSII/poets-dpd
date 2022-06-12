@@ -152,8 +152,19 @@ private:
     }
 
 public:
+    bool CanSupportHookeanBonds() const override
+    { return true; }
+
+    bool CanSupportAngleBonds() const override
+    { return true; }
+
     std::string CanSupport(const WorldState *state) const override
     {
+        auto r=DPDEngine::CanSupport(state);
+        if(!r.empty()){
+            return r;
+        }
+
         float bond_kappa=-1;
         float bond_r0=nanf("");
 

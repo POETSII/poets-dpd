@@ -95,6 +95,7 @@ int main(int argc, const char *argv[])
         double tBegin=now();
         WorldState state=read_world_state(srcFile);
 
+	fprintf(stderr, "Validating with max_r=%f....\n", engine->GetMaxBondLength());
         validate(state, engine->GetMaxBondLength());
 
         std::string ok=engine->CanSupport(&state);
@@ -107,6 +108,8 @@ int main(int argc, const char *argv[])
 
         double tStartCore=now();
         engine->Attach(&state);
+
+	fprintf(stderr, "Stepping for %d steps at %f\n", steps, state.dt);
 
         engine->Run(steps);
         double tEndCore=now();

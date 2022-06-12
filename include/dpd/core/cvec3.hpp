@@ -4,6 +4,8 @@
 #include "vec3.hpp"
 
 #include <cmath>
+#include <cfloat>
+#include <iostream>
 
 struct CVec3
 {
@@ -45,10 +47,6 @@ private:
 
         if(is_zero){
             memset(this, 0, sizeof(CVec3));
-            m_exp=0;
-            for(int i=0; i<3; i++){
-                m_p[i]=0;
-            }
             return;
         }
 
@@ -64,7 +62,7 @@ private:
         double frs[3];
         bool overflow=false;
         for(int i=0; i<3; i++){
-            frs[i]=round( ldexp(fs[i], -e+15 ) );
+            frs[i]=round( ldexp(p[i], 15-e ) );
             overflow=overflow||(std::abs(frs[i])==(1<<15));
         }
 
@@ -72,7 +70,7 @@ private:
             // One component got rounded up to 1.0
             e=e+1;
             for(int i=0; i<3; i++){
-                frs[i]=round( ldexp(fs[i], -e+15 ) );
+                frs[i]=round( ldexp(p[i], 15-e ) );
             }
         }
         
@@ -113,12 +111,164 @@ public:
 
     vec3r_t get_vec3r() const
     {
-        double scale=ldexp(1.0/32768, m_exp);
+        double scale=ldexp(1.0, m_exp-15);
         return {m_p[0]*scale, m_p[1]*scale, m_p[2]*scale};
     }
 };
 
 static_assert(sizeof(CVec3)==8);
+
+struct CVec3Half
+{
+public:
+    static const int EXP_MIN =-14;
+    static const int EXP_MAX = 15;
+
+    static double min_non_zero_val()
+    {
+        return ldexp(1, EXP_MIN);
+    }
+
+private:
+
+    // Packs a direction vector into 4 bytes
+    uint32_t exponent : 5; // Exponent in the range 0=0, 1=2^-14, 2=2^-12, ..., 30=2^15, 31=invalid
+    int32_t fx : 9; // Value in (-1,+1) encoded as twos-complement integer with 8 fractional bits and a sign bit
+    int32_t fy : 9;
+    int32_t fz : 9;
+    // 0 is represent by raw exponent field of 0. All other fields must be 0.
+
+    void set(const double po[3])
+    {
+        bool is_zero=true;
+        double p[3];
+        for(int i=0; i<3; i++){
+            auto c=std::fpclassify(po[i]);
+            switch(c){
+            case FP_INFINITE: throw std::runtime_error("Attempt to convert nan or inf to CVec3Half.");
+            case FP_NAN: throw std::runtime_error("Attempt to convert nan or inf to CVec3Half.");
+            case FP_SUBNORMAL:
+            case FP_ZERO: p[i]=0; break;
+            case FP_NORMAL: p[i]=po[i]; is_zero=false; break;
+            default: assert(0); break;
+            }
+        }
+
+        if(is_zero){
+            memset(this, 0, sizeof(CVec3Half));
+            return;
+        }
+
+
+        int biggest_index=-1;
+        double biggest_value=-DBL_MIN;
+        int es[3];
+        double fs[3];
+        int e=INT16_MIN;
+        for(int i=0; i<3; i++){
+            if(p[i]==0){
+                fs[i]=0;
+            }else{
+                fs[i]=frexp(p[i], &es[i]);
+                //std::cerr<<"  "<<p<<" -> e="<<es[i]<<", f="<<fs[i]<<"\n";
+                e=std::max(e, es[i]);
+                if(std::abs(p[i]) > std::abs(biggest_value)){
+                    biggest_index=i;
+                    biggest_value=p[i];
+                }
+            }
+        }
+        assert(e!=INT16_MIN); // Onecomponent is non-zero.
+
+        if(e > 15){
+            std::cerr<<"x="<<p[0]<<", y="<<p[1]<<", z="<<p[2]<<"\n";
+            throw std::runtime_error("Vector overflowed while converting to CVec3Half, so magnitude is 65536 or more.");
+        }
+        if(e < -14){
+            memset(this, 0, sizeof(CVec3Half));
+            return;
+        }
+
+#ifndef NDEBUG
+        double scale=ldexp(0.5, e);
+        //std::cerr<<"scale=2^"<<e<<"="<<scale<<", biggest="<<biggest_value<<"\n";
+        assert( scale <= std::abs(biggest_value) && std::abs(biggest_value) < 2*scale);
+#endif
+
+        double frs[3];
+        bool overflow=false;
+        for(int i=0; i<3; i++){
+            frs[i]=round( ldexp(p[i], 8-e ) );
+            overflow=overflow||(std::abs(frs[i])==(1<<8));
+        }
+
+        if( overflow ){
+            // One component got rounded up to 1.0
+            e=e+1;
+            if(e > 15){
+                std::cerr<<"x="<<p[0]<<", y="<<p[1]<<", z="<<p[2]<<"\n";
+                throw std::runtime_error("Vector overflowed while converting to CVec3Half, so magnitude is 65536 or more.");
+            }
+            for(int i=0; i<3; i++){
+                frs[i]=round( ldexp(p[i], 8-e ) );
+            }
+        }        
+        exponent=e+15;
+        fx=frs[0];
+        fy=frs[1];
+        fz=frs[2];
+
+        //fprintf(stderr, "e=%d (=2^%d), fs[0]=%g, frs[0]=%g, fx=%d=(%f), fy=%d, fz=%d\n", exponent, exponent-15, fs[0], frs[0], fx, fx/256.0, fy, fz);
+    }
+
+    double to_double(int16_t v) const
+    { return ldexp( v, exponent-15-8 ); }
+public:
+    CVec3Half()
+    {
+        memset(this, 0, sizeof(CVec3Half));
+    }
+
+    CVec3Half(double x, double y, double z)
+    {
+        double p[3]={x,y,z};
+        set(p);
+    }
+
+    CVec3Half(const vec3r_t &v)
+    {
+        set(&v.x[0]);
+    }
+
+
+    double get_x() const
+    { return to_double(fx); }
+
+    double get_y() const
+    { return to_double(fy); }
+
+    double get_z() const
+    { return to_double(fz); }
+
+    double get_exponent() const
+    {
+        return ldexp(1.0, exponent-15-8);
+    }
+
+    vec3r_t get_vec3r() const
+    {
+        double scale=ldexp(1.0, exponent-15-8);
+        return {fx*scale, fy*scale, fz*scale};
+    }
+
+    bool is_zero() const
+    {
+        assert( (exponent!=0) == ( (fx||fy||fz) ) );
+        return exponent==0;
+    }
+};
+
+static_assert(sizeof(CVec3Half)==4);
 
 /*
 struct CVec3Polar

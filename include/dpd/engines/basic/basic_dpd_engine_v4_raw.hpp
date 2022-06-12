@@ -40,13 +40,6 @@ public:
     using raw_force_input_t = Handlers::raw_force_input_t;
     using device_state_t = Handlers::device_state_t;
 
-    
-    std::string CanSupport(const WorldState *s) const override
-    {
-
-        return BasicDPDEngine::CanSupport(s);
-    }
-
     virtual void Run(unsigned nSteps) override
     {
         import_beads();

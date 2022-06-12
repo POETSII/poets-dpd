@@ -10,11 +10,10 @@
 #endif
 
 #include "POLite/PerfCounterAccumulator.h"
-#include "POLiteHW.h"
 
 #include "dpd/core/AsyncHostLink.hpp"
 
-template<class Impl = POLiteHW<>>
+template<class Impl>
 class BasicDPDEngineV5F22RawTinsel
     : public BasicDPDEngineV5F22Raw
 {

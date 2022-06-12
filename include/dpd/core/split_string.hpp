@@ -8,6 +8,8 @@
 #include <cassert>
 #include <cstring>
 
+#include "dpd/core/expression.hpp"
+
 // Ideally we would use charconv, but it's taking a while to get through
 //#include <charconv>
 
@@ -61,6 +63,13 @@ struct split_string
             throw std::runtime_error("Not all chars consumed while parsing '"+string_at(index)+"'");
         }
         return r;
+    }
+
+    Parameter expression_at(unsigned index) const
+    {
+        auto e=parts.at(index);
+        std::string part=data.substr(e.first,e.second);
+        return parse_expression(part);
     }
 
     uint64_t unsigned_at(unsigned index) const
@@ -156,10 +165,10 @@ split_string read_prefixed_line_and_split_on_space(std::istream &src, const std:
     }
 }
 
-split_string read_prefixed_line_and_split_on_space(std::istream &src, const std::string &prefix, unsigned num_elements, int &line_no)
+split_string read_prefixed_line_and_split_on_space(std::istream &src, const std::string &prefix, int num_elements, int &line_no)
 {
     split_string res=read_prefixed_line_and_split_on_space(src, prefix, line_no);
-    if(res.parts.size()!=num_elements){
+    if(num_elements!=-1 && (int)res.parts.size()!=num_elements){
         throw std::runtime_error("Expecting "+std::to_string(num_elements)+" for prefix "+prefix+" on line "+std::to_string(line_no)+", value ='"+res.full()+"'");
     }
     return res;

@@ -15,24 +15,9 @@ class NaiveDPDEngineHalfMergeTBB
     : public NaiveDPDEngineHalfMerge
 {
 public:
-    std::string CanSupport(const WorldState *s) const override
+    virtual double GetMaxBondLength() const
     {
-        std::string base=NaiveDPDEngineHalfMerge::CanSupport(s);
-        if(!base.empty()){
-            return base;
-        }
-
-        if( fmod(s->box[0],4) !=0  ){
-            return "x-dim not a multiple of 4.";
-        }
-        if( fmod(s->box[1],4) !=0  ){
-            return "y-dim not a multiple of 4.";
-        }
-        if( fmod(s->box[2],4) !=0  ){
-            return "z-dim not a multiple of 4.";
-        }
-
-        return "";
+        return 1000;
     }
 
     void Attach(WorldState *s) override
@@ -50,6 +35,7 @@ public:
     }
 
 private:
+
     friend class NaiveDPDEngineHalfMergeTBBV3;
 
     static constexpr bool USE_PACKED=true;
@@ -79,7 +65,7 @@ private:
         if(m_non_monomers.empty()){
             m_non_monomer_grain=0;
         }else{
-            double avg_ops_per_polymer=(total_bonds * 30 + total_bond_pairs * 50)/m_non_monomers.size();
+            double avg_ops_per_polymer=(total_bonds * 30 + total_bond_pairs * 30)/m_non_monomers.size();
             m_non_monomer_grain=(unsigned)std::max(1.0, 1000000 / avg_ops_per_polymer);
         }
     }
@@ -154,8 +140,8 @@ private:
     {
         for(unsigned i=0; i<m_conflict_groups.size(); i++){
             parallel_for_each(m_conflict_groups[i], 1, [&](const SuperCell &c) {
-                for(unsigned i=0; i<8; i++){
-                    f(c.members[i]);
+                for(unsigned j=0; j<8; j++){
+                    f(c.members[j]);
                 }
             });
         }
@@ -194,21 +180,26 @@ private:
         double dt=m_state->dt;
 
         // Move the beads, and then assign to cells based on x(t+dt)
-        parallel_for_each(m_cells, 256, [&](Cell &c){
+        parallel_for_each_cell_blocked([&](Cell *pc){
+            Cell &c=*pc;
             for(int bi=c.beads.size()-1; bi>=0; bi--){
                 Bead *b=c.beads[bi];
                 //std::cerr<<"In "<<c.pos<<" at "<<m_state->t<<"\n";
-                dpd_maths_core_half_step::update_pos(dt, m_lengths, *b);
-                unsigned index=world_pos_to_cell_index(b->x);
-                if(index!=c.index){
-                    //std::cerr<<"Migrate at "<<m_state->t<<", "<<c.pos<<" -> "<<m_cells.at(index).pos<<"\n";
-                    auto &dst_cell=m_cells[index];
-                    {
-                        std::unique_lock<std::mutex> lk(dst_cell.mutex);
-                        dst_cell.incoming.push_back(b);
+                if(m_has_stationary_bead_types && m_state->bead_types[b->bead_type].stationary){
+                    // continue;
+                }else{
+                    dpd_maths_core_half_step::update_pos(dt, m_lengths, *b);
+                    unsigned index=world_pos_to_cell_index(b->x);
+                    if(index!=c.index){
+                        //std::cerr<<"Migrate at "<<m_state->t<<", "<<c.pos<<" -> "<<m_cells.at(index).pos<<"\n";
+                        auto &dst_cell=m_cells[index];
+                        {
+                            // We don't need the lock because of the conflict groups!
+                            dst_cell.incoming_beads.push_back(b);
+                        }
+                        c.beads[bi]=c.beads.back();
+                        c.beads.pop_back();
                     }
-                    c.beads[bi]=c.beads.back();
-                    c.beads.pop_back();
                 }
             }
         });
@@ -216,7 +207,7 @@ private:
         // At this point each cell will have most beads in c.beads, and might have some in c.incoming
 
         // Turns out more efficient to do explicitly than all at once
-        parallel_for_each(m_cells, 1024, [&](Cell &c){
+        parallel_for_each(m_cells, 2048, [&](Cell &c){
             transfer_incoming(c);
         });
 
@@ -225,19 +216,36 @@ private:
         parallel_for_each_cell_blocked([&](Cell *c){ process_cell<EnableLogging>(c); } );
 
         // Update all bonds
-        parallel_for_each(m_non_monomers, m_non_monomer_grain, [&](const Polymer *p){
-            const auto &pt = m_state->polymer_types.at(p->polymer_type);
-            for(const auto &bond : pt.bonds){
-                update_bond(*p, pt, bond);
+        if(1){
+            parallel_for_each(m_non_monomers, m_non_monomer_grain, [&](const Polymer *p){
+                const auto &pt = m_state->polymer_types.at(p->polymer_type);
+                for(const auto &bond : pt.bonds){
+                    update_bond(*p, pt, bond);
+                }
+                for(const auto &bond_pair : pt.bond_pairs){
+                    update_angle_bond(*p, pt, bond_pair);
+                }
+            });
+        }else{
+            for(const auto &p : m_state->polymers){
+                const auto &pt = m_state->polymer_types.at(p.polymer_type);
+                for(const auto &bond : pt.bonds){
+                    update_bond(p, pt, bond);
+                }
+                for(const auto &bond_pair : pt.bond_pairs){
+                    update_angle_bond(p, pt, bond_pair);
+                }
             }
-            for(const auto &bond_pair : pt.bond_pairs){
-                update_angle_bond(*p, pt, bond_pair);
-            }
-        });
+        }
 
         // Final mom
         parallel_for_each(m_state->beads, 1024, [&](Bead &b){
-            dpd_maths_core_half_step::update_mom(m_state->dt, b);
+            if(m_has_stationary_bead_types && m_state->bead_types[b.bead_type].stationary){
+                b.f.clear();
+                b.v.clear();
+            }else{
+                dpd_maths_core_half_step::update_mom(m_state->dt, b);
+            }
         });
 
         if(EnableLogging && ForceLogging::logger()){
@@ -256,9 +264,9 @@ private:
     // Idempotent function to moving incoming to beads. Should be fast in case where incoming is empty
     void transfer_incoming(Cell &c)
     {
-        if(!c.incoming.empty()){
-            c.beads.insert(c.beads.end(), c.incoming.begin(), c.incoming.end());
-            c.incoming.clear();
+        if(!c.incoming_beads.empty()){
+            c.beads.insert(c.beads.end(), c.incoming_beads.begin(), c.incoming_beads.end());
+            c.incoming_beads.clear();
         }
     };
 

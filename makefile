@@ -1,22 +1,49 @@
-CXX = g++-11
+ifeq ($(DISABLE_RISCV),1)
+ENABLE_RISCV = 0
+endif
 
+ENABLE_RISCV ?= 0
 
-CPPFLAGS += -Iinclude -std=c++17 -W -Wall -O0
+CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall -O0
+
 CPPFLAGS += -Wno-unused-variable -fmax-errors=2 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable
 CPPFLAGS += -Wno-class-memaccess -Wno-invalid-offsetof
 CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 LDFLAGS += -fuse-ld=gold
 
+# Hacks for Soton HPC/AMD systems
+# Detection is hacky: I just assume the module shell function only exists on iridis
+ifneq ($(shell module 2>&1),)
+CXX=g++
+CPPFLAGS += -I/home/dbt1c21/packages/oneTBB-2019/include
 LDFLAGS += -L/home/dt10/.linuxbrew/lib
+LDFLAGS += -L/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0_libc2.17_kernel3.10.0_release/
+CPPFLAGS += -I/usr/include
+CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
+endif
 
-CPPFLAGS += -g3 -O0 -mavx2
+CPPFLAGS += -g
+
 CPPFLAGS += -DNDEBUG=1 
-CPPFLAGS += -O3 -march=native
+CPPFLAGS += -O3
+
+## Iridis cpuinfo:
+## AMD: flags           : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush          mmx fxsr sse sse2    ht        syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc art                       rep_good nopl           nonstop_tsc extd_apicid aperfmperf eagerfpu pni pclmulqdq        monitor                        ssse3      fma cx16                    sse4_1 sse4_2 x2apic movbe popcnt                    aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch     osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_l2 cpb cat_l3 cdp_l3 hw_pstate sme retpoline_amd                                    ssbd     ibrs ibpb stibp vmmcall                                       fsgsbase            bmi1     avx2 smep bmi2                  cqm     rdt_a                  rdseed adx smap clflushopt clwb sha_ni                            xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif umip overflow_recov succor smca
+## Intel:                 fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx                 pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc             aperfmperf eagerfpu pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm                                   abm                   3dnowprefetch epb                                                                              cat_l3 cdp_l3                             invpcid_single intel_ppin intel_pt ssbd mba ibrs ibpb stibp         tpr_shadow vnmi flexpriority ept vpid fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm cqm mpx rdt_a avx512f avx512dq rdseed adx smap clflushopt clwb        avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts hwp_epp pku ospke md_clear spec_ctrl intel_stibp flush_l1d
+
+CPPFLAGS += -mavx2 -mfma
+
+# Very rarely see improvement from PGO
+#CPPFLAGS += -fprofile-generate
+#CPPFLAGS += -fprofile-use
+
 #-mavx512f -mprefer-vector-width=512
 #CPPFLAGS += -fsanitize=address -fsanitize=undefined 
 #CPPFLAGS += -fsanitize=undefined -fsanitize=thread
 #CPPFLAGS += -fopt-info-vec -fopt-info-vec-missed
+
+CPPFLAGS += -DTBB_PREVIEW_GLOBAL_CONTROL=1
 
 TINSEL_ROOT = tinsel
 
@@ -35,23 +62,32 @@ CPPFLAGS += -I $(TINSEL_ROOT)/apps/POLite/util/POLiteSWSim/include/POLite
 CPPFLAGS += -I ~/local/include
 LDFLAGS += -L ~/local/lib
 
+ENGINE_LDLIBS += -ltbb
 
-ENGINE_LDLIBS += -ltbb -lscotch
+
+all : all_test_bin all_create_state_bin all_engines all_tools
 
 
-TEST_BIN := bin/test/test_engine bin/test/test_engine_diff \
-	bin/extract_state_from_orch_log
+
+
+TEST_BIN := bin/test/test_engine bin/test/test_engine_diff
+
+all_test_bin : $(TEST_BIN)
 
 CREATE_STATE_BIN := $(patsubst src/create_state/%.cpp,bin/create_state/%,$(wildcard src/create_state/*.cpp))
+
+all_create_state_bin : $(CREATE_STATE_BIN)
+
+$(CREATE_STATE_BIN) : LDLIBS += -ltbb
 
 
 ENGINES := $(filter-out %.riscv,$(patsubst src/engines/%.cpp,%,$(wildcard src/engines/*.cpp)))
 
-ifeq ($(DISABLE_RISCV),)
+ifeq ($(ENABLE_RISCV),1)
 ENGINES_RISCV := $(filter %.riscv,$(patsubst src/engines/%.cpp,%, $(filter-out src/engines/memcpy.riscv.cpp, $(wildcard src/engines/*.cpp))))
 ENGINE_LDFLAGS += -L $(TINSEL_ROOT)/hostlink
 ENGINE_LDLIBS += -l:hostlink.a
-ENGINE_LDLIBS += -lmetis
+ENGINE_LDLIBS += -lmetis -lscotch
 else
 ENGINES_RISCV := 
 ENGINES := $(filter-out %tinsel_hw,$(ENGINES))
@@ -65,14 +101,25 @@ ALL_ENGINE_BATS := $(foreach e,$(ENGINES),obj/engines/$(e).bats)
 
 all_engines : $(ALL_ENGINES_OBJS) $(ALL_ENGINE_RISCV) $(ALL_ENGINE_BATS)
 
-all : $(TEST_BIN) $(CREATE_STATE_BIN) all_engines
-
 test_results/%.txt : bin/%
-	mkdir -p test_results
+	mkdir -p test_results/$(dir $*)
 	-rm test_results/$*.failed
 	$< | tee $@ || touch test_results/$*.failed
 
 test : $(patsubst bin/%,test_results/%.txt,$(TEST_BIN))
+
+
+TEST_BATS := $(wildcard src/*.bats src/*/*.bats )
+
+test_results/%.bats.txt : src/%.bats
+	mkdir -p test_results/$(dir $*)
+	-rm test_results/$*.failed
+	(bats -t $< | tee $@) || touch test_results/$*.failed
+
+test_bats : $(patsubst src/%,test_results/%.txt,$(TEST_BATS))
+
+
+test : test_bats 
 
 obj/%.d: src/%.cpp
 	mkdir -p $(dir $@)
@@ -166,6 +213,8 @@ bin/$1 : $(ALL_ENGINE_OBJS) $(ALL_ENGINE_RISCV)
 bin/$1 : LDFLAGS += $(ENGINE_LDFLAGS)
 
 bin/$1 : LDLIBS += $(ENGINE_LDLIBS)
+
+all_tools += bin/$1
 endef
 
 bin/test/test_hash : LDLIBS += -ltestu01
@@ -176,8 +225,11 @@ $(eval $(call register_engine_user,benchmark_engine))
 $(eval $(call register_engine_user,benchmark_engine_intervals))
 $(eval $(call register_engine_user,run_world))
 $(eval $(call register_engine_user,step_world))
-$(eval $(call register_engine_user,engine_diff))
+$(eval $(call register_engine_user,test/engine_diff))
 $(eval $(call register_engine_user,relax_world))
+
+all_tools : bin/extract_state_from_orch_log
+all_tools : bin/create_xml_v5_graph_instance
 
 bin/create_xml_v5_graph_instance : LDFLAGS += -static
 

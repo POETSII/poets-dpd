@@ -69,6 +69,8 @@ public:
         add({0.2,0,0}, {1,1,1});
         add({0,0.2,0}, {1,2,3});
         add({0,0,0.2}, {1.5,1.5,1.5});
+
+        add({0.2,0.2,0.2}, {0.5,0.5,0.5});
     }
 
     TestCollidingBeadPairDiss(const std::string &name, const vec3r_t &x0, const vec3r_t &dx)
@@ -86,11 +88,12 @@ public:
         WorldState &s=b.data();
         s.t=0;
         s.dt=1.0/256;
+        s.seed = uint64_t(m_x0[0] + 100*m_x0[1] + 1000*m_x0[2] + 10000*m_dx[0] + 100000*m_dx[1] + 1000000*m_dx[2]);
 
         b.add_bead_type("W");
         b.add_polymer_type("W", {"W"}, {}, {});
 
-        s.interactions[0].conservative=1;
+        s.interactions[0].conservative=10;
         s.interactions[0].dissipative=0.1; // Small dissipative
 
         b.add_monomer("W", m_x0+m_dx);
@@ -126,9 +129,10 @@ public:
             }
             require_close( normalise(m_dx), normalise(tmp), 1e-3*sqrt(s.t), "Bead 0 should always be on the same line.");
 
-            if(s.t == 2){
-                require_close( normalise(m_dx), normalise(s.beads[0].v), "Bead 0 should move along +dx at time-step 1." );
-                require_close( normalise(-m_dx), normalise(s.beads[1].v), "Bead 1 should move along -dx at time-step 1." );
+            if(s.t == 8){
+                // The random force gets in the way, but conservativeshould push them apart by step 8
+                require_close( normalise(m_dx), normalise(s.beads[0].v), "Bead 0 should move along +dx at time-step 8." );
+                require_close( normalise(-m_dx), normalise(s.beads[1].v), "Bead 1 should move along -dx at time-step 8." );
             }
 
             if(m_prev_dist < dist && m_prev_dist < m_prev_prev_dist ) {

@@ -29,6 +29,12 @@ void ParallelFor(const R &r, F &&f)
     }
 }
 
+template<class R, class F>
+void NonParallelFor(const R &r, F &&f)
+{
+    f(r);
+}
+
 /*
 Changes versus AVX2DPDEngine:
 - Uses seperate local (exclusive) and incoming pools (shared) in each cell
@@ -266,6 +272,7 @@ private:
 
                 if(!BeadHash{ids[local_nhood_count]}.is_monomer()){
                     auto &pc=cache[bead_indices[local_nhood_count]];
+                    std::cerr<<" t="<<world->t<<", updating bead cache "<<bead_indices[i]<<"  (in incoming transfer to local)\n";
                     pc.cell_index=cell_index;
                     pc.cell_offset=local_nhood_count;
                     for(int d=0; d<3; d++){
@@ -279,6 +286,7 @@ private:
             for(unsigned i=0; i<nincoming; i++){
                 if(!BeadHash{incoming_ids[i]}.is_monomer()){
                     auto &pc=cache[incoming_bead_indices[i]];
+                    std::cerr<<" t="<<world->t<<", updating bead cache "<<bead_indices[i]<<"  (in incoming transfer to non-local)\n";
                     pc.cell_index=cell_index;
                     pc.cell_offset=local_nhood_count+MAX_LOCAL;
                     for(int d=0; d<3; d++){
@@ -548,6 +556,9 @@ private:
                 if(pos.cell_offset < MAX_LOCAL){
                     assert( cell.bead_indices[pos.cell_offset] == i);
                     for(int d=0; d<3; d++){
+                        if(cell.positions[d][pos.cell_offset] != pos.x[d] ){
+                            std::cerr<<"  t="<<m_world->t<<", id="<<i<<", true={"<<cell.positions[0][pos.cell_offset]<<","<<cell.positions[1][pos.cell_offset]<<","<<cell.positions[2][pos.cell_offset]<<"}, got={"<<pos.x[0]<<","<<pos.x[1]<<","<<pos.x[2]<<"}\n";
+                        }
                         assert( cell.positions[d][pos.cell_offset] == pos.x[d] );
                     }
                 }else{
@@ -726,8 +737,6 @@ private:
             float force[3][MAX_LOCAL];
             for(unsigned i=0; i<n; i++){
                 assert(  m_world->beads[cell.bead_indices[i]].get_hash_code().hash == cell.ids[i] );
-
-
                 
                 uint32_t bead_index;
                 uint32_t id;
@@ -785,6 +794,7 @@ private:
                     for(unsigned i=0; i<n; i++){
                         if(!BeadHash{cell.ids[i]}.is_monomer()){
                             uint32_t bead_index=cell.bead_indices[i];
+                            std::cerr<<" t="<<m_world->t<<", updating bead cache "<<i<<"  (in fast path)\n";
                             for(unsigned d=0; d<3; d++){
                                 m_polymer_positions[bead_index].x[d] = position[d][i];
                             }
@@ -828,6 +838,7 @@ private:
                         int cell_offset = cell_next.add_to_local(cell.bead_indices[i], cell.ids[i], lpos, lvel, lfor);
 
                         if(is_polymer[i]){
+                            std::cerr<<" t="<<m_world->t<<", updating bead cache "<<i<<"  (in slow local path)\n";
                             uint32_t bead_index=cell.bead_indices[i];
                             for(int d=0; d<3; d++){
                                 m_polymer_positions[bead_index].x[d] = position[d][i];
@@ -1078,7 +1089,7 @@ private:
             }
         });
 
-        //validate_polymer_cache();
+        validate_polymer_cache();
 
         /*for(auto &c : m_cells){
             for(unsigned i=0; i<c.local_nhood_count; i++){
@@ -1173,6 +1184,12 @@ public:
         });
     }
 
+    bool CanSupportHookeanBonds() const
+    { return true; }
+
+    bool CanSupportAngleBonds() const
+    { return true; } // Let the specific error messagecome through.
+
     std::string CanSupport(const WorldState *world) const override
     {
         if(world->bead_types.size() > MAX_BEAD_TYPES){
@@ -1185,7 +1202,7 @@ public:
             }
         }
 
-        return {};
+        return DPDEngine::CanSupport(world);
     }
 
     void Run(unsigned nSteps) override
