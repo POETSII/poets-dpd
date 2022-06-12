@@ -116,7 +116,7 @@ namespace dpd_maths_core_simd
 
         __m256i active = (dr2 > 0.00001f && 1.0f > dr2);
         if(0==_mm256_movemask_epi8(active)){
-            return false;
+           return false;
         }
 
         __m256 dr = _mm256_sqrt_ps (dr2);

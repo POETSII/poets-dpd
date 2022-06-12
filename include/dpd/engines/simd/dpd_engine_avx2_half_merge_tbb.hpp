@@ -99,7 +99,6 @@ public:
         }
 
         synchronise_beads_out();
-        fprintf(stderr, "Max occupancy = %u\n", max_occupancy);
     }
 
 
@@ -139,8 +138,6 @@ private:
     std::vector<std::vector<std::vector<unsigned>>> m_cell_waves;
 
     WorldState *m_state=0;
-
-    unsigned max_occupancy=0;
 
     __m256i make_rng_state(uint64_t seed, unsigned index)
     {
@@ -300,14 +297,12 @@ private:
 
     void convert_AoS_to_SoA_vec8(
         const Cell &in,
+        unsigned base,
         __m256i &bead_type,
         __m256 x[3],
         __m256 v[3]
     )
     {
-        assert(in.n <= 8);
-        if(in.n > 8){ __builtin_unreachable(); }
-
         bead_type = _mm256_setzero_si256();
         // Initialise positions somewhere that is guaranteed not to interact.
         // This means force calculations will automatically return 0 for inactive lanes.
@@ -319,16 +314,15 @@ private:
         // It might be more efficient to do the floats this way as well.
         uint32_t bead_types_tmp[8]={0,0,0,0, 0,0,0,0 };
 
-        for(unsigned i=0; i<in.n; i++){
-            bead_types_tmp[i] = BeadHash{in.beads[i].id}.get_bead_type();
+        for(unsigned i=0; i<(in.n-base); i++){
+            bead_types_tmp[i] = BeadHash{in.beads[i+base].id}.get_bead_type();
             for(int d=0; d<3; d++){
-                assert(!isnanf(in.beads[i].f[d]));
-                x[d][i] = in.beads[i].x[d];
-                v[d][i] = in.beads[i].v[d];
+                assert(!isnanf(in.beads[i+base].f[d]));
+                x[d][i] = in.beads[i+base].x[d];
+                v[d][i] = in.beads[i+base].v[d];
             }
         }
         bead_type=_mm256_loadu_si256( (const __m256i *)bead_types_tmp );
-
     }
 
     virtual void step()
@@ -408,64 +402,41 @@ private:
 
     void step_cell(Cell &home)
     {
-        if(home.n > 8){
-            throw std::runtime_error("Not implemented yet.");
-        }
-
         if(home.n==0){
             return;
         }
 
-        // TODO : remove
-        max_occupancy=std::max(max_occupancy, home.n);
-
         __m256i home_bead_type;
         __m256 home_x[3], home_v[3], home_f[3];
         __m256i rng_state;
-
-        convert_AoS_to_SoA_vec8( home, home_bead_type, home_x, home_v );
-        for(int d=0; d<3; d++){
-            home_f[d] = _mm256_setzero_ps();
-        }
+        
         rng_state=home.rng_state;
 
-        for(int i=0; i<home.n; i++){
+        for(unsigned base=0; base<home.n; base+=8){
+
+            convert_AoS_to_SoA_vec8( home, base, home_bead_type, home_x, home_v );
             for(int d=0; d<3; d++){
-                assert(!isnanf(home_f[d][i]));
-                assert(!isnanf(home.beads[i].f[d]));
+                home_f[d] = _mm256_setzero_ps();
+            }
+
+            step_cell_intra_vec8(home, base, rng_state, home_bead_type, home_x, home_v, home_f);
+
+            // flag is mostly true, and there is loads of iteration inside
+            // so icache shouldn't be a problem
+            if(home.wrap_bits){
+                step_cell_inter_vec8<true>(home, rng_state, home_bead_type, home_x, home_v, home_f);
+            }else{
+                step_cell_inter_vec8<false>(home, rng_state, home_bead_type, home_x, home_v, home_f);
+            }
+
+            
+            for(unsigned i=0; i<home.n; i++){
+                for(int d=0; d<3; d++){
+                    home.beads[i+base].f[d] += home_f[d][i];
+                }
             }
         }
 
-        step_cell_intra_vec8(home, rng_state, home_bead_type, home_x, home_v, home_f);
-
-        for(int i=0; i<home.n; i++){
-            for(int d=0; d<3; d++){
-                assert(!isnanf(home_f[d][i]));
-                assert(!isnanf(home.beads[i].f[d]));
-            }
-        }
-        
-        // flag is mostly true, and there is loads of iteration inside
-        // so icache shouldn't be a problem
-        if(home.wrap_bits){
-            step_cell_inter_vec8<true>(home, rng_state, home_bead_type, home_x, home_v, home_f);
-        }else{
-            step_cell_inter_vec8<false>(home, rng_state, home_bead_type, home_x, home_v, home_f);
-        }
-
-        for(int i=0; i<home.n; i++){
-            for(int d=0; d<3; d++){
-                assert(!isnanf(home_f[d][i]));
-            }
-        }
-        
-        for(unsigned i=0; i<home.n; i++){
-            for(int d=0; d<3; d++){
-                assert(!isnanf(home.beads[i].f[d]));
-                home.beads[i].f[d] += home_f[d][i];
-                assert(!isnanf(home.beads[i].f[d]));
-            }
-        }
         home.rng_state=rng_state;
 
         // Set it here so that it is ready for the next move round.
@@ -474,6 +445,7 @@ private:
 
     void step_cell_intra_vec8(
         Cell &home,
+        unsigned base, // Offset of home vector within cell
         __m256i &rng_state,
         const __m256i home_bead_types,
         const __m256 home_x[3],
@@ -485,9 +457,9 @@ private:
 
         assert(home.n<=8);
 
-        __m256i iota=_mm256_set_epi32(7,6,5,4,3,2,1,0);
+        __m256i iota=_mm256_set_epi32(7,6,5,4,3,2,1,0) + _mm256_set1_epi32(base);
 
-        for(unsigned j=1; j<home.n; j++){
+        for(unsigned j=base+1; j<home.n; j++){
             auto &other_bead=home.beads[j];
 
             __m256 f[3];
@@ -530,6 +502,9 @@ private:
     ){
         for(unsigned i=0; i<13; i++){
             auto &other_cell=m_cells[home.neighbours[i]];
+
+            // Prefetching seemed to make it slightly slower
+            // _mm_prefetch(&m_cells[home.neighbours[i+1]],_MM_HINT_T1); // This will prefetch past the end
 
             for(unsigned j=0; j<other_cell.n; j++){
                 auto &other_bead=other_cell.beads[j];

@@ -65,22 +65,12 @@ struct BeadHash
     bool is_monomer() const
     { return is_monomer(hash); }
 
-    template<class T>
-    static auto get_bead_type(const T &hash)
-    { return hash>>28; }
-
     uint32_t get_bead_type() const
     { return get_bead_type(hash); }
 
-    inline uint32_t get_bead_type() const
-    { return hash>>28; }
-
     template<class T>
-    static auto get_bead_type(const T &hash)
+    static T get_bead_type(const T &hash)
     { return hash>>28; }
-
-    inline uint32_t get_bead_type() const
-    { return get_bead_type(hash); }
 
 
     inline uint32_t get_polymer_offset() const

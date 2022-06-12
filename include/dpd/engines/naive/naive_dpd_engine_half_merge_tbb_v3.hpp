@@ -1,57 +1,30 @@
 #ifndef naive_dpd_engine_half_merge_tbb_v3_hpp
 #define naive_dpd_engine_half_merge_tbb_v3_hpp
 
-#include "dpd/engines/naive/naive_dpd_engine_half_merge.hpp"
-
-#include "dpd/maths/dpd_maths_core_half_step.hpp"
-
-#include "tbb/parallel_for.h"
-#include "tbb/blocked_range.h"
-
-#include <immintrin.h>
-#include <array>
+#include "dpd/engines/naive/naive_dpd_engine_half_merge_tbb.hpp"
 
 class NaiveDPDEngineHalfMergeTBBV3
-    : public NaiveDPDEngineHalfMerge
+    : public NaiveDPDEngineHalfMergeTBB
 {
 public:
-    virtual double GetMaxBondLength() const
-    {
-        return 1000;
-    }
+    std::vector<std::pair<double,double>> m_interaction_matrix;
 
     void Attach(WorldState *s) override
     {
-        NaiveDPDEngineHalfMerge::Attach(s);
+        NaiveDPDEngineHalfMergeTBB::Attach(s);
+
         if(s){
-            m_lengthsf=m_lengths;
+            m_interaction_matrix.resize(s->interactions.size());
+            for(unsigned i=0; i<m_interaction_matrix.size(); i++){
+                m_interaction_matrix[i]={
+                    s->interactions[i].conservative,
+                    sqrt(s->interactions[i].dissipative)
+                };
+            }
         }
     }
 
 private:
-    vec3f_t m_lengthsf;
-
-    const int MAX_POLYMER_LENGTH=63;
-
-    struct PolymerInfo
-    {
-        const PolymerType *polymer_type;
-        std::array<Packed*,MAX_POLYMER_LENGTH> bead_storage;
-    };
-
-    // One entry per polymer_id, used to find all beads in a polymer
-    // This array is very wasteful if:
-    // - The bead order is not optimised (i.e. polymers before monomers)
-    // - The polymers are quite small compared to MAX_POLYMER_LENGTH
-    // It probably doesn't have terrible locality, and we implement as a flat
-    // vector to avoid indirecting through a table.
-    std::vector<PolymerInfo> m_polymer_info;
-
-    struct SuperCell
-    {
-        std::array<Cell*,8> members;
-    };
-
     virtual void step()
     {
         if(ForceLogging::logger()){
@@ -66,46 +39,67 @@ private:
     {
         m_t_hash=get_t_hash(m_state->t, m_state->seed);
 
-        #error "Here"
+        if(EnableLogging && ForceLogging::logger()){
+            ForceLogging::logger()->SetTime(m_state->t);
+            ForceLogging::logger()->LogProperty("dt", 1, &m_state->dt);
+            double seed_low=m_state->seed &0xFFFFFFFFul;
+            double seed_high=m_state->seed>>32;
+            ForceLogging::logger()->LogProperty("seed_lo", 1, &seed_low);
+            ForceLogging::logger()->LogProperty("seed_high", 1, &seed_high);
+            double t_hash_low=m_t_hash&0xFFFFFFFFul;
+            double t_hash_high=m_t_hash>>32;
+            ForceLogging::logger()->LogProperty("t_hash_lo", 1, &t_hash_low);
+            ForceLogging::logger()->LogProperty("t_hash_high", 1, &t_hash_high);
+            for(auto &b : m_state->beads){
+                double h=b.get_hash_code().hash;
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(), "b_hash", 1, &h);
+                double x[3]={b.x[0],b.x[1],b.x[2]};
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"x",3,x);
+                Bead bt=b;
+                dpd_maths_core_half_step::update_mom(m_state->dt/2, bt);
+                double v[3]={bt.v[0],bt.v[1],bt.v[2]};
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"v",3,v);
+                double f[3]={b.f[0],b.f[1],b.f[2]};
+                ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f",3,f);
+            }
+        }
 
-        float dt=m_state->dt;
+        double dt=m_state->dt;
 
         // Move the beads, and then assign to cells based on x(t+dt)
-        parallel_for_each(m_cells, 32, [&](Cell &c){
-            for(int bi=c.packed.size()-1; bi>=0; bi--){
-                Packed &b=c.packed[i];
-                dpd_maths_core_half_step::update_pos<float>(dt, m_lengthsf, b);
-
+        parallel_for_each_cell_blocked([&](Cell *pc){
+            Cell &c=*pc;
+            for(int bi=c.beads.size()-1; bi>=0; bi--){
+                Bead *b=c.beads[bi];
+                //std::cerr<<"In "<<c.pos<<" at "<<m_state->t<<"\n";
+                dpd_maths_core_half_step::update_pos(dt, m_lengths, *b);
                 unsigned index=world_pos_to_cell_index(b->x);
                 if(index!=c.index){
                     //std::cerr<<"Migrate at "<<m_state->t<<", "<<c.pos<<" -> "<<m_cells.at(index).pos<<"\n";
-                    // flush to the backing
-                    
                     auto &dst_cell=m_cells[index];
-                    dst_cell.packed.push_back(b);  // Conflict groups gaurantee this is safe
-                    c.packed[bi]=b;
-                    c.packed.pop_back();
-
-                    if(!BeadHash{b.id}.is_monomer()){
-                        unsigned polymer_id=BeadHash{b.hash}.get_polymer_id();
-                        unsigned polymer_offset=BeadHash{b.hash}.get_polymer_offset();
-
-                        assert(m_polymer_info[polymer_id].bead_storage[polymer_offset]==&b;
-                        m_polymer_info[polymer_id].bead_storage[polymer_offset]=&dst_cell.packed.back();
+                    {
+                        dst_cell.incoming_beads.push_back(b);
                     }
+                    c.beads[bi]=c.beads.back();
+                    c.beads.pop_back();
                 }
             }
         });
 
-        // At this point each cell will have most beads in c.packed, and might have some in c.packed_incoming
+        // At this point each cell will have most beads in c.beads, and might have some in c.incoming
+
+        // Turns out more efficient to do explicitly than all at once
+        parallel_for_each(m_cells, 1024, [&](Cell &c){
+            transfer_incoming(c);
+        });
 
         // Calculate all the DPD and 2-bead bond forces
         // Each cell's force is calculated independently
         parallel_for_each_cell_blocked([&](Cell *c){ process_cell<EnableLogging>(c); } );
 
         // Update all bonds
-        parallel_for_each(m_polymer_info, m_non_monomer_grain, [&](const PolymerInfo *p){
-            const auto &pt = 
+        parallel_for_each(m_non_monomers, m_non_monomer_grain, [&](const Polymer *p){
+            const auto &pt = m_state->polymer_types.at(p->polymer_type);
             for(const auto &bond : pt.bonds){
                 update_bond(*p, pt, bond);
             }
@@ -115,10 +109,8 @@ private:
         });
 
         // Final mom
-        parallel_for_each(m_cells, 32, [&](Cell &c){
-            for(unsigned i=0; i<c.packed.size(); i++){
-                dpd_maths_core_half_step::update_mom(m_state->dt, b);
-            }
+        parallel_for_each(m_state->beads, 1024, [&](Bead &b){
+            dpd_maths_core_half_step::update_mom(m_state->dt, b);
         });
 
         if(EnableLogging && ForceLogging::logger()){
@@ -134,6 +126,15 @@ private:
         m_state->t += 1;
     }
 
+    // Idempotent function to moving incoming to beads. Should be fast in case where incoming is empty
+    void transfer_incoming(Cell &c)
+    {
+        if(!c.incoming_beads.empty()){
+            c.beads.insert(c.beads.end(), c.incoming_beads.begin(), c.incoming_beads.end());
+            c.incoming_beads.clear();
+        }
+    };
+
     template<bool EnableLogging>
     void process_cell(Cell *c)
     {
@@ -142,7 +143,7 @@ private:
         }else{
             process_cell_neighbours<EnableLogging,false>(*c);
         }
-        update_intra_forces_packed<EnableLogging>(*c);
+        update_intra_forces<EnableLogging>(*c);
     }
 
     template<bool EnableLogging,bool IsEdge>
@@ -151,11 +152,56 @@ private:
         assert(c.neighbours.size()>=3);
 
         int i=c.neighbours.size()-1;
+        Cell *next_next_next=c.neighbours[i-2];
+        Cell *next_next=c.neighbours[i-1];
+        Cell *next=c.neighbours[i];
         while(i>=0){
-            Cell *curr=c.neighbours[i];
+            Cell *curr=next;
+            next=next_next;
+            next_next=next_next_next;
+            //Cell *curr=c.neighbours[i];
             --i;
-            update_inter_forces_packed<EnableLogging,IsEdge>(c, *curr);
+            if(i>=2){
+                next_next_next=c.neighbours[i-2];
+                _mm_prefetch(&next_next_next->beads, _MM_HINT_T0);
+            }
+            if(i>=1){
+                _mm_prefetch(&next_next->beads[0], _MM_HINT_T0);
+            }
+            if(next){
+                for(auto p : next->beads){
+                    _mm_prefetch(&p->x, _MM_HINT_T0);
+                }
+            }
+            update_inter_forces<EnableLogging,IsEdge>(c, *curr);
         }
+    }
+
+    template<bool EnableLogging>
+    void update_bead_pair(Bead *hb, Bead *ob, const vec3r_t &dx, double dr2, vec3r_t &h_f)
+    {
+        assert(hb!=ob);
+
+        double dr=pow_half(dr2);
+
+        vec3r_t f;
+
+        auto ia=m_interaction_matrix[ hb->bead_type*m_numBeadTypes+ob->bead_type ];
+        
+        dpd_maths_core_half_step::calc_force<EnableLogging,double,vec3r_t>(
+            m_scaled_inv_root_dt,
+            [&](unsigned a, unsigned b){ return ia.first; },
+            [&](unsigned a, unsigned b){ return ia.second; },
+            m_t_hash,
+            dx, dr,
+            0, 0, // kappa and r0
+            *hb,
+            *ob,
+            f
+        );
+
+        h_f += f;
+        ob->f -= f;
     }
 
 };
