@@ -15,6 +15,60 @@ namespace dpd_maths_core_simd
 
     using dpd_maths_core::default_hash;
 
+    /*  This uses a 64-bit XorShift, with additive combination
+        of previous and next values. In scalar terms it is:
+
+        uint64_t xn = XorShift64(xp);
+        uint32_t a = (xn>>32) + (xp&0xFFFFFFFF);
+        uint32_t b = (xp>>32) + (xn&0xFFFFFFFF);
+
+        This is "good enough". It passes SmallCrush both horizontally
+        and vertically, and has a 64-bit period. Full 256-bit
+        would be better, but this works well enough and is
+        short.
+
+        A mildly suspicious value (p=0.9994) in horizontal Crush todo with weight
+        distribution, but nothing close to catastrophic.
+        There is 1 catastrophic failure in vertical Crush for linear complexity
+        in bit 29, but that is expected given the underlying linear
+        generator and the additive mixing. Apart from that it is fine.
+
+        Instructions in avx2 are:
+        f(long long __vector(4)&):                             # @f(long long __vector(4)&)
+            vmovdqa ymm0, ymmword ptr [rdi]
+            vpsllq  ymm1, ymm0, 13
+            vpxor   ymm1, ymm1, ymm0
+            vpsrlq  ymm2, ymm1, 7
+            vpxor   ymm1, ymm2, ymm1
+            vpsllq  ymm2, ymm1, 17
+            vpxor   ymm1, ymm2, ymm1
+            vmovdqa ymmword ptr [rdi], ymm1
+            vpshufd ymm1, ymm1, 177                 # ymm1 = ymm1[1,0,3,2,5,4,7,6]
+            vpaddd  ymm0, ymm1, ymm0
+            ret
+
+        Load and store can often be optimised out, so it is about 8 instructions,
+        or 1 instruction per 32-bit number.
+    */
+    static __m256i XorShift64Add(__m256i &x)
+    {
+        __m256i a=x;
+
+        x=_mm256_xor_si256(x, _mm256_slli_epi64(x, 13));
+        x=_mm256_xor_si256(x, _mm256_srli_epi64(x, 7));
+        x=_mm256_xor_si256(x, _mm256_slli_epi64(x, 17));
+
+        __m256i b=_mm256_shuffle_epi32(x, (2<<6)|(3<<4)|(0<<2)|(1<<0));
+
+        /*x=_mm256_xor_si256(x, _mm256_slli_epi64(x, 13));
+        x=_mm256_xor_si256(x, _mm256_srli_epi64(x, 7));
+        x=_mm256_xor_si256(x, _mm256_slli_epi64(x, 17));    
+
+        __m256i c=x;*/
+
+        return _mm256_add_epi32(a,b);
+    }
+
     // TODO : Proper mixing version
     static __m256 XorShift32(__m256i &state)
     {
@@ -142,7 +196,7 @@ namespace dpd_maths_core_simd
         auto sqrt_gammap = sqrt_diss_strength*wr;
 
         auto dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
-        auto u = _mm256_setzero_ps(); //XorShift32( rng_state );
+        auto u = XorShift64Add( rng_state );
         for(int d=0; d<3; d++){
             assert(-0.5f <= u[d] && u[d] <= 0.5f );
         }
