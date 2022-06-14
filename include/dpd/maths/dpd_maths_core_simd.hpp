@@ -50,7 +50,7 @@ namespace dpd_maths_core_simd
         Load and store can often be optimised out, so it is about 8 instructions,
         or 1 instruction per 32-bit number.
     */
-    static __m256i XorShift64Add(__m256i &x)
+    static __m256 XorShift64Add(__m256i &x)
     {
         __m256i a=x;
 
@@ -60,13 +60,11 @@ namespace dpd_maths_core_simd
 
         __m256i b=_mm256_shuffle_epi32(x, (2<<6)|(3<<4)|(0<<2)|(1<<0));
 
-        /*x=_mm256_xor_si256(x, _mm256_slli_epi64(x, 13));
-        x=_mm256_xor_si256(x, _mm256_srli_epi64(x, 7));
-        x=_mm256_xor_si256(x, _mm256_slli_epi64(x, 17));    
+        auto u= _mm256_add_epi32(a,b);
 
-        __m256i c=x;*/
-
-        return _mm256_add_epi32(a,b);
+        const __m256 scale = _mm256_set1_ps(0.00000000023283064365386962890625f);
+        __m256 uf = _mm256_cvtepi32_ps(u);
+        return uf*scale;
     }
 
     // TODO : Proper mixing version
@@ -133,6 +131,20 @@ namespace dpd_maths_core_simd
         return _mm_cvtss_f32(x32);
     }
 
+    // Add together the 4 upper and 4 lower and return two sums
+    static inline std::pair<float,float> mm256_reduce_add_ps_dual_vec4(__m256 x) {
+        __m256 s0 = _mm256_shuffle_ps(x, x, (3<<4) | (1<<0) );    // ( -, x7, -, x5, -, x3, -, x1)
+        __m256 s1 = _mm256_add_ps( x, s0 );                       // (-, x7+x6, -, x5+x4, -, x3+x2, -, x1+x0)
+
+        __m256 s2 = _mm256_shuffle_ps(x, x, (2<<4) );    // ( -, -, -, x7+x6, -, -, -, x3+x2)
+        __m256 s3 = _mm256_add_ps(s1, s2);               // (-, -, -, x7+x6+x5+x4, -, -, - x3+x2+x1+x0)
+
+        float lo=s3[0];
+        float hi=s3[4];
+
+        return {lo,hi};
+    }
+
     /* Returns true if there is any interaction (non-zero force), false otherwise.
         The f values are only valid iff it returns true. f is not set to zero
         if there are no interactions.
@@ -173,8 +185,19 @@ namespace dpd_maths_core_simd
            return false;
         }
 
-        __m256 dr = _mm256_sqrt_ps (dr2);
-        __m256 inv_dr = 1.0f / dr;
+        __m256 dr, inv_dr;
+        if(0){
+            dr = _mm256_sqrt_ps (dr2);
+            inv_dr = 1.0f / dr;
+        }else if(0){
+            inv_dr = _mm256_rsqrt_ps(dr2);
+            dr = inv_dr * dr2;
+        }else{
+            // This seems to be marginally faster. They both go down the
+            // same unit, but there are no dependencies
+            inv_dr = _mm256_rsqrt_ps(dr2);
+            dr = _mm256_sqrt_ps(dr2);
+        }
 
         __m256 con_strength_row = _mm256_loadu_ps( conservative_matrix + 8 * other_bead_type);
         __m256 sqrt_diss_strength_row = _mm256_loadu_ps( sqrt_dissipative_matrix + 8 * other_bead_type);
@@ -213,6 +236,112 @@ namespace dpd_maths_core_simd
         return true;
     }
 
+    template<unsigned MAX_BEAD_TYPES>
+    static bool interact_dual_vec4_to_dual_scalar(
+        const float scale_inv_sqrt_dt,
+        const float conservative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
+        const float sqrt_dissipative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
+        
+        __m256i &rng_state,
+        
+        const __m256i home_bead_types,
+        const __m256 home_x[3],
+        const __m256 home_v[3],
+
+        unsigned otherA_bead_type,
+        float otherA_x[3],
+        float otherA_v[3],
+
+        unsigned otherB_bead_type,
+        float otherB_x[3],
+        float otherB_v[3],
+
+        __m256 f[3] // Force on home beads
+    ){
+        static_assert(MAX_BEAD_TYPES <= 8);
+
+        __m256 dx[3];
+        #pragma GCC unroll(3)
+        for(int d=0; d<3; d++){
+            __m256 ox=_mm256_set1_ps(otherA_x[d]);
+            _mm256_insertf128_ps(ox, _mm_set1_ps(otherB_x[d]), 1);
+
+            dx[d] = home_x[d] - ox;
+        }
+        __m256 dr2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
+
+        __m256i active = (dr2 > 0.00001f && 1.0f > dr2);
+        if(0==_mm256_movemask_epi8(active)){
+           return false;
+        }
+
+        __m256 dr, inv_dr;
+        if(0){
+            dr = _mm256_sqrt_ps (dr2);
+            inv_dr = 1.0f / dr;
+        }else if(0){
+            inv_dr = _mm256_rsqrt_ps(dr2);
+            dr = inv_dr * dr2;
+        }else{
+            // This seems to be marginally faster. They both go down the
+            // same unit, but there are no dependencies
+            inv_dr = _mm256_rsqrt_ps(dr2);
+            dr = _mm256_sqrt_ps(dr2);
+        }
+
+        __m256i other_bead_type = _mm256_set1_epi32(otherA_bead_type);
+        other_bead_type = _mm256_insertf128_si256(other_bead_type,_mm_set1_epi32(otherB_bead_type),1);
+
+        __m256 con_strength_row = _mm256_loadu_ps( conservative_matrix + 8 * otherA_bead_type);
+        __m256 sqrt_diss_strength_row = _mm256_loadu_ps( sqrt_dissipative_matrix + 8 * otherA_bead_type);
+
+        // Not sure if the branch cost is worth it
+        if(otherA_bead_type!=otherB_bead_type){
+            __m128 con_strength_B_row = _mm_loadu_ps( conservative_matrix + 8 * otherB_bead_type );
+            __m128 sqrt_diss_strength_B_row = _mm_loadu_ps( sqrt_dissipative_matrix + 8 * otherB_bead_type );
+
+            con_strength_row = _mm256_insertf128_ps(con_strength_row, con_strength_B_row, 1);
+            sqrt_diss_strength_row = _mm256_insertf128_ps(con_strength_row, con_strength_B_row, 1);
+        }
+
+        __m256 con_strength = _mm256_permutevar8x32_ps( con_strength_row, home_bead_types );
+        __m256 sqrt_diss_strength = _mm256_permutevar8x32_ps( sqrt_diss_strength_row, home_bead_types );
+        
+        auto wr = 1.0f - dr;
+        auto conForce = con_strength * wr;
+
+        __m256 dv[3];
+        #pragma GCC unroll(3)
+        for(int d=0; d<3; d++){
+            dx[d] = dx[d] * inv_dr;
+
+            __m256 ov=_mm256_set1_ps(otherA_v[d]);
+            _mm256_insertf128_ps(ov, _mm_set1_ps(otherB_v[d]), 1);
+
+            dv[d] = home_v[d] - ov;
+        }
+
+        auto rdotv = dx[0] * dv[0] + dx[1] * dv[1] + dx[2] * dv[2];
+
+        auto sqrt_gammap = sqrt_diss_strength*wr;
+
+        auto dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
+        auto u = XorShift64Add( rng_state );
+        for(int d=0; d<3; d++){
+            assert(-0.5f <= u[d] && u[d] <= 0.5f );
+        }
+        auto randScale = sqrt_gammap * _mm256_set1_ps( scale_inv_sqrt_dt );
+        auto randForce = randScale * u;
+
+        auto scaled_force = _mm256_and_ps( (conForce+dissForce+randForce)*inv_dr, _mm256_castsi256_ps(active ));
+
+        #pragma GCC unroll(3)
+        for(int d=0; d<3; d++){
+            f[d] = scaled_force * dx[d];
+        }
+
+        return true;
+    }
 };
 
 #endif
