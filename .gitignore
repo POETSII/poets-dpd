@@ -22,6 +22,12 @@ scratch
 *.pov
 *.rst
 *.zip
+core.*
+*.txt
+*.lammps
+*.save
+*.save.?
+*.ppk
 
 test_results
 working

@@ -15,18 +15,17 @@ LDFLAGS += -fuse-ld=gold
 # Hacks for Soton HPC/AMD systems
 # Detection is hacky: I just assume the module shell function only exists on iridis
 ifneq ($(shell module 2>&1),)
-CXX=g++
 CPPFLAGS += -I/home/dbt1c21/packages/oneTBB-2019/include
-LDFLAGS += -L/home/dt10/.linuxbrew/lib
+#LDFLAGS += -L/home/dt10/.linuxbrew/lib
 LDFLAGS += -L/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0_libc2.17_kernel3.10.0_release/
 CPPFLAGS += -I/usr/include
-CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
+#CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
 endif
 
 CPPFLAGS += -g
 
-CPPFLAGS += -DNDEBUG=1 
-CPPFLAGS += -O3
+#CPPFLAGS += -DNDEBUG=1 
+#CPPFLAGS += -O3
 
 #CPPFLAGS += -fno-omit-frame-pointer
 

@@ -39,8 +39,19 @@ public:
             }
         }
 
+        for(const auto &pt : state->polymer_types){
+            for(const auto &bt : pt.bond_pairs){
+                if(bt.theta0!=0.0){
+                    return "Only straight bond angles are supported.";
+                }
+            }
+        }
+
         return DPDEngine::CanSupport(state);
     }
+
+    double GetMaxBondLength() const override
+    { return 2.0; }
 
     void Attach(WorldState *s)
     {
@@ -91,6 +102,27 @@ public:
 
         make_conflict_groups();
 
+        m_max_polymer_bonds=0;
+        m_max_polymer_length=1;
+        for(const auto &pt : s->polymer_types){
+            m_max_polymer_bonds=std::max<unsigned>(m_max_polymer_bonds, pt.bonds.size());
+            m_max_polymer_length=std::max<unsigned>(m_max_polymer_length, pt.bead_types.size());
+        }
+
+        m_non_monomer_bead_locations.clear();
+        for(int polymer_id=s->polymers.size()-1; polymer_id>=0; polymer_id--){
+            const auto &poly=s->polymers[polymer_id];
+            if( poly.bead_ids.size() <= 1){
+                continue; // It's a monomer
+            }
+            if(polymer_id >= m_non_monomer_bead_locations.size()){
+                // This should happen just once
+                m_non_monomer_bead_locations.resize(polymer_id+1);
+            }
+            m_non_monomer_polymer_ids.push_back(polymer_id);
+            m_non_monomer_bead_locations[polymer_id].reset(new Packed*[poly.bead_ids.size()]);
+        }
+
         import_beads();
     }
 
@@ -140,6 +172,11 @@ private:
     std::mt19937_64 m_urng;
 
     std::vector<std::vector<std::vector<unsigned>>> m_cell_waves;
+
+    std::vector<std::unique_ptr<Packed*[]>> m_non_monomer_bead_locations;
+    std::vector<uint32_t> m_non_monomer_polymer_ids;
+    unsigned m_max_polymer_length;
+    unsigned m_max_polymer_bonds;
 
     WorldState *m_state=0;
 
@@ -339,6 +376,11 @@ private:
             dpd_maths_core_half_step_raw::update_mom(-m_dt, p);
 
             dst_cell.beads[dst_cell.n]=p;
+            if(!b.is_monomer){
+                std::unique_ptr<Packed*[]> &loc= m_non_monomer_bead_locations.at(b.polymer_id);
+                loc[(unsigned)b.polymer_offset] = dst_cell.beads + dst_cell.n;
+            }
+
             dst_cell.n_move_pending++;
             dst_cell.n++;
         }
@@ -504,6 +546,11 @@ private:
                     throw std::runtime_error("Too many beads in one cell.");
                 }
                 dst.beads[dst.n] = b;
+                if(!BeadHash{b.id}.is_monomer()){
+                    auto &loc= m_non_monomer_bead_locations.at(BeadHash{b.id}.get_polymer_id())[BeadHash{b.id}.get_polymer_offset()];
+                    assert(loc == &b);
+                    loc = dst.beads+dst.n;
+                }
                 dst.n += 1;
 
                 home.n -= 1;
@@ -797,7 +844,6 @@ private:
                         assert(!isnanf(f[d][i]));
                     }
                     home_f[d] = home_f[d] + f[d];
-                    assert(!isnanf(other_bead.f[d]));
                     fAB = dpd_maths_core_simd::mm256_reduce_add_ps_dual_vec4(f[d]);
                     other_bead_A.f[d] -= fAB.first;
                     // If num_others is odd, and i==num_others-1, this will over-add to the last bead
@@ -812,6 +858,75 @@ private:
                 others[num_others-1]->f[d] += fAB.second;
             }
         }
+    }
+
+    struct BondWorking
+    {
+        vec3f_t dx;
+        float dr;
+    };
+
+    void evaluate_bonds(uint32_t polymer_id, BondWorking *bond_working)
+    {
+        const PolymerType &pt=m_state->polymer_types[m_state->polymers[polymer_id].polymer_type];
+        auto &locations=m_non_monomer_bead_locations.at(polymer_id);
+
+        for(unsigned i=0; i<pt.bonds.size(); i++){
+            const Bond &bond=pt.bonds[i];
+            auto head_x=locations[bond.bead_offset_head]->x;
+            auto tail_x=locations[bond.bead_offset_tail]->x;
+
+            vec3f_t dx;
+            float dr2=0;
+            for(int d=0; d<3; d++){
+                dx[d]=head_x[d]-tail_x[d];
+                if(dx[d] < -2 ){
+                    dx[d] += m_dims[d];
+                }else if(dx[d] > 2){
+                    dx[d] -= m_dims[d];
+                }
+                dr2 += dx[d];
+            }
+            float dr=pow_half(dr2);
+        
+            vec3f_t head_f, tail_f;
+            dpd_maths_core_half_step::calc_hookean_force<false, float, vec3f_t, vec3f_t>(
+                bond.kappa, bond.r0,
+                dx, dr,
+                head_f, tail_f
+            );
+
+            vec3_add(locations[bond.bead_offset_head]->f, &head_f[0]);
+            vec3_add(locations[bond.bead_offset_tail]->f, &tail_f[0]);
+
+            bond_working[i].dx=dx;
+            bond_working[i].dr=dr;
+        }
+
+        for(unsigned i=0; i<pt.bond_pairs.size(); i++){
+            const BondPair &bp=pt.bond_pairs[i];
+            const Bond &bhead=pt.bonds[bp.bond_offset_head], &btail=pt.bonds[bp.bond_offset_tail];
+
+            assert(bp.theta0==0.0);
+
+            float cos_theta0=1.0f;
+            float sin_theta0=0.0f;
+
+            vec3f_t head_f, mid_f, tail_f;
+            dpd_maths_core_half_step::calc_angle_force<float, vec3f_t, vec3f_t>(
+                bp.kappa,
+                cos_theta0,
+                sin_theta0,
+                bond_working[bp.bond_offset_head].dx, bond_working[bp.bond_offset_head].dr,
+                bond_working[bp.bond_offset_tail].dx, bond_working[bp.bond_offset_tail].dr,
+                head_f, mid_f, tail_f
+            );
+
+            vec3_add(locations[bhead.bead_offset_head]->f, &head_f[0]);
+            vec3_add(locations[bhead.bead_offset_tail]->f, &mid_f[0]);
+            vec3_add(locations[btail.bead_offset_tail]->f, &tail_f[0]);
+        }
+
     }
 };
 

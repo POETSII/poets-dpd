@@ -43,7 +43,7 @@ int main(int argc, const char *argv[])
         while(i<argc){
             std::string key=argv[i];
             ++i;
-            if(key.size()>2 && key.substr(2)=="--"){
+            if(key.size()>2 && key.substr(0,2)=="--"){
                 if(i==argc){
                     std::cerr<<"Missing parameter to "<<key<<"\n";
                     exit(1);
@@ -58,11 +58,19 @@ int main(int argc, const char *argv[])
 
         if(left_args.size()!=2){
             std::cerr<<"Expecting two positional arguments.\n";
+            std::cerr<<"Leftovers = \n";
+            for(int i=0; i<left_args.size(); i++){
+                std::cerr<<"  "<<left_args[i]<<"\n";
+            }
+            std::cerr<<"Key Vals\n";
+            for(auto kv : changes){
+                std::cerr<<"  "<<kv.first<<", "<<kv.second<<"\n";
+            }
             usage();
         }
 
         std::string srcFile=left_args[0];
-        std::string dstFile=left_args[0];
+        std::string dstFile=left_args[1];
 
         WorldState state=read_world_state(srcFile);
 
@@ -72,7 +80,7 @@ int main(int argc, const char *argv[])
             if(kv.first=="--dt"){
                 double dt=std::stod(kv.second);
                 state.dt=dt;
-            }else if(kv.second=="--t"){
+            }else if(kv.first=="--t"){
                 int t=std::stoi(kv.second);
                 state.t=t;
             }else{
