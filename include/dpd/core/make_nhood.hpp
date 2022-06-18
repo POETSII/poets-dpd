@@ -4,6 +4,7 @@
 #include "dpd/core/vec3.hpp"
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 
 enum struct NHoodType
 {

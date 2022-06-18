@@ -25,6 +25,12 @@ scratch
 *.pvsm
 *.xml
 *.graphml
+core.*
+*.txt
+*.lammps
+*.save
+*.save.?
+*.ppk
 
 dmpc?.*
 dmpc??.*

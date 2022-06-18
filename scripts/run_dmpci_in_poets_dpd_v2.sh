@@ -103,11 +103,11 @@ if [[ ! -f ${WORKING_DIR}/${BASE_NAME}.begin.state.gz ]] ; then
 			${WORKING_DIR}/${BASE_NAME}.tmp.state.gz ${STSS_TIME} 1.1
 		>&2 echo "Relaxation done"
 		
-		${POETS_DPD_DIR}/bin/change_world_dt --dt ${STSS_DT} --t 0 ${WORKING_DIR}/${BASE_NAME}.tmp.state.gz ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
+		${POETS_DPD_DIR}/bin/change_world --dt ${STSS_DT} --t 0 ${WORKING_DIR}/${BASE_NAME}.tmp.state.gz ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
 
 		rm ${WORKING_DIR}/${BASE_NAME}.tmp.state.gz
 	else
-		${POETS_DPD_DIR}/bin/change_world_dt --t 0 ${WORKING_DIR}/${BASE_NAME}.init.state.gz  ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
+		${POETS_DPD_DIR}/bin/change_world --t 0 ${WORKING_DIR}/${BASE_NAME}.init.state.gz  ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
 	fi
 
 fi

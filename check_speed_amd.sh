@@ -10,5 +10,9 @@ module load gcc/11.1.0
 
 echo "Hello"
 
-bin/benchmark_engine avx2_dpd_engine  uniform-32
-
+bin/benchmark_engine naive_dpd_engine_half_merge_tbb  uniform-48
+bin/benchmark_engine naive_dpd_engine_half_merge_tbb  uniform-64
+bin/benchmark_engine dpd_engine_avx2_half_merge_tbb uniform-48
+bin/benchmark_engine dpd_engine_avx2_half_merge_tbb uniform-64
+bin/benchmark_engine dpd_engine_avx2_half_merge_tbb uniform-96
+bin/benchmark_engine dpd_engine_avx2_half_merge_tbb uniform-128

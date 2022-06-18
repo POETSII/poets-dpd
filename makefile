@@ -15,18 +15,19 @@ LDFLAGS += -fuse-ld=gold
 # Hacks for Soton HPC/AMD systems
 # Detection is hacky: I just assume the module shell function only exists on iridis
 ifneq ($(shell module 2>&1),)
-CXX=g++
 CPPFLAGS += -I/home/dbt1c21/packages/oneTBB-2019/include
-LDFLAGS += -L/home/dt10/.linuxbrew/lib
+#LDFLAGS += -L/home/dt10/.linuxbrew/lib
 LDFLAGS += -L/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0_libc2.17_kernel3.10.0_release/
 CPPFLAGS += -I/usr/include
-CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
+#CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
 endif
 
 CPPFLAGS += -g
 
 #CPPFLAGS += -DNDEBUG=1 
 #CPPFLAGS += -O3
+
+#CPPFLAGS += -fno-omit-frame-pointer
 
 ## Iridis cpuinfo:
 ## AMD: flags           : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush          mmx fxsr sse sse2    ht        syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc art                       rep_good nopl           nonstop_tsc extd_apicid aperfmperf eagerfpu pni pclmulqdq        monitor                        ssse3      fma cx16                    sse4_1 sse4_2 x2apic movbe popcnt                    aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch     osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_l2 cpb cat_l3 cdp_l3 hw_pstate sme retpoline_amd                                    ssbd     ibrs ibpb stibp vmmcall                                       fsgsbase            bmi1     avx2 smep bmi2                  cqm     rdt_a                  rdseed adx smap clflushopt clwb sha_ni                            xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif umip overflow_recov succor smca
