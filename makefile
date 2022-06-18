@@ -25,8 +25,8 @@ endif
 
 CPPFLAGS += -g
 
-CPPFLAGS += -DNDEBUG=1 
-CPPFLAGS += -O3
+#CPPFLAGS += -DNDEBUG=1 
+#CPPFLAGS += -O3
 
 ## Iridis cpuinfo:
 ## AMD: flags           : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush          mmx fxsr sse sse2    ht        syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc art                       rep_good nopl           nonstop_tsc extd_apicid aperfmperf eagerfpu pni pclmulqdq        monitor                        ssse3      fma cx16                    sse4_1 sse4_2 x2apic movbe popcnt                    aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch     osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_l2 cpb cat_l3 cdp_l3 hw_pstate sme retpoline_amd                                    ssbd     ibrs ibpb stibp vmmcall                                       fsgsbase            bmi1     avx2 smep bmi2                  cqm     rdt_a                  rdseed adx smap clflushopt clwb sha_ni                            xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif umip overflow_recov succor smca
@@ -218,6 +218,7 @@ all_tools += bin/$1
 endef
 
 bin/test/test_hash : LDLIBS += -ltestu01
+bin/test/test_xorshift64_avx2 : LDLIBS += -ltestu01
 
 $(eval $(call register_engine_user,test/test_engine_diff))
 $(eval $(call register_engine_user,test/test_engine))

@@ -22,7 +22,14 @@ scratch
 *.pov
 *.rst
 *.zip
+*.pvsm
+*.xml
+*.graphml
 
+dmpc?.*
+dmpc??.*
+
+test-dmpci-grid
 test_results
 working
 working2

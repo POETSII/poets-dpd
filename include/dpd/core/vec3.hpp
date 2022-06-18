@@ -104,6 +104,9 @@ struct vec3g_t
     vec3g_t operator*(T b) const
     { return apply(b, [](T aa, T bb){ return aa*bb; }); }
 
+    vec3g_t operator/(T b) const
+    { return apply(b, [](T aa, T bb){ return aa/bb; }); }
+
     vec3g_t operator-() const
     { return { -x[0], -x[1], -x[2] }; }
 
