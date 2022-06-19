@@ -12,6 +12,7 @@ public:
     virtual ~ForceLogging()
     {}
 
+    virtual void Flush()=0;
     virtual void SetTime(long t)=0;
     virtual void SetPrefix(const std::string &)=0;
     virtual void LogProperty(const char *name, int dims, const double *x)=0;

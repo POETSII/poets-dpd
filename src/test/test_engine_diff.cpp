@@ -80,6 +80,8 @@ int main(int argc, const char *argv[])
             continue;
         }
 
+        pengine2 = DPDEngineFactory::create(engine_name);
+
         auto test=std::get<2>(ttt)();
 
         auto r=test_differential(*test, engine1, *pengine2);

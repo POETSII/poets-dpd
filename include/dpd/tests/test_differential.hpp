@@ -46,6 +46,7 @@ std::pair<bool,std::string> test_differential(
             for(unsigned i=0; i<state1.beads.size(); i++){
                 state2.beads[i] = state1.beads[i];
             }
+            engine2.Attach(&state2); // We have modified bead positions, so must re-attach
 
             if(logger){
                 logger->SetPrefix("Ref,");
@@ -66,7 +67,7 @@ std::pair<bool,std::string> test_differential(
             //std::cerr<<"t="<<state1.t<<"\n";
             
 
-            double maxDiff= 0.001;
+            double maxDiff= 0.01;
             maxDiff *= sqrt(todo);
 
             double xdiff=0;

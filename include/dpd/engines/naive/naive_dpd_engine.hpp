@@ -339,6 +339,10 @@ private:
         }
 
         m_state->t += 1;
+
+        if(ForceLogging::logger()){
+            ForceLogging::logger()->Flush();
+        }
     }
 
     void step_cell(vec3i_t pos)
@@ -608,10 +612,15 @@ private:
             
             double ff[3]={f[0],f[1],f[2]};
             ForceLogging::logger()->LogBeadPairProperty(head.get_hash_code(), tail.get_hash_code(), "f_next_hookean", 3, ff);
+            ForceLogging::logger()->LogBeadPairProperty(head.get_hash_code(), tail.get_hash_code(), "f_next_hookean_dx", 3, &dx[0]);
+            ForceLogging::logger()->LogBeadPairProperty(head.get_hash_code(), tail.get_hash_code(), "f_next_hookean_dr", 1, &r);
             for(int i=0;i<3; i++){
                 ff[i]=-ff[i];
             }
+            double idx[3]={-dx[0],-dx[1],-dx[2]};
             ForceLogging::logger()->LogBeadPairProperty(tail.get_hash_code(), head.get_hash_code(), "f_next_hookean", 3, ff);
+            ForceLogging::logger()->LogBeadPairProperty(tail.get_hash_code(), head.get_hash_code(), "f_next_hookean_dx", 3, idx);
+            ForceLogging::logger()->LogBeadPairProperty(tail.get_hash_code(), head.get_hash_code(), "f_next_hookean_dr", 1, &r);
         }
     }
 

@@ -24,8 +24,8 @@ endif
 
 CPPFLAGS += -g
 
-#CPPFLAGS += -DNDEBUG=1 
-#CPPFLAGS += -O3
+CPPFLAGS += -DNDEBUG=1 
+CPPFLAGS += -O3
 
 #CPPFLAGS += -fno-omit-frame-pointer
 

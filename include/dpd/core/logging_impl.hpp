@@ -33,6 +33,11 @@ public:
         }
     }
 
+    virtual void Flush()
+    {
+        m_dst.flush();
+    }
+
     virtual void SetTime(long t)
     { m_t=t; }
 

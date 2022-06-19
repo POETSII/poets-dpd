@@ -18,12 +18,15 @@
 
 #include <tbb/parallel_for_each.h>
 
+template<typename dpd_maths_core_simd::Flags MathsCoreFlags=dpd_maths_core_simd::Flag_RngHash>
 class DPDEngineAVX2HalfMergeTBB
     : public DPDEngine
 {
 public:
     static const unsigned MAX_BEADS_PER_CELL = 16;
     static const unsigned MAX_BEAD_TYPES = 8;
+
+    static const bool EnableLogging = MathsCoreFlags & dpd_maths_core_simd::Flag_EnableLogging;
 
 
      std::string CanSupport(const WorldState *state) const override
@@ -109,13 +112,14 @@ public:
             m_max_polymer_length=std::max<unsigned>(m_max_polymer_length, pt.bead_types.size());
         }
 
+        m_non_monomer_polymer_ids.clear();
         m_non_monomer_bead_locations.clear();
         for(int polymer_id=s->polymers.size()-1; polymer_id>=0; polymer_id--){
             const auto &poly=s->polymers[polymer_id];
             if( poly.bead_ids.size() <= 1){
                 continue; // It's a monomer
             }
-            if(polymer_id >= m_non_monomer_bead_locations.size()){
+            if(polymer_id >= (int)m_non_monomer_bead_locations.size()){
                 // This should happen just once
                 m_non_monomer_bead_locations.resize(polymer_id+1);
             }
@@ -136,7 +140,12 @@ public:
 
         synchronise_beads_out();
     }
+protected:
+    bool CanSupportHookeanBonds() const override
+    { return true; }
 
+    bool CanSupportAngleBonds() const override
+    { return true; }
 
 private:
     struct Packed
@@ -170,6 +179,7 @@ private:
     float m_sqrt_dissipative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
 
     std::mt19937_64 m_urng;
+    uint64_t m_t_hash;
 
     std::vector<std::vector<std::vector<unsigned>>> m_cell_waves;
 
@@ -277,6 +287,22 @@ private:
                 auto &bead = cell.beads[i];
                 for(int d=0; d<3; d++){
                     assert(!isnanf(bead.f[d]));
+                    assert(-100000 < bead.f[d] && bead.f[d] < +100000);
+                }
+                BeadHash bh{bead.id};
+                if(!bh.is_monomer()){
+                    assert( m_non_monomer_bead_locations.at(bh.get_polymer_id())[bh.get_polymer_offset()] == &bead );
+                }
+            }
+        }
+        for(unsigned polymer_id=0; polymer_id<m_non_monomer_bead_locations.size(); polymer_id++){
+            auto &loc=m_non_monomer_bead_locations[polymer_id];
+            if(loc){
+                const Polymer &p=m_state->polymers[polymer_id];
+                const PolymerType &pt=m_state->polymer_types[p.polymer_type];
+                for(unsigned polymer_offset=0; polymer_offset<p.bead_ids.size(); polymer_offset++){
+                    auto eid=BeadHash::construct(pt.bead_types[polymer_offset], false, polymer_id, polymer_offset);
+                    assert(eid.hash==loc[polymer_offset]->id);
                 }
             }
         }
@@ -290,33 +316,44 @@ private:
 
         // TODO: Do something cleverer here.
 
-        unsigned wx=8, wy=8, wz=8;
-        if(wx%8){
-            wx=4;
-        }
-        if(wy%8){
-            wy=4;
-        }
-        if(wz%8){
-            wz=4;
-        }
-
-
+        unsigned wx=4, wy=4, wz=4;
         // Number of tasks per wave
         unsigned tasks=( (m_dims[0]/wx) * (m_dims[1]/wy) * (m_dims[2]/wz) ) / 8;
-        if(tasks>=4*cpus && (m_dims[1]%16)==0){
+       // std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
+        
+        if(tasks>=3*cpus && (m_dims[1]%8)==0){
             tasks /= 2;
             wy *= 2;
+           // std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-        if(tasks>=4*cpus && (m_dims[2]%16)==0){
+        if(tasks>=3*cpus && (m_dims[2]%8)==0){
             tasks /= 2;
             wz *= 2;
+            //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-        if(tasks>=4*cpus && (m_dims[0]%16)==0){
+        if(tasks>=3*cpus && (m_dims[0]%8)==0){
             tasks /= 2;
             wx *= 2;
+            //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-        std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
+
+        if(tasks>=3*cpus && (m_dims[1]%16)==0){
+            tasks /= 2;
+            wy *= 2;
+            //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
+        }
+        if(tasks>=3*cpus && (m_dims[2]%16)==0){
+            tasks /= 2;
+            wz *= 2;
+            //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
+        }
+        if(tasks>=3*cpus && (m_dims[0]%16)==0){
+            tasks /= 2;
+            wx *= 2;
+            //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
+        }
+       
+        //std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
 
         m_cell_waves.clear();
         for(unsigned gx=0; gx<wx; gx+=(wx/2)){
@@ -330,9 +367,9 @@ private:
                             for(unsigned iz=gz; iz<(unsigned)m_dims[2]; iz+=wz){
                                 std::vector<unsigned> sc;
                                 unsigned off=0;
-                                for(int lx=0; lx<wx/2; lx++){
-                                    for(int ly=0; ly<wy/2; ly++){
-                                        for(int lz=0; lz<wz/2; lz++){
+                                for(unsigned lx=0; lx<wx/2; lx++){
+                                    for(unsigned ly=0; ly<wy/2; ly++){
+                                        for(unsigned lz=0; lz<wz/2; lz++){
                                             unsigned index=get_cell_index({int(ix+lx),int(iy+ly),int(iz+lz)});
                                             if(!seen.insert(index).second){
                                                 throw std::runtime_error("Duplicate");
@@ -409,15 +446,21 @@ private:
         });
     }
 
+    static const bool NeedBeadId = (MathsCoreFlags & dpd_maths_core_simd::Flag_EnableLogging) || (MathsCoreFlags & dpd_maths_core_simd::Flag_RngHash);
+
     void convert_AoS_to_SoA_vec8(
         const Cell &in,
         unsigned base,
+        __m256i &bead_id,
         __m256i &bead_type,
         __m256 x[3],
         __m256 v[3]
     )
     {
         bead_type = _mm256_setzero_si256();
+        if(NeedBeadId){
+            bead_id = _mm256_setzero_si256();
+        }
         // Initialise positions somewhere that is guaranteed not to interact.
         // This means force calculations will automatically return 0 for inactive lanes.
         for(int d=0; d<3; d++){
@@ -426,10 +469,14 @@ private:
 
         // Indexing into a _mm256i treats it as 4x64.
         // It might be more efficient to do the floats this way as well.
+        uint32_t bead_ids_tmp[8]={0,0,0,0, 0,0,0,0 };
         uint32_t bead_types_tmp[8]={0,0,0,0, 0,0,0,0 };
 
         unsigned todo=std::min(8u, in.n-base);
         for(unsigned i=0; i<todo; i++){
+            if(NeedBeadId){
+                bead_ids_tmp[i] = in.beads[i+base].id;
+            }
             bead_types_tmp[i] = BeadHash{in.beads[i+base].id}.get_bead_type();
             for(int d=0; d<3; d++){
                 assert(!isnanf(in.beads[i+base].f[d]));
@@ -437,11 +484,15 @@ private:
                 v[d][i] = in.beads[i+base].v[d];
             }
         }
+        if(NeedBeadId){
+            bead_id = _mm256_loadu_si256( (const __m256i *)bead_ids_tmp );
+        }
         bead_type=_mm256_loadu_si256( (const __m256i *)bead_types_tmp );
     }
 
     void convert_AoS_to_SoA_dual_vec4(
         const Cell &in,
+        __m256i &bead_id,
         __m256i &bead_type,
         __m256 x[3],
         __m256 v[3]
@@ -457,16 +508,27 @@ private:
         // Indexing into a _mm256i treats it as 4x64.
         // It might be more efficient to do the floats this way as well.
         uint32_t bead_types_tmp[8]={0,0,0,0, 0,0,0,0 };
+        uint32_t bead_ids_tmp[8]={0,0,0,0, 0,0,0,0 };
 
         for(unsigned i=0; i<in.n; i++){
+            if(NeedBeadId){
+                bead_ids_tmp[i] = in.beads[i].id;
+            }
             bead_types_tmp[i] = BeadHash{in.beads[i].id}.get_bead_type();
             for(int d=0; d<3; d++){
                 x[d][i] = in.beads[i].x[d];
                 v[d][i] = in.beads[i].v[d];
             }
         }
+        if(NeedBeadId){
+            bead_id=_mm256_loadu_si256( (const __m256i *)bead_ids_tmp  );
+        }
         bead_type=_mm256_loadu_si256( (const __m256i *)bead_types_tmp );
+        
 
+        if(NeedBeadId){
+            bead_id=_mm256_insertf128_si256(bead_id, _mm256_castsi256_si128(bead_id), 1);    
+        }
         bead_type=_mm256_insertf128_si256(bead_type, _mm256_castsi256_si128(bead_type), 1);
         for(int d=0; d<3; d++){
             x[d]=_mm256_insertf128_ps(x[d], _mm256_castps256_ps128(x[d]), 1);
@@ -478,28 +540,64 @@ private:
     {
         double dt=m_state->dt;
 
+         m_t_hash = get_t_hash(m_state->t, m_state->seed);
+
+        if(ForceLogging::logger()){
+            ForceLogging::logger()->SetTime(m_state->t);
+
+            for(const auto &cell : m_cells){
+                for(unsigned i=0; i<cell.n; i++){
+                    const auto &b=cell.beads[i];
+                    BeadHash bh{b.id};
+                    double h=b.id;
+                    ForceLogging::logger()->LogBeadProperty(bh, "b_hash", 1, &h);
+                    double x[3]={b.x[0],b.x[1],b.x[2]};
+                    ForceLogging::logger()->LogBeadProperty(bh,"x",3,x);
+                    double v[3]={b.v[0],b.v[1],b.v[2]};
+                    ForceLogging::logger()->LogBeadProperty(bh,"v",3,v);
+                    double f[3]={b.f[0],b.f[1],b.f[2]};
+                    ForceLogging::logger()->LogBeadProperty(bh,"f",3,f);
+                }
+            }
+        }
+
+        #ifndef NDEBUG
         for(const auto &c : m_cells){
             assert(c.n==c.n_move_pending);
         }
         validate();
+        #endif
 
         parallel_for_each_cell_group( [&](const std::vector<unsigned> &c){
             move_cell_group(c);
         });
 
+        #ifndef NDEBUG
         validate();
+        #endif
 
         // At this point cell.n==0
         parallel_for_each_cell_group( [&](const std::vector<unsigned> &c){
             calc_forces_for_group(c);
         });
 
+        parallel_for_each(m_non_monomer_polymer_ids, 256, [&](uint32_t index){
+            std::vector<BondWorking> working(m_max_polymer_length);
+            evaluate_bonds(index, &working[0]);
+        });
+
+        #ifndef NDEBUG
         for(const auto &c : m_cells){
             assert(c.n==c.n_move_pending);
         }
         validate();
+        #endif
 
         m_state->t++;
+
+        if(ForceLogging::logger()){
+            ForceLogging::logger()->Flush();
+        }
     }
 
     __attribute__((noinline)) void move_cell_group(const std::vector<unsigned> &indices)
@@ -524,6 +622,8 @@ private:
         for(int bi=home.n_move_pending-1; bi>=0; bi--){
             auto &b=home.beads[bi];
             //fprintf(stderr, "Bead %u\n", b.id);
+
+            Packed borig=b;
             
             dpd_maths_core_half_step_raw::update_mom(m_dt, b);
 
@@ -545,6 +645,8 @@ private:
                 if(dst.n == MAX_BEADS_PER_CELL){
                     throw std::runtime_error("Too many beads in one cell.");
                 }
+                assert(&home != &dst);
+
                 dst.beads[dst.n] = b;
                 if(!BeadHash{b.id}.is_monomer()){
                     auto &loc= m_non_monomer_bead_locations.at(BeadHash{b.id}.get_polymer_id())[BeadHash{b.id}.get_polymer_offset()];
@@ -554,7 +656,14 @@ private:
                 dst.n += 1;
 
                 home.n -= 1;
-                b = home.beads[home.n];             
+                if(home.n>0){
+                    b = home.beads[home.n];             
+                    if(!BeadHash{b.id}.is_monomer()){
+                        auto &loc= m_non_monomer_bead_locations.at(BeadHash{b.id}.get_polymer_id())[BeadHash{b.id}.get_polymer_offset()];
+                        assert(loc == home.beads+home.n);
+                        loc = &b;
+                    }
+                }
             }
         }
 
@@ -577,31 +686,31 @@ private:
             return;
         }
 
-        __m256i home_bead_type;
+        __m256i home_bead_type, home_bead_id;
         __m256 home_x[3], home_v[3], home_f[3];
         __m256i rng_state;
         
         rng_state=home.rng_state;
 
-        if(home.n <= 4){
-            convert_AoS_to_SoA_dual_vec4( home, home_bead_type, home_x, home_v );
+        if(false && home.n <= 4){
+            convert_AoS_to_SoA_dual_vec4( home, home_bead_type, home_bead_id, home_x, home_v );
             for(int d=0; d<3; d++){
                 home_f[d] = _mm256_setzero_ps();
             }
 
             // This still works for dual vec4
-            step_cell_intra_vec8(home, 0, rng_state, home_bead_type, home_x, home_v, home_f);
+            step_cell_intra_vec8(home, 0, rng_state, home_bead_type, home_bead_id, home_x, home_v, home_f);
 
             // flag is mostly true, and there is loads of iteration inside
             // so icache shouldn't be a problem
             if(home.wrap_bits){
-                step_cell_inter_dual_vec4<true>(home, rng_state, home_bead_type, home_x, home_v, home_f);
+                step_cell_inter_dual_vec4<true>(home, rng_state, home_bead_type, home_bead_id, home_x, home_v, home_f);
             }else{
-                step_cell_inter_dual_vec4<false>(home, rng_state, home_bead_type, home_x, home_v, home_f);
+                step_cell_inter_dual_vec4<false>(home, rng_state, home_bead_type, home_bead_id, home_x, home_v, home_f);
             }
             
             for(unsigned i=0; i<home.n; i++){
-                assert(0<=i && i<home.n);
+                assert(i<home.n);
                 for(int d=0; d<3; d++){
                     home.beads[i].f[d] += home_f[d][i] + home_f[d][i+4];
                 }
@@ -609,28 +718,43 @@ private:
         }else{
             for(unsigned base=0; base<home.n; base+=8){
                 unsigned upper=std::min(base+8, home.n);
-                assert(upper < home.n );
-                assert(base - upper <= 8);
+                assert(upper <= home.n );
+                assert(upper - base <= 8);
 
-                convert_AoS_to_SoA_vec8( home, base, home_bead_type, home_x, home_v );
+                convert_AoS_to_SoA_vec8( home, base, home_bead_id, home_bead_type, home_x, home_v );
                 for(int d=0; d<3; d++){
                     home_f[d] = _mm256_setzero_ps();
                 }
 
-                step_cell_intra_vec8(home, base, rng_state, home_bead_type, home_x, home_v, home_f);
+                step_cell_intra_vec8(home, base, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f);
+
+                for(unsigned i=base; i<upper; i++){
+                    assert(i<home.n);
+                    for(int d=0; d<3; d++){
+                        assert(-100000 <= home.beads[i].f[d] && home.beads[i].f[d] <= 100000 );
+                    }
+                }
+
+                for(unsigned i=base; i<upper; i++){
+                    assert(i<home.n);
+                    for(int d=0; d<3; d++){
+                        assert(-100000 <= home.beads[i].f[d] && home.beads[i].f[d] <= 100000 );
+                    }
+                }
 
                 // flag is mostly true, and there is loads of iteration inside
                 // so icache shouldn't be a problem
                 if(home.wrap_bits){
-                    step_cell_inter_vec8<true>(home, rng_state, home_bead_type, home_x, home_v, home_f);
+                    step_cell_inter_vec8<true>(home, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f);
                 }else{
-                    step_cell_inter_vec8<false>(home, rng_state, home_bead_type, home_x, home_v, home_f);
+                    step_cell_inter_vec8<false>(home, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f);
                 }
 
                 
                 for(unsigned i=base; i<upper; i++){
-                    assert(0<=i && i<home.n);
+                    assert(i<home.n);
                     for(int d=0; d<3; d++){
+                        assert(-100000 <= home.beads[i].f[d] && home.beads[i].f[d] <= 100000 );
                         home.beads[i].f[d] += home_f[d][i-base];
                     }
                 }
@@ -647,6 +771,7 @@ private:
         Cell &home,
         unsigned base, // Offset of home vector within cell
         __m256i &rng_state,
+        const __m256i home_bead_ids,
         const __m256i home_bead_types,
         const __m256 home_x[3],
         const __m256 home_v[3],
@@ -655,7 +780,9 @@ private:
         // All home cells are very likely to interact, assuming r=0.5
         // Only if they are in opposite corners to they miss each other.
 
-        assert(home.n<=8);
+        if(home.n<=1){
+            return;
+        }
 
         __m256i iota=_mm256_set_epi32(7,6,5,4,3,2,1,0) + _mm256_set1_epi32(base);
 
@@ -663,16 +790,19 @@ private:
             auto &other_bead=home.beads[j];
 
             __m256 f[3];
-            if(dpd_maths_core_simd::interact_vec8_to_scalar<MAX_BEAD_TYPES>(
+            if(dpd_maths_core_simd::interact_vec8_to_scalar<MathsCoreFlags,MAX_BEAD_TYPES>(
                 m_scale_inv_sqrt_dt,
                 m_conservative_matrix,
                 m_sqrt_dissipative_matrix,
+                m_t_hash,
                 rng_state,
                 
+                home_bead_ids,
                 home_bead_types,
                 home_x,
                 home_v,
 
+                other_bead.id,
                 BeadHash{other_bead.id}.get_bead_type(),
                 other_bead.x,
                 other_bead.v,
@@ -685,7 +815,9 @@ private:
                 for(int d=0; d<3; d++){
                     __m256 forces_active = _mm256_and_ps(f[d], _mm256_castsi256_ps(active));
                     home_f[d] = home_f[d] + forces_active;
-                    other_bead.f[d] -= dpd_maths_core_simd::_mm256_reduce_add_ps(forces_active);
+                    float facc=dpd_maths_core_simd::_mm256_reduce_add_ps(forces_active);
+                    assert(-100000 <= facc && facc <= 100000);
+                    other_bead.f[d] -= facc;
                 }
             }
         }
@@ -696,6 +828,7 @@ private:
     void step_cell_inter_vec8(
         Cell &home,
         __m256i &rng_state,
+        const __m256i home_bead_ids,
         const __m256i home_bead_types,
         const __m256 home_x[3],
         const __m256 home_v[3],
@@ -718,28 +851,33 @@ private:
                     do_neighbour_wrap(other_bead_x_local, home.wrap_bits, &m_dimsf.x[0]);
                 }
                 
-                if(dpd_maths_core_simd::interact_vec8_to_scalar<MAX_BEAD_TYPES>(
+                if(dpd_maths_core_simd::interact_vec8_to_scalar<MathsCoreFlags,MAX_BEAD_TYPES>(
                     m_scale_inv_sqrt_dt,
                     m_conservative_matrix,
                     m_sqrt_dissipative_matrix,
+                    m_t_hash,
                     rng_state,
                     
+                    home_bead_ids,
                     home_bead_types,
                     home_x,
                     home_v,
 
+                    other_bead.id,
                     BeadHash{other_bead.id}.get_bead_type(),
                     IsEdgeCell ? other_bead_x_local : other_bead.x,
                     other_bead.v,
 
                     f
                 )){
-                    for(int d=0; d<3; d++){
-                        for(int i=0; i<home.n; i++){
+                    for(unsigned d=0; d<3; d++){
+                        for(unsigned i=0; i<home.n; i++){
                             assert(!isnanf(f[d][i]));
+                            assert(-100000 < f[d][i] && f[d][i] < +100000);
                         }
                         home_f[d] = home_f[d] + f[d];
                         assert(!isnanf(other_bead.f[d]));
+                        assert(-100000 < other_bead.f[d] && other_bead.f[d] < +100000);
                         other_bead.f[d] -= dpd_maths_core_simd::_mm256_reduce_add_ps(f[d]);
                         assert(!isnanf(other_bead.f[d]));
                     }
@@ -753,6 +891,7 @@ private:
     void step_cell_inter_dual_vec4(
         Cell &home,
         __m256i &rng_state,
+        const __m256i home_bead_ids,
         const __m256i home_bead_types,
         const __m256 home_x[3],
         const __m256 home_v[3],
@@ -798,11 +937,17 @@ private:
                 num_others += other_cell.n;
             }
         }
+
+        if(num_others==0){
+            return;
+        }
+
         // Make sure end of array is valid for pre-fetch
         for(unsigned i=0; i<4; i++){
             others[num_others+i] = others[num_others-1];
         }
 
+        assert(num_others>0);
         // If num_others is odd then we do the last "other" twice
         for(unsigned i=0; i< num_others ; i+=2){
             _mm_prefetch(others[i+2], _MM_HINT_T1); // This will prefetch past the end
@@ -819,28 +964,32 @@ private:
                 do_neighbour_wrap(other_bead_B_x_local, home.wrap_bits, &m_dimsf.x[0]);
             }
                 
-            if(dpd_maths_core_simd::interact_dual_vec4_to_dual_scalar<MAX_BEAD_TYPES>(
+            if(dpd_maths_core_simd::interact_dual_vec4_to_dual_scalar<MathsCoreFlags,MAX_BEAD_TYPES>(
                 m_scale_inv_sqrt_dt,
                 m_conservative_matrix,
                 m_sqrt_dissipative_matrix,
+                m_t_hash,
                 rng_state,
                 
+                home_bead_ids,
                 home_bead_types,
                 home_x,
                 home_v,
 
+                other_bead_A.id,
                 BeadHash{other_bead_A.id}.get_bead_type(),
                 IsEdgeCell ? other_bead_A_x_local : other_bead_A.x,
                 other_bead_A.v,
 
+                other_bead_B.id,
                 BeadHash{other_bead_B.id}.get_bead_type(),
                 IsEdgeCell ? other_bead_B_x_local : other_bead_B.x,
                 other_bead_B.v,
 
                 f
             )){
-                for(int d=0; d<3; d++){
-                    for(int i=0; i<home.n; i++){
+                for(unsigned d=0; d<3; d++){
+                    for(unsigned i=0; i<home.n; i++){
                         assert(!isnanf(f[d][i]));
                     }
                     home_f[d] = home_f[d] + f[d];
@@ -868,6 +1017,8 @@ private:
 
     void evaluate_bonds(uint32_t polymer_id, BondWorking *bond_working)
     {
+       // std::cerr<<"Eval polymer "<<polymer_id<<"\n";
+
         const PolymerType &pt=m_state->polymer_types[m_state->polymers[polymer_id].polymer_type];
         auto &locations=m_non_monomer_bead_locations.at(polymer_id);
 
@@ -879,15 +1030,19 @@ private:
             vec3f_t dx;
             float dr2=0;
             for(int d=0; d<3; d++){
-                dx[d]=head_x[d]-tail_x[d];
+                dx[d]=tail_x[d]- head_x[d];
                 if(dx[d] < -2 ){
                     dx[d] += m_dims[d];
+                    assert(dx[d] <= 2);
                 }else if(dx[d] > 2){
                     dx[d] -= m_dims[d];
+                    assert(-2 < dx[d] );
                 }
-                dr2 += dx[d];
+                dr2 += dx[d]*dx[d];
             }
             float dr=pow_half(dr2);
+
+            //std::cerr<<"  t="<<m_state->t<<", i="<<i<<", dx="<<dx<<", dr="<<dr<<"\n";
         
             vec3f_t head_f, tail_f;
             dpd_maths_core_half_step::calc_hookean_force<false, float, vec3f_t, vec3f_t>(
@@ -895,6 +1050,28 @@ private:
                 dx, dr,
                 head_f, tail_f
             );
+
+
+            if(ForceLogging::logger()){    
+                double dxx[3]={dx[0], dx[1], dx[2]};
+                double ff[3]={head_f[0],head_f[1],head_f[2]};
+                BeadHash hhead=m_state->beads[m_state->polymers[polymer_id].bead_ids[bond.bead_offset_head]].get_hash_code();
+                BeadHash htail=m_state->beads[m_state->polymers[polymer_id].bead_ids[bond.bead_offset_tail]].get_hash_code();
+                ForceLogging::logger()->LogBeadPairProperty(hhead, htail, "f_next_hookean_dx", 3, dxx);
+                ForceLogging::logger()->LogBeadPairProperty(hhead, htail, "f_next_hookean_dr", 1, &dr);
+                ForceLogging::logger()->LogBeadPairProperty(hhead, htail, "f_next_hookean", 3, ff);
+                for(int j=0;j<3; j++){
+                    ff[j]=-ff[j];
+                    dxx[j]=-dxx[j];
+                }
+                ForceLogging::logger()->LogBeadPairProperty(htail, hhead, "f_next_hookean", 3, ff);
+                ForceLogging::logger()->LogBeadPairProperty(htail, hhead, "f_next_hookean_dx", 3, dxx);
+                ForceLogging::logger()->LogBeadPairProperty(htail, hhead, "f_next_hookean_dr", 1, &dr);
+            }
+
+            for(int d=0; d<3; d++){
+                assert(-100 <= head_f[d] && head_f[d] <= 100 );
+            }
 
             vec3_add(locations[bond.bead_offset_head]->f, &head_f[0]);
             vec3_add(locations[bond.bead_offset_tail]->f, &tail_f[0]);

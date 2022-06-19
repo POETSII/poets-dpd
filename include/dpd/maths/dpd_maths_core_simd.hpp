@@ -5,6 +5,7 @@
 
 #include "dpd/core/hash.hpp"
 #include "dpd/maths/dpd_maths_core.hpp"
+#include "dpd/core/logging.hpp"
 
 #ifndef PDPD_TINSEL
 #include <iostream>
@@ -67,56 +68,26 @@ namespace dpd_maths_core_simd
         return uf*scale;
     }
 
-    // TODO : Proper mixing version
-    static __m256 XorShift32(__m256i &state)
+    static __m256 POETSHashV1(uint64_t base, __m256i id1, __m256i id2)
     {
-        __m256i init=state;
+        uint32_t id1b[8];
+        uint32_t id2b[8];
 
-        state = state ^ _mm256_slli_epi32( state , 13 );
-        state = state ^ _mm256_srli_epi32( state , 7 );
-        state = state ^ _mm256_slli_epi32( state , 5 );
+        _mm256_storeu_si256((__m256i*)id1b,id1);
+        _mm256_storeu_si256((__m256i*)id2b, id2);
 
-        __m256i x = _mm256_add_epi32(init , state);
+        uint32_t hash[8];
+        for(unsigned i=0; i<8; i++){
+            hash[i]=hash_rng_sym(base, id1b[i], id2b[i]);
+        }
+
+        auto u= _mm256_loadu_si256((__m256i*)hash);
+
         const __m256 scale = _mm256_set1_ps(0.00000000023283064365386962890625f);
-        __m256 xf = _mm256_cvtepi32_ps(x);
-        return xf*scale;
+        __m256 uf = _mm256_cvtepi32_ps(u);
+        return uf*scale;
     }
 
-    // TODO : Be a bit critical...
-    /*static __m256 XorShift32Weyl(__m256i state[2])
-    {
-        __m256i init=state;
-
-        state[0] = state[0] ^ _mm256_slli_epi32( state[0] , 13 );
-        state[0] = state[0] ^ _mm256_srli_epi32( state[0] , 7 );
-        state[0] = state[0] ^ _mm256_slli_epi32( state[0] , 5 );
-
-        // This is actually a quasi-random weyl generator, so is overly even...
-        static const uint32_t step=uint32_t(2654435769); // = (1.0/1.6180339887498948482) * 0xFFFFFFFFul;
-        state[1] = state[1] + _mm256_set1_epi32(step)
-
-        __m256i x = (init + state[0]) ^ state[1];
-        const __m256 scale = _mm256_set1_ps(0.00000000023283064365386962890625f);
-        __m256 xf = _mm256_cvtepi32_ps(x);
-        return xf*scale;
-    }*/
-
-    /*static __m256 XorShift64(__m256i state[2])
-    {
-        __m256i init=state;
-
-        state[0] = state[0] ^ _mm256_slli_epi64( state , 13 );
-        state[0] = state[0] ^ _mm256_srli_epi64( state , 7 );
-        state[0] = state[0] ^ _mm256_slli_epi64( state , 17 );
-        state[1] = state[1] ^ _mm256_slli_epi64( state , 13 );
-        state[1] = state[1] ^ _mm256_srli_epi64( state , 7 );
-        state[1] = state[1] ^ _mm256_slli_epi64( state , 17 );
-
-        __m256i x = _mm256_add_epi32(state[0], state[1]);
-        const __m256 scale = _mm256_set1_ps(0.00000000023283064365386962890625f);
-        __m256 xf = _mm256_cvtepi32_ps(x);
-        return xf*scale;
-    }*/
 
     // https://stackoverflow.com/a/23190168
     // TODO : not nesc. the fastest with newer architectures
@@ -136,7 +107,7 @@ namespace dpd_maths_core_simd
         __m256 s0 = _mm256_shuffle_ps(x, x, (3<<4) | (1<<0) );    // ( -, x7, -, x5, -, x3, -, x1)
         __m256 s1 = _mm256_add_ps( x, s0 );                       // (-, x7+x6, -, x5+x4, -, x3+x2, -, x1+x0)
 
-        __m256 s2 = _mm256_shuffle_ps(x, x, (2<<4) );    // ( -, -, -, x7+x6, -, -, -, x3+x2)
+        __m256 s2 = _mm256_shuffle_ps(s1, s1, (2<<0) );    // ( -, -, -, x7+x6, -, -, -, x3+x2)
         __m256 s3 = _mm256_add_ps(s1, s2);               // (-, -, -, x7+x6+x5+x4, -, -, - x3+x2+x1+x0)
 
         float lo=s3[0];
@@ -144,6 +115,17 @@ namespace dpd_maths_core_simd
 
         return {lo,hi};
     }
+
+    enum Flags
+    {
+        Flag_EnableLogging  =1,
+        
+        Flag_RngHash           =2,
+        Flag_RngXorShift64Add  =4,
+        Flag_RngZero  =8,
+
+        Flag_RngMask           =2|4|8
+    };
 
     /* Returns true if there is any interaction (non-zero force), false otherwise.
         The f values are only valid iff it returns true. f is not set to zero
@@ -153,18 +135,21 @@ namespace dpd_maths_core_simd
         make sure they are valid (e.g. by moving inactive lanes to an x value which
         can't interact) or by applying masking externally.
     */
-    template<unsigned MAX_BEAD_TYPES>
+    template<Flags TFlags, unsigned MAX_BEAD_TYPES>
     static bool interact_vec8_to_scalar(
         const float scale_inv_sqrt_dt,
         const float conservative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
         const float sqrt_dissipative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
         
+        uint64_t t_hash,
         __m256i &rng_state,
-        
+
+        const __m256i home_bead_ids, 
         const __m256i home_bead_types,
         const __m256 home_x[3],
         const __m256 home_v[3],
 
+        uint32_t other_bead_id,
         unsigned other_bead_type,
         float other_x[3],
         float other_v[3],
@@ -210,7 +195,6 @@ namespace dpd_maths_core_simd
         __m256 dv[3];
         #pragma GCC unroll(3)
         for(int d=0; d<3; d++){
-            dx[d] = dx[d] * inv_dr;
             dv[d] = home_v[d] - _mm256_set1_ps( other_v[d] );
         }
 
@@ -218,8 +202,17 @@ namespace dpd_maths_core_simd
 
         auto sqrt_gammap = sqrt_diss_strength*wr;
 
-        auto dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
-        auto u = XorShift64Add( rng_state );
+        auto dissForce = -sqrt_gammap*sqrt_gammap*rdotv*inv_dr;
+        __m256 u;
+        if(TFlags & Flag_RngXorShift64Add){
+            u=XorShift64Add( rng_state );
+        }else if (TFlags & Flag_RngHash){
+            u=POETSHashV1(t_hash, home_bead_ids, _mm256_set1_epi32(other_bead_id));
+        }else if (TFlags & Flag_RngZero){
+            u=_mm256_setzero_ps();
+        }else{
+            throw std::logic_error("No Rng method selected at compile-time.");
+        }
         for(int d=0; d<3; d++){
             assert(-0.5f <= u[d] && u[d] <= 0.5f );
         }
@@ -233,25 +226,71 @@ namespace dpd_maths_core_simd
             f[d] = scaled_force * dx[d];
         }
 
+        if(TFlags & Flag_EnableLogging && ForceLogging::logger()){
+            BeadHash thash{other_bead_id};
+            uint32_t activeb[8], home_bead_idsb[8];
+            _mm256_storeu_si256((__m256i*)activeb, active);
+            _mm256_storeu_si256((__m256i*)home_bead_idsb, home_bead_ids);
+            for(unsigned i=0; i<8; i++){
+                if(!activeb[i]){
+                    continue;
+                }
+                BeadHash hhash{home_bead_idsb[i]};
+                double ddx[3]={dx[0][i],dx[1][i],dx[2][i]};
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dx", 3,ddx);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dr", 1,&dr[i]);
+                double dd=sqrt_diss_strength[i] * sqrt_diss_strength[i];
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-diss-strength", 1, &dd);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-invrootdt", 1, &scale_inv_sqrt_dt);
+                double gammap=sqrt_gammap[i]*sqrt_gammap[i];
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-gammap", 1, &gammap);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-rng", 1, &u[i]);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-con", 1, &conForce[i]);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-diss", 1,&dissForce[i]);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-rng-scale",1, &randScale[i]);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-rand",1, &randForce[i]);
+                double ff[3]={f[0][i],f[1][i],f[2][i]};
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"f_next_dpd", 3,ff);
+
+                for(int d=0; d<3; d++){ ddx[d]=-ddx[d]; }
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dx", 3,ddx);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dr", 1,&dr[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-diss-strength", 1, &dd);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-invrootdt", 1, &scale_inv_sqrt_dt);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-gammap", 1, &gammap);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-rng", 1, &u[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-con", 1, &conForce[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-diss", 1,&dissForce[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-rng-scale",1, &randScale[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-rand",1, &randForce[i]);
+                for(int d=0; d<3; d++){ ff[d] = -ff[d]; }
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"f_next_dpd", 3,ff);
+            }
+        }
+
         return true;
     }
 
-    template<unsigned MAX_BEAD_TYPES>
+    template<Flags TFlags, unsigned MAX_BEAD_TYPES>
     static bool interact_dual_vec4_to_dual_scalar(
         const float scale_inv_sqrt_dt,
         const float conservative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
         const float sqrt_dissipative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
         
+        uint64_t t_hash,
         __m256i &rng_state,
         
+        const __m256i home_bead_ids,
         const __m256i home_bead_types,
         const __m256 home_x[3],
         const __m256 home_v[3],
 
+        uint32_t otherA_bead_id,
         unsigned otherA_bead_type,
         float otherA_x[3],
         float otherA_v[3],
 
+        uint32_t otherB_bead_id,
         unsigned otherB_bead_type,
         float otherB_x[3],
         float otherB_v[3],
