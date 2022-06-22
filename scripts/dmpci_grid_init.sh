@@ -51,7 +51,11 @@ if [[ "${DMPCI_FILES}" == "" ]] ; then
     fi
     >&2 echo "Found dmpci in sub-dir"
     cp ${DMPCI_FILES} ${DMPCI_GRID_NAME}/input
+
+    DMPCI_FILES=$(cd ${DMPCI_GRID_NAME}/input && ls dmpci.*)
 fi
+
+echo 
 
 for i in ${DMPCI_FILES} ; do
     NAME=$(basename $i)
@@ -75,6 +79,7 @@ for i in ${DMPCI_FILES} ; do
 #SBATCH --mem=16000
 #SBATCH --job-name=${DMPCI_GRID_NAME}-${NAME}
 #SBATCH --ntasks-per-node=64
+#SBATCH --nodes=1
 
 if [[ ! -f ${STATUS_FILE} ]] ; then
     >&2 echo "No status file ${STATUS_FILE}"
@@ -108,7 +113,7 @@ fi
 
 if module list 2> /dev/null > /dev/null ; then
     # We are probably in iridis
-    export LD_LIBRARY_PATH=/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0_libc2.17_kernel3.10.0_release
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0_libc2.17_kernel3.10.0_release
     module load gcc/11.1.0
 fi
 

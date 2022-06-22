@@ -2,5 +2,9 @@
 
 bool dpd_engine_avx2_half_merge_tbb_hash = DPDEngineFactory::RegisterFactory(
     "dpd_engine_avx2_half_merge_tbb_hash",
-    [](){ return std::make_shared<DPDEngineAVX2HalfMergeTBB<dpd_maths_core_simd::Flag_RngHash>>(); }
+    [](){ return std::make_shared<DPDEngineAVX2HalfMergeTBB<
+        dpd_maths_core_simd::Flags(
+            dpd_maths_core_simd::Flag_RngHash |dpd_maths_core_simd::Flag_EnableLogging
+        )
+    >>(); }
 );

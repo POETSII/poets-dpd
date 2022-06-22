@@ -32,6 +32,9 @@ protected:
     { return false; }
 
 public:
+    virtual ~DPDEngine()
+    {}
+
     struct timings_t
     {
         double compile = -1; // Everything todo with translating the in-memory WorldState into a loadable graph

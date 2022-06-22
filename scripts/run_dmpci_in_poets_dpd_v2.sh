@@ -32,7 +32,7 @@ fi
 POETS_DPD_DIR="$(dirname "$0")/.."
 POETS_DPD_DIR=$(realpath ${POETS_DPD_DIR})
 
-ENGINE=naive_dpd_engine_half_merge_tbb
+ENGINE=dpd_engine_avx2_half_merge_tbb_rng
 
 SRC_DMPCI=$1
 WORKING_DIR=$2

@@ -16,15 +16,28 @@
 
 // This is a completely standardised hash-code, so that we get repeatable results across implementations.
 /*  bbbb 1ppp pppp pppp  pppp pppp pppp pppp  : monomer, up to 2^27 instances
-    bbbb 0ooo ooop pppp  pppp pppp pppp pppp  : polymer, up to 2^21 instances, and 63 beads per polymer
+    bbbb 0ooo oooo pppp  pppp pppp pppp pppp  : polymer, up to 2^20 instances, and 127 beads per polymer
     b is the bead type index
 */
 struct BeadHash
 {
     static const unsigned MONOMER_ID_BITS = 27;
-    static const unsigned POLYMER_ID_BITS = 21;
+    static const unsigned MONOMER_ID_MASK = (1u<<MONOMER_ID_BITS)-1;
+
+    static const unsigned POLYMER_ID_BITS = 20;
+    static const unsigned POLYMER_ID_MASK = (1u<<POLYMER_ID_BITS)-1;
+    
     static const unsigned BEAD_TYPE_BITS = 32 - MONOMER_ID_BITS - 1;
+    static const unsigned BEAD_TYPE_MASK = (1u<<BEAD_TYPE_BITS)-1;
+    static const unsigned BEAD_TYPE_SHIFT = 1+MONOMER_ID_BITS;
+
+    static const unsigned MONOMER_FLAG_SHIFT = MONOMER_ID_BITS;
+    
     static const unsigned POLYMER_OFFSET_BITS = 32 - BEAD_TYPE_BITS - 1 - POLYMER_ID_BITS;
+    static const unsigned POLYMER_OFFSET_MASK = (1u<<POLYMER_OFFSET_BITS)-1;
+    static const unsigned POLYMER_OFFSET_SHIFT = POLYMER_ID_BITS;
+
+    static const unsigned REDUCED_HASH_MASK = 0xFFFFFFFFul >> BEAD_TYPE_BITS;
 
     uint32_t hash;
 
@@ -38,11 +51,11 @@ struct BeadHash
 
     static BeadHash construct(uint32_t bead_type, bool is_monomer, uint32_t polymer_id, uint32_t polymer_offset)
     {
-        assert( is_monomer ? polymer_id<(1u<<27) : polymer_id<(1u<<21));
-        assert( is_monomer ? polymer_offset==0 : polymer_offset<64 );
-        uint32_t base=(uint32_t(polymer_offset)<<21) | polymer_id;
-        base |= uint32_t(is_monomer)<<27;
-        base |= bead_type << 28;
+        assert( is_monomer ? polymer_id<(1u<<MONOMER_ID_BITS) : polymer_id<(1u<<POLYMER_ID_BITS) );
+        assert( is_monomer ? polymer_offset==0 : polymer_offset<(1<<POLYMER_OFFSET_BITS) );
+        uint32_t base=(uint32_t(polymer_offset)<<POLYMER_OFFSET_SHIFT) | polymer_id;
+        base |= uint32_t(is_monomer)<<MONOMER_FLAG_SHIFT;
+        base |= bead_type << BEAD_TYPE_SHIFT;
         return BeadHash(base);
     }
 
@@ -60,7 +73,7 @@ struct BeadHash
 
     template<class T>
     static auto is_monomer(const T &hash)
-    { return hash&(1<<27); }
+    { return hash&(1<<MONOMER_FLAG_SHIFT); }
 
     bool is_monomer() const
     { return is_monomer(hash); }
@@ -70,38 +83,37 @@ struct BeadHash
 
     template<class T>
     static T get_bead_type(const T &hash)
-    { return hash>>28; }
-
+    { return hash>>BEAD_TYPE_SHIFT; }
 
     inline uint32_t get_polymer_offset() const
-    { return is_monomer() ? 0 : ((hash>>21)&0x3F); }
+    { return is_monomer() ? 0 : ((hash>>POLYMER_OFFSET_SHIFT)&POLYMER_OFFSET_MASK); }
 
     inline uint32_t get_polymer_id() const
-    { return is_monomer() ? (hash&0x7FFFFFF) : (hash&0x1FFFFF); }
+    { return is_monomer() ? (hash&POLYMER_ID_MASK) : (hash&POLYMER_ID_MASK); }
 
     inline bool in_same_polymer(const BeadHash &h2) const
     {
         assert(hash!=h2.hash);
-        if( !(hash&h2.hash&(1<<27)) ){
+        if( !(hash&h2.hash&(1<<MONOMER_FLAG_SHIFT)) ){
             return false;
         }
-        return (hash&0x1FFFFF) == (h2.hash&0x1FFFFF);
+        return (hash&POLYMER_ID_MASK) == (h2.hash&POLYMER_ID_MASK);
     }
 
     inline BeadHash reduced_hash() const
-    { return BeadHash{hash&uint32_t(0xFFFFFFFul)}; }
+    { return BeadHash{hash&REDUCED_HASH_MASK}; }
 
     // This cannot work out what the bead type is, so will return the 0 for the bead type
     inline BeadHash make_reduced_hash_from_polymer_offset(unsigned polymer_offset) const
     {
         assert(!is_monomer());
-        assert(polymer_offset < 128);
-        return BeadHash{ (hash & 0x1FFFFF) | (polymer_offset<<21) }; 
+        assert(polymer_offset < (1u<<POLYMER_OFFSET_BITS));
+        return BeadHash{ (hash & POLYMER_ID_MASK) | (polymer_offset<<POLYMER_OFFSET_SHIFT) }; 
     }
 
     inline bool reduced_equals(const BeadHash &h2) const
     {
-        return (hash&0x0FFFFFFFul)==(h2.hash&0x0FFFFFFFul);
+        return (hash&REDUCED_HASH_MASK)==(h2.hash&REDUCED_HASH_MASK);
     }
 
     inline bool operator==(const BeadHash &o) const
