@@ -207,7 +207,7 @@ private:
         return uint64_t(ts.tv_sec)*1000000u + (uint64_t(ts.tv_nsec)/1000u);
     }
 
-    static const bool no_par=true;
+    static const bool no_par=false;
 
     template<class T,class F>
     void parallel_for_each(std::vector<T> &x, unsigned grain, F &&f)
