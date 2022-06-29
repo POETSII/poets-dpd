@@ -1,5 +1,7 @@
 #MODES="omp omp_intel mpi opencl"
-MODES="opencl kokkos_gpu"
+#MODES="omp mpi kokkos"
+#MODES="opencl kokkos_gpu"
+MODES="opencl opencl_single kokkos_gpu"
 
 VOLUMES="32 48 64 96 128 192 256"
 
