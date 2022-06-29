@@ -31,9 +31,9 @@ function find_time {
     local end
 
     while /bin/true ; do
-        >&2 echo "$NAME, T=$T,  CMD=${CMD}"
+        >&2 echo "$NAME, T=$T,  CMD=${CMD} -var T ${T} -in dpd_two_monomers_XxYxZ_T.lmp"
         start=$(date +%s)
-        ${CMD} -var T ${T} -log logs/${NAME}_T${T}.log < dpd_two_monomers_XxYxZ_T.lmp > /dev/null
+        ${CMD} -var T ${T} -log logs/${NAME}_T${T}.log -in dpd_two_monomers_XxYxZ_T.lmp > /dev/null
         RES=$?
         end=$(date +%s)
 
@@ -67,7 +67,7 @@ if [[ "$MODE" == "omp" ]] ; then
 
     CPUS=$(nproc)
     while [[ ${CPUS} -gt 0 ]] ; do
-        find_time "${MODE}_${X}_${Y}_${Z}_CPU${CPUS}" "${LMP_CPU_PATH} ${SUBS} -pk omp ${CPUS}"
+        find_time "${MODE}_${X}_${Y}_${Z}_CPU${CPUS}" "${LMP_CPU_PATH} ${SUBS} -sf omp -pk omp ${CPUS}"
         CPUS=$((CPUS/2))
     done
 elif [[ "$MODE" == "kokkos" ]] ; then
@@ -83,6 +83,8 @@ elif [[ "$MODE" == "intel" ]] ; then
     # NOTE: This is using half the available cores.
     # the intel implementation crashes if I try to use the full number via
     # MPI or a combination of MPI+OMP or using mode single...
+    # The intel implementation crashes non-determinstically on a c6a.16xlarge,
+    # and consistently if number of mpi processes is greater than 1
     export KMP_BLOCKTIME=0
     CPUS=$(( $(nproc) / 2 ))
     while [[ ${CPUS} -gt 0 ]] ; do
