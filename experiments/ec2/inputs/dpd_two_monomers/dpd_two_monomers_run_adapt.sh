@@ -6,8 +6,10 @@ X=$2
 Y=$3
 Z=$4
 
-LMP_PATH=~/lammps/build/lmp
-LMP_GPU_PATH=~/lammps/build_gpu/lmp
+HERE=$(cd $(dirname $0) && pwd)
+
+LMP_CPU_PATH=${HERE}/../../lammps/build_cpu/lmp
+LMP_GPU_PATH=${HERE}/../../lammps/build_gpu/lmp
 
 NBEADS0=$(( X*Y*Z*3 / 2 ))
 NBEADS1=$(( X*Y*Z*3 / 2 ))
@@ -65,13 +67,13 @@ if [[ "$MODE" == "omp" ]] ; then
 
     CPUS=$(nproc)
     while [[ ${CPUS} -gt 0 ]] ; do
-        find_time "${MODE}_${X}_${Y}_${Z}_CPU${CPUS}" "${LMP_PATH} ${SUBS} -pk omp ${CPUS}"
+        find_time "${MODE}_${X}_${Y}_${Z}_CPU${CPUS}" "${LMP_CPU_PATH} ${SUBS} -pk omp ${CPUS}"
         CPUS=$((CPUS/2))
     done
 elif [[ "$MODE" == "kokkos" ]] ; then
     CPUS=$(nproc)
     while [[ ${CPUS} -gt 0 ]] ; do
-        find_time "${MODE}_${X}_${Y}_${Z}_CPU${CPUS}" "mpirun --use-hwthread-cpus -np ${CPUS} ${LMP_PATH} ${SUBS} -k on -sf kk"
+        find_time "${MODE}_${X}_${Y}_${Z}_CPU${CPUS}" "mpirun --use-hwthread-cpus -np ${CPUS} ${LMP_CPU_PATH} ${SUBS} -k on -sf kk"
         CPUS=$((CPUS/2))
     done
 elif [[ "$MODE" == "kokkos_gpu" ]] ; then
@@ -84,22 +86,22 @@ elif [[ "$MODE" == "intel" ]] ; then
     export KMP_BLOCKTIME=0
     CPUS=$(( $(nproc) / 2 ))
     while [[ ${CPUS} -gt 0 ]] ; do
-        find_time "${MODE}_${X}_${Y}_${Z}_CPU${CPUS}" "mpirun --use-hwthread-cpus -np ${CPUS} ${LMP_PATH} ${SUBS} -sf intel "
+        find_time "${MODE}_${X}_${Y}_${Z}_CPU${CPUS}" "mpirun --use-hwthread-cpus -np ${CPUS} ${LMP_CPU_PATH} ${SUBS} -sf intel "
         CPUS=$(( CPUS / 2 ))
     done
 elif [[ "$MODE" == "opt" ]] ; then
 
-    find_time "${MODE}_${X}_${Y}_${Z}_CPU1" "${LMP_PATH} ${SUBS} -sf opt "
+    find_time "${MODE}_${X}_${Y}_${Z}_CPU1" "${LMP_CPU_PATH} ${SUBS} -sf opt "
 elif [[ "$MODE" == "mpi" ]] ; then
 
     CPUS=$(nproc)
     while [[ ${CPUS} -gt 0 ]] ; do
-        find_time "${MODE}_${X}_${Y}_${Z}_CPU${n}" "mpirun --use-hwthread-cpus -np ${CPUS} ${LMP_PATH} ${SUBS}"
+        find_time "${MODE}_${X}_${Y}_${Z}_CPU${n}" "mpirun --use-hwthread-cpus -np ${CPUS} ${LMP_CPU_PATH} ${SUBS}"
         CPUS=$((CPUS/2))
     done
 elif [[ "$MODE" == "opencl" ]] ; then
 
-    find_time "${MODE}_${X}_${Y}_${Z}_CPU${n}" "${LMP_PATH} -sf gpu ${SUBS}"
+    find_time "${MODE}_${X}_${Y}_${Z}_CPU${n}" "${LMP_GPU_PATH} -sf gpu ${SUBS}"
 else
     >&2 echo "Didn't understand mode ${MODE}"
     exit 1
