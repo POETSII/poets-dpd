@@ -18,14 +18,26 @@ fi
         make -j4
     )
     if [[ "$(ls /dev/nv*)" != "" ]] ; then
-        mkdir build_gpu
-        (
-            cd build_gpu
-            cmake -D PKG_GPU=on -D PKG_DPD-BASIC=on -D PKG_OPENMP=on -D PKG_INTEL=on \
-                -D PKG_OPT=on -D PKG_KOKKOS=on  \
-                -D Kokkos_ENABLE_CUDA=yes -D Kokkos_ENABLE_SERIAL=yes  \
-                -D CMAKE_CXX_FLAGS="-O3 -mavx2 -ffast-math" ../cmake
-            make -j4
-        )
+        if [[ ! -x build_gpu/lmp ]] ; then
+            mkdir build_gpu
+            (
+                cd build_gpu
+                cmake -D PKG_GPU=on -D PKG_DPD-BASIC=on -D PKG_OPENMP=on -D PKG_INTEL=on \
+                    -D PKG_OPT=on -D PKG_KOKKOS=on  \
+                    -D Kokkos_ENABLE_CUDA=yes -D Kokkos_ENABLE_SERIAL=yes  \
+                    -D CMAKE_CXX_FLAGS="-O3 -mavx2 -ffast-math" ../cmake
+                make -j4
+            )
+        fi
+        if [[ ! -x build_gpu_single/lmp ]] ; then
+            mkdir build_gpu_single
+            (
+                cd build_gpu
+                cmake -D PKG_GPU=on -D PKG_DPD-BASIC=on -D PKG_OPENMP=on \
+                    -D PKG_OPT=on -D GPU_PREC=single \
+                    -D CMAKE_CXX_FLAGS="-O3 -mavx2 -ffast-math" ../cmake
+                make -j4
+            )
+        fi
     fi
 )
