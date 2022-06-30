@@ -10,7 +10,7 @@ HERE=$(cd $(dirname $0) && pwd)
 
 LMP_CPU_PATH=${HERE}/../../lammps/build_cpu/lmp
 LMP_GPU_PATH=${HERE}/../../lammps/build_gpu/lmp
-LMP_GPU_SINGLE_PATH=${HERE}/../../lammps/build_gpu/lmp
+LMP_GPU_SINGLE_PATH=${HERE}/../../lammps/build_gpu_single/lmp
 
 NBEADS0=$(( X*Y*Z*3 / 2 ))
 NBEADS1=$(( X*Y*Z*3 / 2 ))

@@ -77,12 +77,12 @@ int main()
         std::cerr<<p<<"\n";
     }
 
-    test(rel, 0,16, 1,2, 2,2);
-    test(rel, 0,16, 2,2, 1,2);
+    test(rel, 0,8, 1,4, 2,4);
+    test(rel, 0,8, 2,4, 1,4);
 
-    test(rel, 1,16, 0,2, 2,2);
-    test(rel, 1,16, 2,2, 0,2);
+    test(rel, 1,8, 0,4, 2,4);
+    test(rel, 1,8, 2,4, 0,4);
 
-    test(rel, 2,16, 0,2, 1,2);
-    test(rel, 2,16, 1,2, 0,2);
+    test(rel, 2,8, 0,4, 1,4);
+    test(rel, 2,8, 1,4, 0,4);
 }
