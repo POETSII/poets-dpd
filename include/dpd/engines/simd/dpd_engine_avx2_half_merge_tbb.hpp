@@ -735,13 +735,6 @@ private:
                     }
                 }
 
-                for(unsigned i=base; i<upper; i++){
-                    assert(i<home.n);
-                    for(int d=0; d<3; d++){
-                        assert(-100000 <= home.beads[i].f[d] && home.beads[i].f[d] <= 100000 );
-                    }
-                }
-
                 // flag is mostly true, and there is loads of iteration inside
                 // so icache shouldn't be a problem
                 if(home.wrap_bits){
