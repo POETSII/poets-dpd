@@ -12,6 +12,9 @@ CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 LDFLAGS += -fuse-ld=gold
 
+CPPFLAGS += -I/home/ubuntu/oneTBB-2021.5.0/include
+LDFLAGS += -L/home/ubuntu/oneTBB-2021.5.0/build/gnu_7.5_cxx11_64_relwithdebinfo/
+
 # Hacks for Soton HPC/AMD systems
 # Detection is hacky: I just assume the module shell function only exists on iridis
 ifneq ($(shell module 2>&1),)

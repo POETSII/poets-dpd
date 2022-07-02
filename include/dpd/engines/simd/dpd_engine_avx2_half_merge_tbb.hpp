@@ -323,6 +323,7 @@ private:
             wy *= 2;
            // std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
+        
         if(tasks>=3*cpus && (m_dims[2]%8)==0){
             tasks /= 2;
             wz *= 2;
@@ -333,7 +334,7 @@ private:
             wx *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-
+        
         if(tasks>=3*cpus && (m_dims[1]%16)==0){
             tasks /= 2;
             wy *= 2;
@@ -350,7 +351,7 @@ private:
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
        
-        //std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
+        std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
 
         m_cell_partitioners.clear();
         m_cell_partitioners.clear();
@@ -752,8 +753,11 @@ private:
     __attribute__((noinline))
     void calc_forces_for_group(const std::vector<unsigned> &indices)
     {
-        for(auto i : indices){
-            calc_forces_for_cell(m_cells[i]);
+        for(unsigned i=0; i<indices.size(); i++){
+            if(i+1<indices.size()){
+                _mm_prefetch(&m_cells[indices[i+1]], _MM_HINT_T2);
+            }
+            calc_forces_for_cell(m_cells[indices[i]]);
         }
     }
 

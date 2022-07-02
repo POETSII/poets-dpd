@@ -55,5 +55,6 @@ out.txt
 experiments/benchmarks-2022-01-01-run/results/oilwater_monomer/oilwater_monomer-38x38x38.basic_v5-scotch.stderr.log
 experiments/julian-*
 experiments/jobs
+experiments/ec2/lammps
 *.state.bz2
 *.in
