@@ -252,7 +252,7 @@ int main(int argc, const char *argv[])
                             // Note: this ties up a thread, but is not too
                             // base for typicaly milti-core systems
                             std::stringstream cmd;
-                            cmd<<"povray -D -V +O"<<baseNameNow<<".png "<<pov_name<<" 2> "<<baseNameNow<<".pov.log";
+                            cmd<<"povray -D -V +O"<<baseNameNow<<".png "<<pov_name<<" 2> /dev/null";
                             if(system( cmd.str().c_str() )){
                                 fprintf(stderr, "povray failed. Cancelling povray_render\n");
                                 povray_render=false;
@@ -260,6 +260,9 @@ int main(int argc, const char *argv[])
                             }
                             if(gzip_snapshot){
                                 unlink(pov_name.c_str());
+                            }
+                            if(!povray_snapshot){
+                                unlink(name.c_str());
                             }
                         }
                     });

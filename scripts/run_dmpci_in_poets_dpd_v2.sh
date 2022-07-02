@@ -51,6 +51,10 @@ BASE_NAME=$(basename ${SRC_DMPCI})
 
 BASE_NAME=${BASE_NAME#dmpci.}
 
+# dos2unix is not installed...
+cat ${SRC_DMPCI} | tr -d '\015' > ${WORKING_DIR}/dmpci.tmp
+cp ${WORKING_DIR}/dmpci.tmp ${SRC_DMPCI}
+
 TOTAL_TIME=$(grep "^Time\s" ${SRC_DMPCI} | sed "s/Time//g")
 SNAPSHOT_PERIOD=$(grep "^RestartPeriod" ${SRC_DMPCI} | sed "s/RestartPeriod//g")
 DISPLAY_PERIOD=$(grep "^DisplayPeriod" ${SRC_DMPCI} | sed "s/DisplayPeriod//g")

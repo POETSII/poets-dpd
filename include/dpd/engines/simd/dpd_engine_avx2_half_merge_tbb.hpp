@@ -182,6 +182,7 @@ private:
     std::mt19937_64 m_urng;
     uint64_t m_t_hash;
 
+    std::vector<std::unique_ptr<tbb::affinity_partitioner>> m_cell_partitioners;
     std::vector<std::vector<std::vector<unsigned>>> m_cell_waves;
 
     std::vector<std::unique_ptr<Packed*[]>> m_non_monomer_bead_locations;
@@ -207,10 +208,11 @@ private:
         return uint64_t(ts.tv_sec)*1000000u + (uint64_t(ts.tv_nsec)/1000u);
     }
 
-    static const bool no_par=true;
+    static const bool no_par=false;
+    static const bool use_affinity=false;
 
-    template<class T,class F>
-    void parallel_for_each(std::vector<T> &x, unsigned grain, F &&f)
+    template<class T,class F, class P=tbb::simple_partitioner>
+    void parallel_for_each(std::vector<T> &x, unsigned grain, F &&f, P &&partitioner=tbb::simple_partitioner())
     {
         if(no_par){
             for(unsigned i=0; i<x.size(); i++){
@@ -222,31 +224,10 @@ private:
                 for(size_t i=r.begin(); i<r.end(); i++){
                     f(x[i]);
                 }
-            }, tbb::simple_partitioner{});
+            }, partitioner);
         }
     }
 
-    template<class F>
-    void parallel_for_each_cell_blocked(F &&f)
-    {
-        if(no_par){
-            for(unsigned i=0; i<m_cell_waves.size(); i++){
-                for(const auto & c : m_cell_waves[i]){
-                    for(auto index : c){
-                        f(m_cells[index]);
-                    }
-                };
-            }
-        }else{
-            for(unsigned i=0; i<m_cell_waves.size(); i++){
-                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<unsigned> &c) {
-                    for(auto index : c){
-                        f(m_cells[index]);
-                    }
-                });
-            }
-        }
-    }
 
     template<class F>
     void parallel_for_each_cell_group(F &&f)
@@ -256,6 +237,14 @@ private:
                 for(const auto &c : m_cell_waves[i]) {
                     f(c);
                 };
+            }
+        }else if(use_affinity){
+            for(unsigned i=0; i<m_cell_waves.size(); i++){
+                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<unsigned> &c) {
+                    f(c);
+                },
+                    *m_cell_partitioners[i]
+                );
             }
         }else{
             for(unsigned i=0; i<m_cell_waves.size(); i++){
@@ -363,6 +352,8 @@ private:
        
         //std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
 
+        m_cell_partitioners.clear();
+        m_cell_partitioners.clear();
         m_cell_waves.clear();
         for(unsigned gx=0; gx<wx; gx+=(wx/2)){
             for(unsigned gy=0; gy<wy; gy+=wy/2){
@@ -391,6 +382,7 @@ private:
                         }
                     }
                     m_cell_waves.push_back(std::move(group));
+                    m_cell_partitioners.push_back(std::make_unique<tbb::affinity_partitioner>());
                 }
             }
         }
@@ -695,6 +687,17 @@ private:
             vec3i_t new_pos;
             vec3_floor(&new_pos[0], &b.x[0]);
             if( new_pos != home.pos ){
+                bool max_delta_exceeded=false;
+                for(int d=0; d<3; d++){
+                    int delta_fix=std::abs(new_pos[d]-home.pos[d]);
+                    max_delta_exceeded |= delta_fix>1 && delta_fix<(m_dims[d]-1);
+                }
+                if( __builtin_expect( max_delta_exceeded, 0 )){
+                    std::stringstream acc;
+                    acc<<"Executing, state.t="<<m_state->t<<" : bead moved more than 1 unit in a time-step from box "<<home.pos<<" to "<<new_pos;
+                    throw std::runtime_error(acc.str());
+                }
+
                 unsigned new_index = get_cell_index(new_pos);
 
                 // This is safe due to waves/groups
@@ -767,7 +770,9 @@ private:
         
         rng_state=home.rng_state;
 
-        if(home.n <= 4){
+        // WARNING: don't enable the dual_vec4 path unless you are willing to test and debug it.
+        // It works for simple tests but fails for production systems.
+        if(false && home.n <= 4){
             Packed ghost{0, {-10, -10, -10}, {}, {}}; // Used to pad out if num neighbours is odd
 
             convert_AoS_to_SoA_dual_vec4( home, home_bead_id, home_bead_type, home_x, home_v );
@@ -1141,7 +1146,7 @@ private:
             }
 
             for(int d=0; d<3; d++){
-                assert(-100 <= head_f[d] && head_f[d] <= 100 );
+                assert(-100000 <= head_f[d] && head_f[d] <= 100000 );
             }
 
             vec3_add(locations[bond.bead_offset_head]->f, &head_f[0]);

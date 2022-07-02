@@ -236,6 +236,7 @@ all_tools : bin/extract_state_from_orch_log
 all_tools : bin/create_xml_v5_graph_instance
 
 bin/create_xml_v5_graph_instance : LDFLAGS += -static
+bin/test/test_non_conflict_grid : LDLIBS += -ltbb
 
 
 # TODO : This deps don't work properly, some stuff is missing
