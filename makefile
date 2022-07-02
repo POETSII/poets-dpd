@@ -12,6 +12,9 @@ CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
 LDFLAGS += -fuse-ld=gold
 
+CPPFLAGS += -I/home/ubuntu/oneTBB-2021.5.0/include
+LDFLAGS += -L/home/ubuntu/oneTBB-2021.5.0/build/gnu_7.5_cxx11_64_relwithdebinfo/
+
 # Hacks for Soton HPC/AMD systems
 # Detection is hacky: I just assume the module shell function only exists on iridis
 ifneq ($(shell module 2>&1),)
@@ -20,6 +23,8 @@ CPPFLAGS += -I/home/dbt1c21/packages/oneTBB-2019/include
 LDFLAGS += -L/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0_libc2.17_kernel3.10.0_release/
 CPPFLAGS += -I/usr/include
 #CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
+CPPFLAGS += -I/scratch/dbt1c21/local/include/
+
 endif
 
 CPPFLAGS += -g
@@ -234,6 +239,7 @@ all_tools : bin/extract_state_from_orch_log
 all_tools : bin/create_xml_v5_graph_instance
 
 bin/create_xml_v5_graph_instance : LDFLAGS += -static
+bin/test/test_non_conflict_grid : LDLIBS += -ltbb
 
 
 # TODO : This deps don't work properly, some stuff is missing

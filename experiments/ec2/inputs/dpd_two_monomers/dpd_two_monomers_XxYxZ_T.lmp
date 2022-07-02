@@ -1,0 +1,24 @@
+# DPD binary mixture
+dimension 3
+units lj
+comm_modify vel yes
+newton on  # Needed for kokkos
+atom_style atomic
+neighbor 0.3 bin
+neigh_modify delay 0 every 4 check no
+region domain block 0 $X 0 $Y 0 $Z units box
+create_box 2 domain
+lattice fcc 4
+create_atoms 1 random ${NBEADS0} 15255 domain
+create_atoms 2 random ${NBEADS1} 47214 domain
+mass * 1.0
+pair_style dpd 1.0 1.0 419084618
+pair_coeff 1 1 25.0 4.5
+pair_coeff 1 2 150.0 4.5
+pair_coeff 2 2 25.0 4.5
+thermo 100
+velocity all create 1.0 8178251
+fix integrator all nve
+timestep 0.01
+run $T
+

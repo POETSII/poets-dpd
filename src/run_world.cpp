@@ -261,6 +261,9 @@ int main(int argc, const char *argv[])
                             if(gzip_snapshot){
                                 unlink(pov_name.c_str());
                             }
+                            if(!povray_snapshot){
+                                unlink(name.c_str());
+                            }
                         }
                     });
                 }

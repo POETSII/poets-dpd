@@ -32,7 +32,7 @@ fi
 POETS_DPD_DIR="$(dirname "$0")/.."
 POETS_DPD_DIR=$(realpath ${POETS_DPD_DIR})
 
-ENGINE=naive_dpd_engine_half_merge_tbb
+ENGINE=dpd_engine_avx2_half_merge_tbb_rng
 
 SRC_DMPCI=$1
 WORKING_DIR=$2
@@ -50,6 +50,10 @@ OUTPUT_DIR=$3
 BASE_NAME=$(basename ${SRC_DMPCI})
 
 BASE_NAME=${BASE_NAME#dmpci.}
+
+# dos2unix is not installed...
+cat ${SRC_DMPCI} | tr -d '\015' > ${WORKING_DIR}/dmpci.tmp
+cp ${WORKING_DIR}/dmpci.tmp ${SRC_DMPCI}
 
 TOTAL_TIME=$(grep "^Time\s" ${SRC_DMPCI} | sed "s/Time//g")
 SNAPSHOT_PERIOD=$(grep "^RestartPeriod" ${SRC_DMPCI} | sed "s/RestartPeriod//g")

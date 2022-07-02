@@ -3,6 +3,7 @@
 
 #include <immintrin.h>
 
+#include <atomic>
 #include <random>
 
 #include "dpd/core/dpd_engine.hpp"
@@ -23,7 +24,7 @@ class DPDEngineAVX2HalfMergeTBB
     : public DPDEngine
 {
 public:
-    static const unsigned MAX_BEADS_PER_CELL = 16;
+    static const unsigned MAX_BEADS_PER_CELL = 32;
     static const unsigned MAX_BEAD_TYPES = 8;
 
     static const bool EnableLogging = MathsCoreFlags & dpd_maths_core_simd::Flag_EnableLogging;
@@ -181,6 +182,7 @@ private:
     std::mt19937_64 m_urng;
     uint64_t m_t_hash;
 
+    std::vector<std::unique_ptr<tbb::affinity_partitioner>> m_cell_partitioners;
     std::vector<std::vector<std::vector<unsigned>>> m_cell_waves;
 
     std::vector<std::unique_ptr<Packed*[]>> m_non_monomer_bead_locations;
@@ -199,10 +201,18 @@ private:
         );
     }
 
-    static const bool no_par=false;
+    static uint64_t thread_elapsed_us()
+    {
+        timespec ts;
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+        return uint64_t(ts.tv_sec)*1000000u + (uint64_t(ts.tv_nsec)/1000u);
+    }
 
-    template<class T,class F>
-    void parallel_for_each(std::vector<T> &x, unsigned grain, F &&f)
+    static const bool no_par=false;
+    static const bool use_affinity=false;
+
+    template<class T,class F, class P=tbb::simple_partitioner>
+    void parallel_for_each(std::vector<T> &x, unsigned grain, F &&f, P &&partitioner=tbb::simple_partitioner())
     {
         if(no_par){
             for(unsigned i=0; i<x.size(); i++){
@@ -214,31 +224,10 @@ private:
                 for(size_t i=r.begin(); i<r.end(); i++){
                     f(x[i]);
                 }
-            }, tbb::simple_partitioner{});
+            }, partitioner);
         }
     }
 
-    template<class F>
-    void parallel_for_each_cell_blocked(F &&f)
-    {
-        if(no_par){
-            for(unsigned i=0; i<m_cell_waves.size(); i++){
-                for(const auto & c : m_cell_waves[i]){
-                    for(auto index : c){
-                        f(m_cells[index]);
-                    }
-                };
-            }
-        }else{
-            for(unsigned i=0; i<m_cell_waves.size(); i++){
-                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<unsigned> &c) {
-                    for(auto index : c){
-                        f(m_cells[index]);
-                    }
-                });
-            }
-        }
-    }
 
     template<class F>
     void parallel_for_each_cell_group(F &&f)
@@ -248,6 +237,14 @@ private:
                 for(const auto &c : m_cell_waves[i]) {
                     f(c);
                 };
+            }
+        }else if(use_affinity){
+            for(unsigned i=0; i<m_cell_waves.size(); i++){
+                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<unsigned> &c) {
+                    f(c);
+                },
+                    *m_cell_partitioners[i]
+                );
             }
         }else{
             for(unsigned i=0; i<m_cell_waves.size(); i++){
@@ -326,6 +323,7 @@ private:
             wy *= 2;
            // std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
+        
         if(tasks>=3*cpus && (m_dims[2]%8)==0){
             tasks /= 2;
             wz *= 2;
@@ -336,7 +334,7 @@ private:
             wx *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-
+        
         if(tasks>=3*cpus && (m_dims[1]%16)==0){
             tasks /= 2;
             wy *= 2;
@@ -353,8 +351,10 @@ private:
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
        
-        //std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
+        std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
 
+        m_cell_partitioners.clear();
+        m_cell_partitioners.clear();
         m_cell_waves.clear();
         for(unsigned gx=0; gx<wx; gx+=(wx/2)){
             for(unsigned gy=0; gy<wy; gy+=wy/2){
@@ -383,6 +383,7 @@ private:
                         }
                     }
                     m_cell_waves.push_back(std::move(group));
+                    m_cell_partitioners.push_back(std::make_unique<tbb::affinity_partitioner>());
                 }
             }
         }
@@ -396,8 +397,10 @@ private:
             unsigned dst_index=get_cell_index(pos);
             auto &dst_cell=m_cells[dst_index];
 
-            if(dst_cell.n==MAX_BEADS_PER_CELL){
-                throw std::runtime_error("Too many beads in one cell.");
+            if( dst_cell.n==MAX_BEADS_PER_CELL){
+                std::stringstream acc;
+                acc<<"Importing: too many beads in cell "<<dst_cell.pos<<", bead.id="<<b.bead_id;
+                throw std::runtime_error(acc.str());
             }
 
             Packed p;
@@ -536,6 +539,26 @@ private:
         }
     }
 
+    void atomic_store_min(std::atomic<uint64_t> *dst, uint64_t val)
+    {
+        uint64_t curr=dst->load();
+        while(curr > val){
+            if(dst->compare_exchange_weak( curr, val )){
+                break;
+            }
+        }
+    }
+
+    void atomic_store_max(std::atomic<uint64_t> *dst, uint64_t val)
+    {
+        uint64_t curr=dst->load();
+        while(curr < val){
+            if(dst->compare_exchange_weak( curr, val )){
+                break;
+            }
+        }
+    }
+
     virtual void step()
     {
         double dt=m_state->dt;
@@ -553,8 +576,12 @@ private:
                     ForceLogging::logger()->LogBeadProperty(bh, "b_hash", 1, &h);
                     double x[3]={b.x[0],b.x[1],b.x[2]};
                     ForceLogging::logger()->LogBeadProperty(bh,"x",3,x);
-                    double v[3]={b.v[0],b.v[1],b.v[2]};
+
+                    Packed bb=b;
+                    dpd_maths_core_half_step_raw::update_mom(m_dt, bb);
+                    double v[3]={bb.v[0],bb.v[1],bb.v[2]};
                     ForceLogging::logger()->LogBeadProperty(bh,"v",3,v);
+
                     double f[3]={b.f[0],b.f[1],b.f[2]};
                     ForceLogging::logger()->LogBeadProperty(bh,"f",3,f);
                 }
@@ -577,13 +604,26 @@ private:
         #endif
 
         // At this point cell.n==0
+        //std::atomic<uint64_t> group_time_min=UINT64_MAX, group_time_max=0, group_time_sum=0, group_time_sum_sqr=0, group_count=0;
         parallel_for_each_cell_group( [&](const std::vector<unsigned> &c){
+            //uint64_t start=thread_elapsed_us();
+
             calc_forces_for_group(c);
+            
+            /*uint64_t end=thread_elapsed_us();
+            uint64_t delta=end-start;
+            atomic_store_max(&group_time_max, delta);
+            atomic_store_min(&group_time_min, delta);
+            group_time_sum += delta;
+            group_time_sum_sqr += delta*delta;
+            group_count += 1;*/
         });
+        //std::cerr<<"  min="<<group_time_min.load()<<", mean="<<group_time_sum/(double)group_count.load()<<", max="<<group_time_max.load()<<"\n";
 
         parallel_for_each(m_non_monomer_polymer_ids, 256, [&](uint32_t index){
             std::vector<BondWorking> working(m_max_polymer_length);
             evaluate_bonds(index, &working[0]);
+            
         });
 
         #ifndef NDEBUG
@@ -596,6 +636,16 @@ private:
         m_state->t++;
 
         if(ForceLogging::logger()){
+            synchronise_beads_out();
+            for(auto &b : m_state->beads){
+
+                if(ForceLogging::logger()){
+                    double v[3]={b.v[0],b.v[1],b.v[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"v_next",3,v);
+                    double f[3]={b.f[0],b.f[1],b.f[2]};
+                    ForceLogging::logger()->LogBeadProperty(b.get_hash_code(),"f_next",3,f);
+                }
+            }
             ForceLogging::logger()->Flush();
         }
     }
@@ -638,14 +688,42 @@ private:
             vec3i_t new_pos;
             vec3_floor(&new_pos[0], &b.x[0]);
             if( new_pos != home.pos ){
+                bool max_delta_exceeded=false;
+                for(int d=0; d<3; d++){
+                    int delta_fix=std::abs(new_pos[d]-home.pos[d]);
+                    max_delta_exceeded |= delta_fix>1 && delta_fix<(m_dims[d]-1);
+                }
+                if( __builtin_expect( max_delta_exceeded, 0 )){
+                    std::stringstream acc;
+                    acc<<"Executing, state.t="<<m_state->t<<" : bead moved more than 1 unit in a time-step from box "<<home.pos<<" to "<<new_pos;
+                    throw std::runtime_error(acc.str());
+                }
+
                 unsigned new_index = get_cell_index(new_pos);
 
                 // This is safe due to waves/groups
                 auto &dst=m_cells[new_index];
-                if(dst.n == MAX_BEADS_PER_CELL){
-                    throw std::runtime_error("Too many beads in one cell.");
+                if( __builtin_expect( dst.n == MAX_BEADS_PER_CELL, 0) ){
+                    std::stringstream acc;
+                    acc<<"Executing, state.t="<<m_state->t<<" : too many beads in cell "<<dst.pos;
+                    throw std::runtime_error(acc.str());
                 }
                 assert(&home != &dst);
+
+#ifndef NDEBUG
+                for(unsigned i=0; i<home.n; i++){
+                    const auto &xx=home.beads[i];
+                    if(!BeadHash{xx.id}.is_monomer()){
+                        assert( m_non_monomer_bead_locations.at(BeadHash{xx.id}.get_polymer_id())[BeadHash{xx.id}.get_polymer_offset()] == &xx);
+                    }
+                }
+                for(unsigned i=0; i<dst.n; i++){
+                    const auto &xx=dst.beads[i];
+                    if(!BeadHash{xx.id}.is_monomer()){
+                        assert( m_non_monomer_bead_locations.at(BeadHash{xx.id}.get_polymer_id())[BeadHash{xx.id}.get_polymer_offset()] == &xx);
+                    }
+                }
+#endif
 
                 dst.beads[dst.n] = b;
                 if(!BeadHash{b.id}.is_monomer()){
@@ -656,7 +734,8 @@ private:
                 dst.n += 1;
 
                 home.n -= 1;
-                if(home.n>0){
+                if(home.n>(unsigned)bi){ // Was there another valid elemeent at a higher bead index? If so, move it and update location
+                    assert(home.n != bi);
                     b = home.beads[home.n];             
                     if(!BeadHash{b.id}.is_monomer()){
                         auto &loc= m_non_monomer_bead_locations.at(BeadHash{b.id}.get_polymer_id())[BeadHash{b.id}.get_polymer_offset()];
@@ -674,8 +753,11 @@ private:
     __attribute__((noinline))
     void calc_forces_for_group(const std::vector<unsigned> &indices)
     {
-        for(auto i : indices){
-            calc_forces_for_cell(m_cells[i]);
+        for(unsigned i=0; i<indices.size(); i++){
+            if(i+1<indices.size()){
+                _mm_prefetch(&m_cells[indices[i+1]], _MM_HINT_T2);
+            }
+            calc_forces_for_cell(m_cells[indices[i]]);
         }
     }
 
@@ -692,21 +774,25 @@ private:
         
         rng_state=home.rng_state;
 
+        // WARNING: don't enable the dual_vec4 path unless you are willing to test and debug it.
+        // It works for simple tests but fails for production systems.
         if(false && home.n <= 4){
-            convert_AoS_to_SoA_dual_vec4( home, home_bead_type, home_bead_id, home_x, home_v );
+            Packed ghost{0, {-10, -10, -10}, {}, {}}; // Used to pad out if num neighbours is odd
+
+            convert_AoS_to_SoA_dual_vec4( home, home_bead_id, home_bead_type, home_x, home_v );
             for(int d=0; d<3; d++){
                 home_f[d] = _mm256_setzero_ps();
             }
 
             // This still works for dual vec4
-            step_cell_intra_vec8(home, 0, rng_state, home_bead_type, home_bead_id, home_x, home_v, home_f);
+            step_cell_intra_vec8<4>(home, 0, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f);
 
             // flag is mostly true, and there is loads of iteration inside
             // so icache shouldn't be a problem
             if(home.wrap_bits){
-                step_cell_inter_dual_vec4<true>(home, rng_state, home_bead_type, home_bead_id, home_x, home_v, home_f);
+                step_cell_inter_dual_vec4<true>(home, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f, &ghost);
             }else{
-                step_cell_inter_dual_vec4<false>(home, rng_state, home_bead_type, home_bead_id, home_x, home_v, home_f);
+                step_cell_inter_dual_vec4<false>(home, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f, &ghost);
             }
             
             for(unsigned i=0; i<home.n; i++){
@@ -726,7 +812,7 @@ private:
                     home_f[d] = _mm256_setzero_ps();
                 }
 
-                step_cell_intra_vec8(home, base, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f);
+                step_cell_intra_vec8<8>(home, base, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f);
 
                 for(unsigned i=base; i<upper; i++){
                     assert(i<home.n);
@@ -760,6 +846,7 @@ private:
         home.n_move_pending = home.n;
     }
 
+    template<unsigned ACTIVE_MAX_N=8>
     void step_cell_intra_vec8(
         Cell &home,
         unsigned base, // Offset of home vector within cell
@@ -783,7 +870,7 @@ private:
             auto &other_bead=home.beads[j];
 
             __m256 f[3];
-            if(dpd_maths_core_simd::interact_vec8_to_scalar<MathsCoreFlags,MAX_BEAD_TYPES>(
+            if(dpd_maths_core_simd::interact_vec8_to_scalar<MathsCoreFlags,MAX_BEAD_TYPES,ACTIVE_MAX_N>(
                 m_scale_inv_sqrt_dt,
                 m_conservative_matrix,
                 m_sqrt_dissipative_matrix,
@@ -888,7 +975,8 @@ private:
         const __m256i home_bead_types,
         const __m256 home_x[3],
         const __m256 home_v[3],
-        __m256 home_f[3]
+        __m256 home_f[3],
+        Packed *ghost   // This is a bead that will never interact with anything, e.g. at (-2,-2,-2)
     ){
         assert(home.n <= 4);
 
@@ -937,11 +1025,11 @@ private:
 
         // Make sure end of array is valid for pre-fetch
         for(unsigned i=0; i<4; i++){
-            others[num_others+i] = others[num_others-1];
+            others[num_others+i] = ghost;
         }
 
         assert(num_others>0);
-        // If num_others is odd then we do the last "other" twice
+        // If num_others is odd then we interact with the ghost particle
         for(unsigned i=0; i< num_others ; i+=2){
             _mm_prefetch(others[i+2], _MM_HINT_T1); // This will prefetch past the end
             _mm_prefetch(others[i+3], _MM_HINT_T1); // This will prefetch past the end
@@ -988,16 +1076,8 @@ private:
                     home_f[d] = home_f[d] + f[d];
                     fAB = dpd_maths_core_simd::mm256_reduce_add_ps_dual_vec4(f[d]);
                     other_bead_A.f[d] -= fAB.first;
-                    // If num_others is odd, and i==num_others-1, this will over-add to the last bead
                     other_bead_B.f[d] -= fAB.second; 
                 }
-            }
-        }
-
-        // If num_others is odd, then reverse it back out
-        if(num_others&1){
-            for(int d=0; d<3; d++){
-                others[num_others-1]->f[d] += fAB.second;
             }
         }
     }
@@ -1045,7 +1125,7 @@ private:
             );
 
 
-            if(ForceLogging::logger()){    
+            if(EnableLogging && 0!=ForceLogging::logger()){    
                 double dxx[3]={dx[0], dx[1], dx[2]};
                 double ff[3]={head_f[0],head_f[1],head_f[2]};
                 BeadHash hhead=m_state->beads[m_state->polymers[polymer_id].bead_ids[bond.bead_offset_head]].get_hash_code();
@@ -1063,7 +1143,7 @@ private:
             }
 
             for(int d=0; d<3; d++){
-                assert(-100 <= head_f[d] && head_f[d] <= 100 );
+                assert(-100000 <= head_f[d] && head_f[d] <= 100000 );
             }
 
             vec3_add(locations[bond.bead_offset_head]->f, &head_f[0]);

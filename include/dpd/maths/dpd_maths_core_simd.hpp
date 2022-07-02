@@ -134,8 +134,11 @@ namespace dpd_maths_core_simd
         This function treats all home lanes as active. It is up to the caller to
         make sure they are valid (e.g. by moving inactive lanes to an x value which
         can't interact) or by applying masking externally.
+
+        ACTIVE_BEADS_FOR_LOGGING can be used to control how many beads are considered
+        active for logging purposes. It does not change the calculations.
     */
-    template<Flags TFlags, unsigned MAX_BEAD_TYPES>
+    template<Flags TFlags, unsigned MAX_BEAD_TYPES, unsigned ACTIVE_BEADS_FOR_LOGGING=8>
     static bool interact_vec8_to_scalar(
         const float scale_inv_sqrt_dt,
         const float conservative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
@@ -231,7 +234,7 @@ namespace dpd_maths_core_simd
             uint32_t activeb[8], home_bead_idsb[8];
             _mm256_storeu_si256((__m256i*)activeb, active);
             _mm256_storeu_si256((__m256i*)home_bead_idsb, home_bead_ids);
-            for(unsigned i=0; i<8; i++){
+            for(unsigned i=0; i<ACTIVE_BEADS_FOR_LOGGING; i++){
                 if(!activeb[i]){
                     continue;
                 }
@@ -239,6 +242,9 @@ namespace dpd_maths_core_simd
                 double ddx[3]={dx[0][i],dx[1][i],dx[2][i]};
                 ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dx", 3,ddx);
                 ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dr", 1,&dr[i]);
+
+                double ddv[3]={dv[0][i],dv[1][i],dv[2][i]};
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dv", 3,ddv);
                 double dd=sqrt_diss_strength[i] * sqrt_diss_strength[i];
                 ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-diss-strength", 1, &dd);
                 ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-invrootdt", 1, &scale_inv_sqrt_dt);
@@ -252,9 +258,10 @@ namespace dpd_maths_core_simd
                 double ff[3]={f[0][i],f[1][i],f[2][i]};
                 ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"f_next_dpd", 3,ff);
 
-                for(int d=0; d<3; d++){ ddx[d]=-ddx[d]; }
+                for(int d=0; d<3; d++){ ddx[d]=-ddx[d]; ddv[d]=-ddv[d]; }
                 ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dx", 3,ddx);
                 ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dr", 1,&dr[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dv", 3,ddv);
                 ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-diss-strength", 1, &dd);
                 ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-invrootdt", 1, &scale_inv_sqrt_dt);
                 ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-gammap", 1, &gammap);
@@ -299,13 +306,13 @@ namespace dpd_maths_core_simd
     ){
         static_assert(MAX_BEAD_TYPES <= 8);
 
-        __m256 dx[3];
+        __m256 dx[3], ox[3];
         #pragma GCC unroll(3)
         for(int d=0; d<3; d++){
-            __m256 ox=_mm256_set1_ps(otherA_x[d]);
-            _mm256_insertf128_ps(ox, _mm_set1_ps(otherB_x[d]), 1);
+            ox[d]=_mm256_set1_ps(otherA_x[d]);
+            ox[d]=_mm256_insertf128_ps(ox[d], _mm_set1_ps(otherB_x[d]), 1);
 
-            dx[d] = home_x[d] - ox;
+            dx[d] = home_x[d] - ox[d];
         }
         __m256 dr2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
 
@@ -352,10 +359,8 @@ namespace dpd_maths_core_simd
         __m256 dv[3];
         #pragma GCC unroll(3)
         for(int d=0; d<3; d++){
-            dx[d] = dx[d] * inv_dr;
-
             __m256 ov=_mm256_set1_ps(otherA_v[d]);
-            _mm256_insertf128_ps(ov, _mm_set1_ps(otherB_v[d]), 1);
+            ov=_mm256_insertf128_ps(ov, _mm_set1_ps(otherB_v[d]), 1);
 
             dv[d] = home_v[d] - ov;
         }
@@ -364,8 +369,18 @@ namespace dpd_maths_core_simd
 
         auto sqrt_gammap = sqrt_diss_strength*wr;
 
-        auto dissForce = -sqrt_gammap*sqrt_gammap*rdotv;
-        auto u = XorShift64Add( rng_state );
+        auto dissForce = -sqrt_gammap*sqrt_gammap*rdotv*inv_dr;
+        __m256 u;
+        if(TFlags & Flag_RngXorShift64Add){
+            u=XorShift64Add( rng_state );
+        }else if (TFlags & Flag_RngHash){
+            __m256i other_bead_id=_mm256_insertf128_si256(_mm256_set1_epi32(otherA_bead_id), _mm_set1_epi32(otherB_bead_id), 1);
+            u=POETSHashV1(t_hash, home_bead_ids, other_bead_id);
+        }else if (TFlags & Flag_RngZero){
+            u=_mm256_setzero_ps();
+        }else{
+            throw std::logic_error("No Rng method selected at compile-time.");
+        }
         for(int d=0; d<3; d++){
             assert(-0.5f <= u[d] && u[d] <= 0.5f );
         }
@@ -377,6 +392,54 @@ namespace dpd_maths_core_simd
         #pragma GCC unroll(3)
         for(int d=0; d<3; d++){
             f[d] = scaled_force * dx[d];
+        }
+
+        if(TFlags & Flag_EnableLogging && ForceLogging::logger()){
+            uint32_t activeb[8], home_bead_idsb[8];
+            _mm256_storeu_si256((__m256i*)activeb, active);
+            _mm256_storeu_si256((__m256i*)home_bead_idsb, home_bead_ids);
+
+
+            for(unsigned i=0; i<8; i++){
+                if(!activeb[i]){
+                    continue;
+                }
+                BeadHash hhash{home_bead_idsb[i]};
+                BeadHash thash{ i>=4 ? otherB_bead_id : otherA_bead_id };
+                assert(hhash!=thash);
+                double ddx[3]={dx[0][i],dx[1][i],dx[2][i]};
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dx", 3,ddx);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dr", 1,&dr[i]);
+                double ddv[3]={dv[0][i],dv[1][i],dv[2][i]};
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dv", 3,ddv);
+                double dd=sqrt_diss_strength[i] * sqrt_diss_strength[i];
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-diss-strength", 1, &dd);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-invrootdt", 1, &scale_inv_sqrt_dt);
+                double gammap=sqrt_gammap[i]*sqrt_gammap[i];
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-gammap", 1, &gammap);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-rng", 1, &u[i]);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-con", 1, &conForce[i]);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-diss", 1,&dissForce[i]);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-rng-scale",1, &randScale[i]);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dpd-rand",1, &randForce[i]);
+                double ff[3]={f[0][i],f[1][i],f[2][i]};
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"f_next_dpd", 3,ff);
+
+                for(int d=0; d<3; d++){ ddx[d]=-ddx[d]; ddv[d]=-ddv[d]; }
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dx", 3,ddx);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dr", 1,&dr[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dv", 3,ddv);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-diss-strength", 1, &dd);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-invrootdt", 1, &scale_inv_sqrt_dt);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-gammap", 1, &gammap);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-rng", 1, &u[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-con", 1, &conForce[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-diss", 1,&dissForce[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-rng-scale",1, &randScale[i]);
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"dpd-rand",1, &randForce[i]);
+                for(int d=0; d<3; d++){ ff[d] = -ff[d]; }
+                ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"f_next_dpd", 3,ff);
+            }
         }
 
         return true;

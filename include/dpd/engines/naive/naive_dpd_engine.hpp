@@ -541,6 +541,8 @@ private:
             double ddx[3]={dx[0],dx[1],dx[2]};
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dx", 3,ddx);
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dr", 1,&dr);
+            double ddv[3]={dv[0],dv[1],dv[2]};
+            ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dv", 3,ddv);
             double dd=get_interaction_dissipative(hb->bead_type,ob->bead_type);
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-diss-strength", 1, &dd);
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-invrootdt", 1, &scaled_inv_root_dt);
