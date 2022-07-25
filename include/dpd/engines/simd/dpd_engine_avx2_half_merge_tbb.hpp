@@ -19,6 +19,10 @@
 
 #include <tbb/parallel_for_each.h>
 
+#include <sys/mman.h>
+
+#include <hwloc.h>
+
 template<typename dpd_maths_core_simd::Flags MathsCoreFlags=dpd_maths_core_simd::Flag_RngHash>
 class DPDEngineAVX2HalfMergeTBB
     : public DPDEngine
@@ -80,12 +84,31 @@ public:
         m_urng.seed(s->seed);
 
         unsigned num_cells=m_state->box.x[0] * m_state->box.x[1] * m_state->box.x[2];
+        m_nCells=num_cells;
 
         auto fwd_rel=make_relative_nhood_forwards(true);
         
-        m_cells.resize(num_cells);
-        for(unsigned i=0; i<m_cells.size(); i++){
-            auto &cell=m_cells[i];
+        //m_cells.resize(num_cells);
+        m_cells.reset();
+
+        size_t pageSize=sysconf(_SC_PAGESIZE);
+        size_t allocSize=((sizeof(Cell)*m_nCells+pageSize)/pageSize)*pageSize;
+        void *pbacking=mmap(0, allocSize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        if(MAP_FAILED==pbacking){
+            throw std::runtime_error("COuldn't map cell backing.");
+        }
+        m_cells.reset(
+            (Cell*)pbacking,
+            [=](void *p){ munmap(p, allocSize); }
+        );
+
+        make_conflict_groups();
+
+        auto init_cell = [&](unsigned i){
+            Cell &cell=m_cells[i];
+
+            // We want to force allocation on whatever thread we are on.
+            memset(&cell, 0, sizeof(Cell));
 
             cell.n=0;
             cell.n_move_pending=0;
@@ -102,9 +125,19 @@ public:
             for(unsigned j=13; j<std::size(cell.neighbours); j++){
                 cell.neighbours[j] = cell.neighbours[13];
             }
-        }
+        };
 
-        make_conflict_groups();
+        if(0){
+            for(unsigned i=0; i<m_nCells; i++){
+                init_cell(i);
+            }
+        }else{
+            parallel_for_each_cell_group([&](const std::vector<uint32_t> &group){
+                for(auto i : group){
+                    init_cell(i);
+                }
+            });
+        }
 
         m_max_polymer_bonds=0;
         m_max_polymer_length=1;
@@ -173,7 +206,9 @@ private:
 
     vec3i_t m_dims;
     vec3f_t m_dimsf;
-    std::vector<Cell> m_cells;
+    //std::vector<Cell> m_cells;
+    unsigned m_nCells;
+    std::shared_ptr<Cell[]> m_cells;
     float m_dt;
     float m_scale_inv_sqrt_dt;
     float m_conservative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES];
@@ -182,7 +217,8 @@ private:
     std::mt19937_64 m_urng;
     uint64_t m_t_hash;
 
-    std::vector<std::unique_ptr<tbb::affinity_partitioner>> m_cell_partitioners;
+    //std::vector<std::unique_ptr<tbb::affinity_partitioner>> m_cell_partitioners;
+    std::vector<std::unique_ptr<tbb::static_partitioner>> m_cell_partitioners;
     std::vector<std::vector<std::vector<unsigned>>> m_cell_waves;
 
     std::vector<std::unique_ptr<Packed*[]>> m_non_monomer_bead_locations;
@@ -209,7 +245,7 @@ private:
     }
 
     static const bool no_par=false;
-    static const bool use_affinity=false;
+    static const bool use_affinity=true;
 
     template<class T,class F, class P=tbb::simple_partitioner>
     void parallel_for_each(std::vector<T> &x, unsigned grain, F &&f, P &&partitioner=tbb::simple_partitioner())
@@ -265,7 +301,7 @@ private:
 
     vec3i_t get_cell_pos(unsigned index)
     {
-        assert(index<m_cells.size());
+        //assert(index<m_cells.size());
         vec3i_t res;
         unsigned working=index;
         res[0] = working % m_dims[0];
@@ -279,7 +315,8 @@ private:
 
     void validate()
     {
-        for(auto &cell : m_cells){
+        for(unsigned ci=0; ci<m_nCells; ci++){
+            auto &cell = m_cells[ci];
             for(unsigned i=0; i<cell.n; i++){
                 auto &bead = cell.beads[i];
                 for(int d=0; d<3; d++){
@@ -383,7 +420,8 @@ private:
                         }
                     }
                     m_cell_waves.push_back(std::move(group));
-                    m_cell_partitioners.push_back(std::make_unique<tbb::affinity_partitioner>());
+                    //m_cell_partitioners.push_back(std::make_unique<tbb::affinity_partitioner>());
+                    m_cell_partitioners.push_back(std::make_unique<tbb::static_partitioner>());
                 }
             }
         }
@@ -428,23 +466,26 @@ private:
 
     void synchronise_beads_out()
     {
-        parallel_for_each(m_cells, 256, [&](Cell &cell){
-            assert(cell.n==cell.n_move_pending);
-            for(unsigned i=0; i<cell.n; i++){
-                auto &p=cell.beads[i];
-                BeadHash bh{p.id};
-                const auto &polymer = m_state->polymers.at(bh.get_polymer_id());
-                auto bead_index = polymer.bead_ids.at(bh.get_polymer_offset());
+        parallel_for(tbb::blocked_range<unsigned>(0, m_nCells, 256), [&](const tbb::blocked_range<unsigned> &r){
+            for(unsigned ci=r.begin(); ci<r.end(); ci++){
+                Cell &cell=m_cells[ci];
+                assert(cell.n==cell.n_move_pending);
+                for(unsigned i=0; i<cell.n; i++){
+                    auto &p=cell.beads[i];
+                    BeadHash bh{p.id};
+                    const auto &polymer = m_state->polymers.at(bh.get_polymer_id());
+                    auto bead_index = polymer.bead_ids.at(bh.get_polymer_offset());
 
-                auto &b=m_state->beads[bead_index];
-                assert(b.get_hash_code() == bh);
+                    auto &b=m_state->beads[bead_index];
+                    assert(b.get_hash_code() == bh);
 
-                b.x.assign(p.x);
-                b.v.assign(p.v);
-                b.f.assign(p.f);
+                    b.x.assign(p.x);
+                    b.v.assign(p.v);
+                    b.f.assign(p.f);
 
-                // Post-correct for missing step
-                dpd_maths_core_half_step::update_mom(m_dt, b);
+                    // Post-correct for missing step
+                    dpd_maths_core_half_step::update_mom(m_dt, b);
+                }
             }
         });
     }
@@ -568,7 +609,8 @@ private:
         if(ForceLogging::logger()){
             ForceLogging::logger()->SetTime(m_state->t);
 
-            for(const auto &cell : m_cells){
+            for(unsigned ci=0; ci<m_nCells; ci++){
+                const auto &cell = m_cells[ci];
                 for(unsigned i=0; i<cell.n; i++){
                     const auto &b=cell.beads[i];
                     BeadHash bh{b.id};
@@ -589,7 +631,8 @@ private:
         }
 
         #ifndef NDEBUG
-        for(const auto &c : m_cells){
+        for(unsigned i=0; i<m_nCells; i++){
+            const auto &c = m_cells[i];
             assert(c.n==c.n_move_pending);
         }
         validate();
@@ -627,7 +670,8 @@ private:
         });
 
         #ifndef NDEBUG
-        for(const auto &c : m_cells){
+        for(unsigned i=0; i<m_nCells; i++){
+            const auto &c = m_cells[i];
             assert(c.n==c.n_move_pending);
         }
         validate();
