@@ -14,16 +14,30 @@
 #include "dpd/maths/dpd_maths_core_half_step_raw.hpp"
 #include "dpd/maths/dpd_maths_core_half_step.hpp"
 
+#include "dpd/core/morton_codec.hpp"
+
 #define TBB_PREVIEW_GLOBAL_CONTROL 1
 #include <tbb/global_control.h>
 
 #include <tbb/parallel_for_each.h>
 
-template<typename dpd_maths_core_simd::Flags MathsCoreFlags=dpd_maths_core_simd::Flag_RngHash>
+struct DPDEngineAVX2HalfMergeTBBConfigBase
+{
+    static const typename dpd_maths_core_simd::Flags MathsCoreFlags = dpd_maths_core_simd::Flag_RngHash;
+    static const bool use_morton = false;
+};
+
+template<
+    class TConfig = DPDEngineAVX2HalfMergeTBBConfigBase
+>
 class DPDEngineAVX2HalfMergeTBB
     : public DPDEngine
 {
 public:
+    static const auto MathsCoreFlags = TConfig::MathsCoreFlags;
+
+    static const bool do_prefetch = true;
+
     static const unsigned MAX_BEADS_PER_CELL = 32;
     static const unsigned MAX_BEAD_TYPES = 8;
 
@@ -79,28 +93,38 @@ public:
 
         m_urng.seed(s->seed);
 
-        unsigned num_cells=m_state->box.x[0] * m_state->box.x[1] * m_state->box.x[2];
+        if(use_morton){
+            m_pmcodec=std::make_unique<morton_codec>();
+        }
+
+        unsigned num_cells=get_cell_count();
 
         auto fwd_rel=make_relative_nhood_forwards(true);
         
         m_cells.resize(num_cells);
-        for(unsigned i=0; i<m_cells.size(); i++){
-            auto &cell=m_cells[i];
 
-            cell.n=0;
-            cell.n_move_pending=0;
-            cell.pos=get_cell_pos(i);
-            cell.rng_state=make_rng_state(s->seed, i);
-            cell.wrap_bits=create_wrap_bits(&m_dims.x[0], &cell.pos.x[0]);
+        for(int cell_x=0; cell_x<m_dims[0]; cell_x++){
+            for(int cell_y=0; cell_y<m_dims[1]; cell_y++){
+                for(int cell_z=0; cell_z<m_dims[2]; cell_z++){
+                    unsigned index=get_cell_index({cell_x,cell_y,cell_z});
+                    auto &cell=m_cells.at(index);
 
-            auto fwd_abs=make_absolute_nhood(fwd_rel, m_dims, cell.pos);
-            assert(fwd_abs.size()==13);
-            for(unsigned j=0; j<13; j++){
-                cell.neighbours[j] = get_cell_index(fwd_abs[j]);
-            }
-            // Fill in any padding
-            for(unsigned j=13; j<std::size(cell.neighbours); j++){
-                cell.neighbours[j] = cell.neighbours[13];
+                    cell.n=0;
+                    cell.n_move_pending=0;
+                    cell.pos={cell_x,cell_y,cell_z};
+                    cell.rng_state=make_rng_state(s->seed, index);
+                    cell.wrap_bits=create_wrap_bits(&m_dims.x[0], &cell.pos.x[0]);
+
+                    auto fwd_abs=make_absolute_nhood(fwd_rel, m_dims, cell.pos);
+                    assert(fwd_abs.size()==13);
+                    for(unsigned j=0; j<13; j++){
+                        cell.neighbours[j] = get_cell_index(fwd_abs[j]);
+                    }
+                    // Fill in any padding
+                    for(unsigned j=13; j<std::size(cell.neighbours); j++){
+                        cell.neighbours[j] = cell.neighbours[13];
+                    }
+                }
             }
         }
 
@@ -208,7 +232,7 @@ private:
         return uint64_t(ts.tv_sec)*1000000u + (uint64_t(ts.tv_nsec)/1000u);
     }
 
-    static const bool no_par=false;
+    static const bool no_par=true;
     static const bool use_affinity=false;
 
     template<class T,class F, class P=tbb::simple_partitioner>
@@ -240,7 +264,7 @@ private:
             }
         }else if(use_affinity){
             for(unsigned i=0; i<m_cell_waves.size(); i++){
-                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<unsigned> &c) {
+                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<uint32_t> &c) {
                     f(c);
                 },
                     *m_cell_partitioners[i]
@@ -248,10 +272,50 @@ private:
             }
         }else{
             for(unsigned i=0; i<m_cell_waves.size(); i++){
-                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<unsigned> &c) {
+                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<uint32_t> &c) {
                     f(c);
                 });
             }
+        }
+    }
+
+    template<class F>
+    void parallel_for_each_cell(F &&f)
+    {
+        parallel_for_each_cell_group([&](const std::vector<uint32_t> &c){
+            for(auto i : c){
+                f(m_cells[i]);
+            }
+        });
+    }
+
+    static const bool use_morton = TConfig::use_morton;
+    std::unique_ptr<morton_codec> m_pmcodec;
+
+    unsigned get_cell_count()
+    {
+        if(use_morton){
+            /*
+            Note: this can result in very large over-allocation if the
+            box is flat, and particularly if the box is very long in just
+            one dimensions. e.g. if you do a 512 x 16 x 16 box, it will
+            allocate 512 x 512 x 512.
+
+            In principle this should not be a problem, as the cells in the
+            slack space should never be touched, and so will never require
+            a backing page. So hopefully.... it just resolts in a large virtual
+            address space allocation with a much smaller physical backing.
+            */
+
+            int fdims=1;
+            for(int d=0; d<3; d++){
+                while( fdims < m_dims[d]){
+                    fdims = fdims*2;
+                }
+            }
+            return fdims * fdims * fdims;
+        }else{
+            return m_dims[0]*m_dims[1]*m_dims[2];
         }
     }
 
@@ -260,26 +324,16 @@ private:
         for(int d=0; d<3; d++){
             assert(0<=pos[d] && pos[d]<m_dims[d] );
         }
-        return m_dims[0]*m_dims[1]*pos[2] + m_dims[0] * pos[1] + pos[0];
-    }
-
-    vec3i_t get_cell_pos(unsigned index)
-    {
-        assert(index<m_cells.size());
-        vec3i_t res;
-        unsigned working=index;
-        res[0] = working % m_dims[0];
-        working /= m_dims[0];
-        res[1] = working % m_dims[1];
-        working /= m_dims[1];
-        res[2] = working;
-        assert(get_cell_index(res)==index);
-        return res;
+        if(use_morton){
+            return (*m_pmcodec)(pos[0],pos[1],pos[2]);
+        }else{
+            return m_dims[0]*m_dims[1]*pos[2] + m_dims[0] * pos[1] + pos[0];
+        }
     }
 
     void validate()
     {
-        for(auto &cell : m_cells){
+        parallel_for_each_cell([&](Cell &cell){
             for(unsigned i=0; i<cell.n; i++){
                 auto &bead = cell.beads[i];
                 for(int d=0; d<3; d++){
@@ -291,7 +345,8 @@ private:
                     assert( m_non_monomer_bead_locations.at(bh.get_polymer_id())[bh.get_polymer_offset()] == &bead );
                 }
             }
-        }
+        });
+
         for(unsigned polymer_id=0; polymer_id<m_non_monomer_bead_locations.size(); polymer_id++){
             auto &loc=m_non_monomer_bead_locations[polymer_id];
             if(loc){
@@ -351,9 +406,8 @@ private:
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
        
-        std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
+        //std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
 
-        m_cell_partitioners.clear();
         m_cell_partitioners.clear();
         m_cell_waves.clear();
         for(unsigned gx=0; gx<wx; gx+=(wx/2)){
@@ -370,7 +424,7 @@ private:
                                 for(unsigned lx=0; lx<wx/2; lx++){
                                     for(unsigned ly=0; ly<wy/2; ly++){
                                         for(unsigned lz=0; lz<wz/2; lz++){
-                                            unsigned index=get_cell_index({int(ix+lx),int(iy+ly),int(iz+lz)});
+                                            uint32_t index=get_cell_index({int(ix+lx),int(iy+ly),int(iz+lz)});
                                             if(!seen.insert(index).second){
                                                 throw std::runtime_error("Duplicate");
                                             }
@@ -388,6 +442,7 @@ private:
             }
         }
     }
+
     void import_beads()
     {
         // This one is a bit difficult to parallelise, but it
@@ -428,7 +483,7 @@ private:
 
     void synchronise_beads_out()
     {
-        parallel_for_each(m_cells, 256, [&](Cell &cell){
+        parallel_for_each_cell([&](Cell &cell){
             assert(cell.n==cell.n_move_pending);
             for(unsigned i=0; i<cell.n; i++){
                 auto &p=cell.beads[i];
@@ -595,7 +650,7 @@ private:
         validate();
         #endif
 
-        parallel_for_each_cell_group( [&](const std::vector<unsigned> &c){
+        parallel_for_each_cell_group( [&](const std::vector<uint32_t> &c){
             move_cell_group(c);
         });
 
@@ -605,7 +660,7 @@ private:
 
         // At this point cell.n==0
         //std::atomic<uint64_t> group_time_min=UINT64_MAX, group_time_max=0, group_time_sum=0, group_time_sum_sqr=0, group_count=0;
-        parallel_for_each_cell_group( [&](const std::vector<unsigned> &c){
+        parallel_for_each_cell_group( [&](const std::vector<uint32_t> &c){
             //uint64_t start=thread_elapsed_us();
 
             calc_forces_for_group(c);
@@ -754,7 +809,7 @@ private:
     void calc_forces_for_group(const std::vector<unsigned> &indices)
     {
         for(unsigned i=0; i<indices.size(); i++){
-            if(i+1<indices.size()){
+            if(do_prefetch && i+1<indices.size()){
                 _mm_prefetch(&m_cells[indices[i+1]], _MM_HINT_T2);
             }
             calc_forces_for_cell(m_cells[indices[i]]);
@@ -918,7 +973,9 @@ private:
             auto &other_cell=m_cells[home.neighbours[i]];
 
             // Prefetch ahead by two neighbours. About 5% perf increase on byron
-            _mm_prefetch(&m_cells[home.neighbours[i+2]],_MM_HINT_T1); // This will prefetch past the end
+            if(do_prefetch){
+                _mm_prefetch(&m_cells[home.neighbours[i+2]],_MM_HINT_T1); // This will prefetch past the end
+            }
 
             for(unsigned j=0; j<other_cell.n; j++){
                 auto &other_bead=other_cell.beads[j];
@@ -1013,7 +1070,9 @@ private:
                 for(unsigned j=0; j<other_counts[i]; j++){
                     others[num_others+j] = other_cell.beads+j;
                     // This provides a noticeable speed-up, another 3-5%
-                    _mm_prefetch(other_cell.beads+j, _MM_HINT_T1);
+                    if(do_prefetch){
+                        _mm_prefetch(other_cell.beads+j, _MM_HINT_T1);
+                    }
                 }
                 num_others += other_cell.n;
             }
@@ -1031,8 +1090,10 @@ private:
         assert(num_others>0);
         // If num_others is odd then we interact with the ghost particle
         for(unsigned i=0; i< num_others ; i+=2){
-            _mm_prefetch(others[i+2], _MM_HINT_T1); // This will prefetch past the end
-            _mm_prefetch(others[i+3], _MM_HINT_T1); // This will prefetch past the end
+            if(do_prefetch){
+                _mm_prefetch(others[i+2], _MM_HINT_T1); // This will prefetch past the end
+                _mm_prefetch(others[i+3], _MM_HINT_T1); // This will prefetch past the end
+            }
 
             Packed &other_bead_A=*others[i];
             Packed &other_bead_B=*others[i+1];
