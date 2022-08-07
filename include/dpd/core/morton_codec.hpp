@@ -1,7 +1,7 @@
-#ifndef morton_hpp
-#define morton_hpp
+#ifndef morton_codec_hpp
+#define morton_codec_hpp
 
-#include <vector>
+#include <array>
 #include <cstdint>
 
 /*
@@ -23,6 +23,10 @@ struct morton_codec
 {
     struct position_t
     {
+        position_t()
+            : bits(0)
+        {}
+
         position_t(uint16_t _x, uint16_t _y, uint16_t _z)
         {
             x=_x;
@@ -31,7 +35,9 @@ struct morton_codec
         }
 
         union{
-            uint16_t x, y, z, _pad;
+            struct{
+                uint16_t x, y, z, _pad;
+            };
             uint64_t bits;
         };
 
@@ -41,12 +47,21 @@ struct morton_codec
             res.bits |= o.bits;
             return res;
         }
+
+        position_t operator<<(unsigned dist) const
+        {
+            return position_t{uint16_t(x<<dist), uint16_t(y<<dist), uint16_t(z<<dist)};
+        }
+
+        bool operator==(position_t o) const
+        { return bits==o.bits; }
     };
 
-    const unsigned LOG2K=9;
+    static const unsigned LOG2K=9;
     static_assert((LOG2K%3)==0);
-    const unsigned K=1<<LOG2K;
-    unsigned KMASK=K-1;
+    
+    static const unsigned K=1<<LOG2K;
+    static const unsigned KMASK=K-1;
 
     unsigned log2n;
     std::array<uint64_t,K> lut_fwd;
@@ -69,7 +84,7 @@ struct morton_codec
         for(unsigned i=0; i<K; i++){
             position_t part;
             part.bits=0;
-            for(int j=0; j<LOG2K/3; j++){
+            for(unsigned j=0; j<LOG2K/3; j++){
                 part.x |= ((i>>(j*3+0))&1) << j;
                 part.y |= ((i>>(j*3+1))&1) << j;
                 part.z |= ((i>>(j*3+2))&1) << j;
@@ -84,13 +99,18 @@ struct morton_codec
         make_lut_rev();
     }
 
-    uint64_t operator()(uint16_t x, uint16_t y, uint16_t z)
+    uint64_t operator()(position_t pos) const
+    {
+        return (*this)(pos.x, pos.y, pos.z);
+    }
+
+    uint64_t operator()(uint16_t x, uint16_t y, uint16_t z) const
     {
         uint64_t res=0;
 
         unsigned o=0;
         do{
-            res |= (lut[x & KMASK] | lut[y&KMASK] | lut[x&KMASK]) << o;
+            res |= ( (lut_fwd[x & KMASK]<<0) | (lut_fwd[y&KMASK]<<1) | (lut_fwd[z&KMASK]<<2)) << o;
             x=x>>LOG2K;
             y=y>>LOG2K;
             z=z>>LOG2K;
@@ -102,11 +122,11 @@ struct morton_codec
     position_t operator()(uint64_t x)
     {
         position_t res;
-        res.bits=0;
         unsigned o=0;
-        for(unsigned i=0; i<wx+wy+wz; i+=6){
-            res |= lutzy[o][ (x>>i)&0x3f ];
-            o++;
+        while(x){
+            res = res | (lut_rev[x & KMASK]<<o);
+            o += LOG2K/3;
+            x >>= LOG2K;
         }
         return res;
     }

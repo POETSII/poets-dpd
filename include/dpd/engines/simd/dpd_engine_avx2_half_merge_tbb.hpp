@@ -14,6 +14,8 @@
 #include "dpd/maths/dpd_maths_core_half_step_raw.hpp"
 #include "dpd/maths/dpd_maths_core_half_step.hpp"
 
+#include "dpd/core/morton_codec.hpp"
+
 #define TBB_PREVIEW_GLOBAL_CONTROL 1
 #include <tbb/global_control.h>
 
@@ -21,13 +23,27 @@
 
 #include <sys/mman.h>
 
-#include <hwloc.h>
+struct DPDEngineAVX2HalfMergeTBBConfigBase
+{
+    using grid_partitioner = tbb::auto_partitioner;
 
-template<typename dpd_maths_core_simd::Flags MathsCoreFlags=dpd_maths_core_simd::Flag_RngHash>
+    static const typename dpd_maths_core_simd::Flags MathsCoreFlags = dpd_maths_core_simd::Flag_RngHash;
+    static const bool use_morton = false;
+};
+
+template<
+    class TConfig = DPDEngineAVX2HalfMergeTBBConfigBase
+>
 class DPDEngineAVX2HalfMergeTBB
     : public DPDEngine
 {
 public:
+    static const auto MathsCoreFlags = TConfig::MathsCoreFlags;
+
+    static const bool do_prefetch = true;
+
+    using grid_partitioner = typename TConfig::grid_partitioner;
+
     static const unsigned MAX_BEADS_PER_CELL = 32;
     static const unsigned MAX_BEAD_TYPES = 8;
 
@@ -83,12 +99,15 @@ public:
 
         m_urng.seed(s->seed);
 
-        unsigned num_cells=m_state->box.x[0] * m_state->box.x[1] * m_state->box.x[2];
+        if(use_morton){
+            m_pmcodec=std::make_unique<morton_codec>();
+        }
+
+        unsigned num_cells=get_cell_count();
         m_nCells=num_cells;
 
         auto fwd_rel=make_relative_nhood_forwards(true);
-        
-        //m_cells.resize(num_cells);
+
         m_cells.reset();
 
         size_t pageSize=sysconf(_SC_PAGESIZE);
@@ -103,6 +122,16 @@ public:
         );
 
         make_conflict_groups();
+
+        std::vector<unsigned> active_cell_indices;
+        for(int cell_x=0; cell_x<m_dims[0]; cell_x++){
+            for(int cell_y=0; cell_y<m_dims[1]; cell_y++){
+                for(int cell_z=0; cell_z<m_dims[2]; cell_z++){
+                    active_cell_indices.push_back(get_cell_index({cell_x,cell_y,cell_z}));
+                }
+            }
+        }
+
 
         auto init_cell = [&](unsigned i){
             Cell &cell=m_cells[i];
@@ -217,8 +246,7 @@ private:
     std::mt19937_64 m_urng;
     uint64_t m_t_hash;
 
-    std::vector<std::unique_ptr<tbb::affinity_partitioner>> m_cell_partitioners;
-    //std::vector<std::unique_ptr<tbb::static_partitioner>> m_cell_partitioners;
+    std::vector<std::unique_ptr<grid_partitioner>> m_cell_partitioners;
     std::vector<std::vector<std::vector<unsigned>>> m_cell_waves;
 
     std::vector<std::unique_ptr<Packed*[]>> m_non_monomer_bead_locations;
@@ -230,10 +258,10 @@ private:
 
     __m256i make_rng_state(uint64_t seed, unsigned index)
     {
-        // HACK! FIX ME
-        return _mm256_set_epi32(
-            m_urng(), m_urng(), m_urng(), m_urng(),
-            m_urng(), m_urng(), m_urng(), m_urng()
+        uint64_t x=splitmix64(index)+seed;
+        
+        return _mm256_set_epi64x(
+            splitmix64(x+0), splitmix64(x+1), splitmix64(x+2), splitmix64(x+3)
         );
     }
 
@@ -245,7 +273,6 @@ private:
     }
 
     static const bool no_par=false;
-    static const bool use_affinity=true;
 
     template<class T,class F, class P=tbb::simple_partitioner>
     void parallel_for_each(std::vector<T> &x, unsigned grain, F &&f, P &&partitioner=tbb::simple_partitioner())
@@ -274,20 +301,54 @@ private:
                     f(c);
                 };
             }
-        }else if(use_affinity){
+        }else{
             for(unsigned i=0; i<m_cell_waves.size(); i++){
-                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<unsigned> &c) {
+                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<uint32_t> &c) {
                     f(c);
                 },
                     *m_cell_partitioners[i]
                 );
             }
-        }else{
-            for(unsigned i=0; i<m_cell_waves.size(); i++){
-                parallel_for_each(m_cell_waves[i], 1, [&](const std::vector<unsigned> &c) {
-                    f(c);
-                });
+        }
+    }
+
+    template<class F>
+    void parallel_for_each_cell(F &&f)
+    {
+        parallel_for_each_cell_group([&](const std::vector<uint32_t> &c){
+            for(auto i : c){
+                f(m_cells[i]);
             }
+        });
+    }
+
+    static const bool use_morton = TConfig::use_morton;
+    std::unique_ptr<morton_codec> m_pmcodec;
+
+    unsigned get_cell_count()
+    {
+        if(use_morton){
+            /*
+            Note: this can result in very large over-allocation if the
+            box is flat, and particularly if the box is very long in just
+            one dimensions. e.g. if you do a 512 x 16 x 16 box, it will
+            allocate 512 x 512 x 512.
+
+            In principle this should not be a problem, as the cells in the
+            slack space should never be touched, and so will never require
+            a backing page. So hopefully.... it just resolts in a large virtual
+            address space allocation with a much smaller physical backing.
+            */
+
+            int fdims=1;
+            for(int d=0; d<3; d++){
+                while( fdims < m_dims[d]){
+                    fdims = fdims*2;
+                }
+            }
+            return fdims * fdims * fdims;
+        }else{
+            return m_dims[0]*m_dims[1]*m_dims[2];
         }
     }
 
@@ -296,27 +357,34 @@ private:
         for(int d=0; d<3; d++){
             assert(0<=pos[d] && pos[d]<m_dims[d] );
         }
-        return m_dims[0]*m_dims[1]*pos[2] + m_dims[0] * pos[1] + pos[0];
+        if(use_morton){
+            return (*m_pmcodec)(pos[0],pos[1],pos[2]);
+        }else{
+            return m_dims[0]*m_dims[1]*pos[2] + m_dims[0] * pos[1] + pos[0];
+        }
     }
 
     vec3i_t get_cell_pos(unsigned index)
     {
-        //assert(index<m_cells.size());
-        vec3i_t res;
-        unsigned working=index;
-        res[0] = working % m_dims[0];
-        working /= m_dims[0];
-        res[1] = working % m_dims[1];
-        working /= m_dims[1];
-        res[2] = working;
-        assert(get_cell_index(res)==index);
-        return res;
+        if(use_morton){
+            auto p=(*m_pmcodec)(index);
+            return {p.x,p.y,p.z};
+        }else{
+            vec3i_t res;
+            unsigned working=index;
+            res[0] = working % m_dims[0];
+            working /= m_dims[0];
+            res[1] = working % m_dims[1];
+            working /= m_dims[1];
+            res[2] = working;
+            assert(get_cell_index(res)==index);
+            return res;
+        }
     }
 
     void validate()
     {
-        for(unsigned ci=0; ci<m_nCells; ci++){
-            auto &cell = m_cells[ci];
+        parallel_for_each_cell([&](Cell &cell){
             for(unsigned i=0; i<cell.n; i++){
                 auto &bead = cell.beads[i];
                 for(int d=0; d<3; d++){
@@ -328,7 +396,8 @@ private:
                     assert( m_non_monomer_bead_locations.at(bh.get_polymer_id())[bh.get_polymer_offset()] == &bead );
                 }
             }
-        }
+        });
+
         for(unsigned polymer_id=0; polymer_id<m_non_monomer_bead_locations.size(); polymer_id++){
             auto &loc=m_non_monomer_bead_locations[polymer_id];
             if(loc){
@@ -391,7 +460,6 @@ private:
         //std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
 
         m_cell_partitioners.clear();
-        m_cell_partitioners.clear();
         m_cell_waves.clear();
         for(unsigned gx=0; gx<wx; gx+=(wx/2)){
             for(unsigned gy=0; gy<wy; gy+=wy/2){
@@ -407,7 +475,7 @@ private:
                                 for(unsigned lx=0; lx<wx/2; lx++){
                                     for(unsigned ly=0; ly<wy/2; ly++){
                                         for(unsigned lz=0; lz<wz/2; lz++){
-                                            unsigned index=get_cell_index({int(ix+lx),int(iy+ly),int(iz+lz)});
+                                            uint32_t index=get_cell_index({int(ix+lx),int(iy+ly),int(iz+lz)});
                                             if(!seen.insert(index).second){
                                                 throw std::runtime_error("Duplicate");
                                             }
@@ -420,12 +488,12 @@ private:
                         }
                     }
                     m_cell_waves.push_back(std::move(group));
-                    m_cell_partitioners.push_back(std::make_unique<tbb::affinity_partitioner>());
-                    //m_cell_partitioners.push_back(std::make_unique<tbb::static_partitioner>());
+                    m_cell_partitioners.push_back(std::make_unique<grid_partitioner>());
                 }
             }
         }
     }
+
     void import_beads()
     {
         // This one is a bit difficult to parallelise, but it
@@ -466,26 +534,22 @@ private:
 
     void synchronise_beads_out()
     {
-        parallel_for(tbb::blocked_range<unsigned>(0, m_nCells, 256), [&](const tbb::blocked_range<unsigned> &r){
-            for(unsigned ci=r.begin(); ci<r.end(); ci++){
-                Cell &cell=m_cells[ci];
-                assert(cell.n==cell.n_move_pending);
-                for(unsigned i=0; i<cell.n; i++){
-                    auto &p=cell.beads[i];
-                    BeadHash bh{p.id};
-                    const auto &polymer = m_state->polymers.at(bh.get_polymer_id());
-                    auto bead_index = polymer.bead_ids.at(bh.get_polymer_offset());
+        parallel_for_each_cell([&](Cell &cell){
+            assert(cell.n==cell.n_move_pending);
+            for(unsigned i=0; i<cell.n; i++){
+                auto &p=cell.beads[i];
+                BeadHash bh{p.id};
+                const auto &polymer = m_state->polymers.at(bh.get_polymer_id());
+                auto bead_index = polymer.bead_ids.at(bh.get_polymer_offset());
+                auto &b=m_state->beads[bead_index];
+                assert(b.get_hash_code() == bh);
 
-                    auto &b=m_state->beads[bead_index];
-                    assert(b.get_hash_code() == bh);
+                b.x.assign(p.x);
+                b.v.assign(p.v);
+                b.f.assign(p.f);
 
-                    b.x.assign(p.x);
-                    b.v.assign(p.v);
-                    b.f.assign(p.f);
-
-                    // Post-correct for missing step
-                    dpd_maths_core_half_step::update_mom(m_dt, b);
-                }
+                // Post-correct for missing step
+                dpd_maths_core_half_step::update_mom(m_dt, b);
             }
         });
     }
@@ -638,7 +702,7 @@ private:
         validate();
         #endif
 
-        parallel_for_each_cell_group( [&](const std::vector<unsigned> &c){
+        parallel_for_each_cell_group( [&](const std::vector<uint32_t> &c){
             move_cell_group(c);
         });
 
@@ -648,7 +712,7 @@ private:
 
         // At this point cell.n==0
         //std::atomic<uint64_t> group_time_min=UINT64_MAX, group_time_max=0, group_time_sum=0, group_time_sum_sqr=0, group_count=0;
-        parallel_for_each_cell_group( [&](const std::vector<unsigned> &c){
+        parallel_for_each_cell_group( [&](const std::vector<uint32_t> &c){
             //uint64_t start=thread_elapsed_us();
 
             calc_forces_for_group(c);
@@ -779,7 +843,7 @@ private:
 
                 home.n -= 1;
                 if(home.n>(unsigned)bi){ // Was there another valid elemeent at a higher bead index? If so, move it and update location
-                    assert(home.n != bi);
+                    assert(home.n != (unsigned)bi);
                     b = home.beads[home.n];             
                     if(!BeadHash{b.id}.is_monomer()){
                         auto &loc= m_non_monomer_bead_locations.at(BeadHash{b.id}.get_polymer_id())[BeadHash{b.id}.get_polymer_offset()];
@@ -798,7 +862,7 @@ private:
     void calc_forces_for_group(const std::vector<unsigned> &indices)
     {
         for(unsigned i=0; i<indices.size(); i++){
-            if(i+1<indices.size()){
+            if(do_prefetch && i+1<indices.size()){
                 _mm_prefetch(&m_cells[indices[i+1]], _MM_HINT_T2);
             }
             calc_forces_for_cell(m_cells[indices[i]]);
@@ -857,13 +921,6 @@ private:
                 }
 
                 step_cell_intra_vec8<8>(home, base, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f);
-
-                for(unsigned i=base; i<upper; i++){
-                    assert(i<home.n);
-                    for(int d=0; d<3; d++){
-                        assert(-100000 <= home.beads[i].f[d] && home.beads[i].f[d] <= 100000 );
-                    }
-                }
 
                 for(unsigned i=base; i<upper; i++){
                     assert(i<home.n);
@@ -969,7 +1026,9 @@ private:
             auto &other_cell=m_cells[home.neighbours[i]];
 
             // Prefetch ahead by two neighbours. About 5% perf increase on byron
-            _mm_prefetch(&m_cells[home.neighbours[i+2]],_MM_HINT_T1); // This will prefetch past the end
+            if(do_prefetch){
+                _mm_prefetch(&m_cells[home.neighbours[i+2]],_MM_HINT_T1); // This will prefetch past the end
+            }
 
             for(unsigned j=0; j<other_cell.n; j++){
                 auto &other_bead=other_cell.beads[j];
@@ -1064,7 +1123,9 @@ private:
                 for(unsigned j=0; j<other_counts[i]; j++){
                     others[num_others+j] = other_cell.beads+j;
                     // This provides a noticeable speed-up, another 3-5%
-                    _mm_prefetch(other_cell.beads+j, _MM_HINT_T1);
+                    if(do_prefetch){
+                        _mm_prefetch(other_cell.beads+j, _MM_HINT_T1);
+                    }
                 }
                 num_others += other_cell.n;
             }
@@ -1082,8 +1143,10 @@ private:
         assert(num_others>0);
         // If num_others is odd then we interact with the ghost particle
         for(unsigned i=0; i< num_others ; i+=2){
-            _mm_prefetch(others[i+2], _MM_HINT_T1); // This will prefetch past the end
-            _mm_prefetch(others[i+3], _MM_HINT_T1); // This will prefetch past the end
+            if(do_prefetch){
+                _mm_prefetch(others[i+2], _MM_HINT_T1); // This will prefetch past the end
+                _mm_prefetch(others[i+3], _MM_HINT_T1); // This will prefetch past the end
+            }
 
             Packed &other_bead_A=*others[i];
             Packed &other_bead_B=*others[i+1];
