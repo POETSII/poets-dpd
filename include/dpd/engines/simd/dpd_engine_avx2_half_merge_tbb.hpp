@@ -217,8 +217,8 @@ private:
     std::mt19937_64 m_urng;
     uint64_t m_t_hash;
 
-    //std::vector<std::unique_ptr<tbb::affinity_partitioner>> m_cell_partitioners;
-    std::vector<std::unique_ptr<tbb::static_partitioner>> m_cell_partitioners;
+    std::vector<std::unique_ptr<tbb::affinity_partitioner>> m_cell_partitioners;
+    //std::vector<std::unique_ptr<tbb::static_partitioner>> m_cell_partitioners;
     std::vector<std::vector<std::vector<unsigned>>> m_cell_waves;
 
     std::vector<std::unique_ptr<Packed*[]>> m_non_monomer_bead_locations;
@@ -355,40 +355,40 @@ private:
         unsigned tasks=( (m_dims[0]/wx) * (m_dims[1]/wy) * (m_dims[2]/wz) ) / 8;
        // std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         
-        if(tasks>=3*cpus && (m_dims[1]%8)==0){
+        if(tasks>=7*cpus && (m_dims[1]%8)==0){
             tasks /= 2;
             wy *= 2;
            // std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
         
-        if(tasks>=3*cpus && (m_dims[2]%8)==0){
+        if(tasks>=7*cpus && (m_dims[2]%8)==0){
             tasks /= 2;
             wz *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-        if(tasks>=3*cpus && (m_dims[0]%8)==0){
+        if(tasks>=7*cpus && (m_dims[0]%8)==0){
             tasks /= 2;
             wx *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
         
-        if(tasks>=3*cpus && (m_dims[1]%16)==0){
+        if(tasks>=7*cpus && (m_dims[1]%16)==0){
             tasks /= 2;
             wy *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-        if(tasks>=3*cpus && (m_dims[2]%16)==0){
+        if(tasks>=7*cpus && (m_dims[2]%16)==0){
             tasks /= 2;
             wz *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-        if(tasks>=3*cpus && (m_dims[0]%16)==0){
+        if(tasks>=7*cpus && (m_dims[0]%16)==0){
             tasks /= 2;
             wx *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
        
-        std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
+        //std::cerr<<"wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<"\n";
 
         m_cell_partitioners.clear();
         m_cell_partitioners.clear();
@@ -420,8 +420,8 @@ private:
                         }
                     }
                     m_cell_waves.push_back(std::move(group));
-                    //m_cell_partitioners.push_back(std::make_unique<tbb::affinity_partitioner>());
-                    m_cell_partitioners.push_back(std::make_unique<tbb::static_partitioner>());
+                    m_cell_partitioners.push_back(std::make_unique<tbb::affinity_partitioner>());
+                    //m_cell_partitioners.push_back(std::make_unique<tbb::static_partitioner>());
                 }
             }
         }

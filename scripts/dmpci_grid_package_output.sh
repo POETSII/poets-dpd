@@ -2,6 +2,15 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+if [[ $# -eq 0 ]] ; then 
+    for i in $(ls */dmpci_grid.name) ; do
+        DIR=$(dirname $i)
+        $0 "${DIR}"
+    done
+
+    exit 0
+fi
+
 DMPCI_GRID_DIR=$1
 
 if [[ ! -d "${DMPCI_GRID_DIR}" ]] ; then

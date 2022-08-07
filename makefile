@@ -25,6 +25,8 @@ CPPFLAGS += -I/usr/include
 #CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
 CPPFLAGS += -I/scratch/dbt1c21/local/include/
 
+CPPFLAGS += -march=znver2
+
 endif
 
 CPPFLAGS += -g
