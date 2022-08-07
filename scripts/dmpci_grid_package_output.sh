@@ -57,6 +57,15 @@ for i in ${DMPCI_FILES} ; do
         done
     fi
 
+    if ls ${DMPCI_GRID_NAME}/output/${NAME}/${NAME}.*.pov.gz > /dev/null ; then
+        for i in ${DMPCI_GRID_NAME}/output/${NAME}/${NAME}.*.pov.gz ; do
+            nn=$(echo $i | sed -r -e "s/^.*[.]0*([^.]+).pov.gz$/\1/g")
+            if [[ "${nn}" != "$i" ]] ; then
+                mv $i ${DMPCI_GRID_NAME}/output/${NAME}/dmpccs.${NAME}.con.${nn}.pov.gz
+            fi 
+        done
+    fi
+
     if ls ${DMPCI_GRID_NAME}/output/${NAME}/*.png > /dev/null ; then
         (cd ${DMPCI_GRID_NAME}/output/${NAME} && ffmpeg -y -framerate 10 -pattern_type glob -i '*.png' -r 10 ${NAME}.mp4 )
     fi

@@ -45,7 +45,7 @@ CPPFLAGS += -mavx2 -mfma
 #CPPFLAGS += -fprofile-use
 
 #-mavx512f -mprefer-vector-width=512
-CPPFLAGS += -fsanitize=address -fsanitize=undefined 
+#CPPFLAGS += -fsanitize=address -fsanitize=undefined 
 #CPPFLAGS += -fsanitize=undefined -fsanitize=thread
 #CPPFLAGS += -fopt-info-vec -fopt-info-vec-missed
 

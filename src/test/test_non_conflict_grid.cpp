@@ -6,6 +6,14 @@
 #include <time.h>
 
 #include <iostream>
+#include <cmath>
+
+double now()
+{
+    timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return ts.tv_sec+1e-9*ts.tv_nsec;
+}
 
 __attribute__((noinline))
 int get_reps(int x, int y, int z)
@@ -19,8 +27,21 @@ int get_inc()
     return 1;
 }
 
+struct timing_info_t
+{
+    double create;
+    double first;
+    double mean;
+    double stddev;
+};
+
+std::ostream &operator<<(std::ostream &dst, const timing_info_t &ti)
+{   
+    return dst<<"init="<<ti.create<<", first="<<ti.first<<", mean="<<ti.mean<<", stddev="<<ti.stddev;
+}
+
 template<class TImpl>
-void test(int n)
+timing_info_t test(int n)
 {
     std::vector<int> counters(n*n*n, 0);
 
@@ -36,11 +57,24 @@ void test(int n)
         });
     };
 
+    double t1=now();
     TImpl impl(n,n,n,make_task);
 
-    for(int i=0; i<100; i++){
+    int reps=100;
+    
+    double t2=now();
+    impl.execute();
+    double t3=now();
+    double sumSqr = std::pow(t3-t2,2);
+
+    double tStart=t3;
+    for(int i=1; i<reps; i++){
         impl.execute();
+        double tEnd=now();
+        sumSqr += std::pow(tEnd-tStart,2);
+        tStart=tEnd;
     }
+    double t4=now();
 
     for(int i=0; i<n*n*n; i++){
         int e=get_reps( i%n, (i/n)%n, i/(n*n) ) * 100;
@@ -49,14 +83,13 @@ void test(int n)
             exit(1);
         }
     }
+
+    double mean=(t4-t2)/reps;
+    double stddev=std::sqrt(sumSqr/reps - mean*mean);
+    return {t2-t1, t3-t2, mean, stddev};
 }
 
-double now()
-{
-    timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return ts.tv_sec+1e-9*ts.tv_nsec;
-}
+
 
 int main()
 {
@@ -69,11 +102,9 @@ int main()
 
     for(int i=2; i<32; i+=2){
         std::cerr<<"i="<<i<<"\n";
-        double a=now();
-        test<graph_grid_by_flow>(i);
-        double b=now();
-        test<graph_grid_by_parfor>(i);
-        double c=now();
-        std::cerr<<"i="<<i<<", flow="<<b-a<<", parfor="<<c-b<<"\n";
+        std::cerr<<"flow, "<<test<graph_grid_by_flow>(i)<<"\n";
+        std::cerr<<"parfor, "<<test<graph_grid_by_parfor>(i)<<"\n";
+        std::cerr<<"affinity, "<<test<graph_grid_by_affinity_queue>(i)<<"\n";
+        
     }
 }

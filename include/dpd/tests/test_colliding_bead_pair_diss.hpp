@@ -22,6 +22,8 @@ class TestCollidingBeadPairDiss
     double m_prev_dist;
     double m_prev_prev_dist;
 
+    std::vector<double> m_distances;
+
     double m_last_closest=0;
 
     int m_reversals=0;
@@ -112,6 +114,7 @@ public:
         require_close(m_steps_done, s.t, "t is not dt*nSteps.");
 
         double dist=distance(s, s.beads[0].x, s.beads[1].x).l2_norm();
+        m_distances.push_back(dist);
 
         if(m_dx.l2_norm() > 0.5){
             //std::cerr<<"dx="<<m_dx<<"\n;";
@@ -135,10 +138,11 @@ public:
                 require_close( normalise(-m_dx), normalise(s.beads[1].v), "Bead 1 should move along -dx at time-step 8." );
             }
 
-            if(m_prev_dist < dist && m_prev_dist < m_prev_prev_dist ) {
-                m_reversals++;
-                //std::cerr<<"# Reversal at t="<<s.t-s.dt<<", x[0]="<<m_prev_x[0]<<", x[1]"<<m_prev_x[1]<<", dist="<<m_prev_dist<<", distP="<<m_prev_prev_dist<<", distN="<<dist<<"\n";
-                m_last_closest=m_prev_dist;
+            if(m_distances.size() > 16){
+                int n=m_distances.size()-1;
+                if( m_distances[n-16] < m_distances[n-8] && m_distances[n] < m_distances[n-8]){
+                    m_reversals++;
+                }
             }
 
             if(dist < 1.1){
@@ -166,7 +170,7 @@ public:
             asymmetries will build up due to quantisation, so eventually all implementations
             will see this behaviour.
         */
-        if(m_reversals < 2){
+        if(m_reversals < 4){
             m_steps_done += m_step_dist;
             return m_step_dist;
         }else{

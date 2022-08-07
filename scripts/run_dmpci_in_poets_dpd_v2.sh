@@ -123,5 +123,5 @@ fi
 ${POETS_DPD_DIR}/bin/run_world ${ENGINE} ${WORKING_DIR}/${BASE_NAME}.begin.state.gz \
 	${OUTPUT_DIR}/${BASE_NAME} \
 	${INTERVAL_COUNT} ${SNAPSHOT_PERIOD} ${DISPLAY_PERIOD} \
-		--gzip-snapshot --povray-render --solvent-free-snapshot
+		--gzip-snapshot --povray-render --povray-snapshot --solvent-free-snapshot
 
