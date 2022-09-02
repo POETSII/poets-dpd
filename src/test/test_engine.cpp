@@ -10,6 +10,12 @@
 
 #include "dpd/tests/test_runner.hpp"
 
+#include "dpd/core/logging.hpp"
+#include "dpd/core/logging_impl.hpp"
+
+#define TBB_PREVIEW_GLOBAL_CONTROL 1
+#include <tbb/global_control.h>
+
 #include <random>
 
 void usage()
@@ -19,11 +25,21 @@ void usage()
     for(auto s : DPDEngineFactory::ListFactories()){
         fprintf(stderr, "    %s\n", s.c_str());
     }
+    fprintf(stderr,"     PDPD_LOG=log-path : do full force logging to given file.\n");
+    fprintf(stderr,"     PDPD_NUM_THREADS=n : Limit TBB to using n threads.\n");
     exit(1);
 }
 
 int main(int argc, const char *argv[])
 {
+    int max_parallelism=tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism);
+    if(getenv("PDPD_NUM_THREADS")){
+	    max_parallelism=std::atoi(getenv("PDPD_NUM_THREADS"));
+    }
+    std::cerr<<"TBB is using "<<max_parallelism<<" threads.\n";
+    tbb::global_control tbb_control_threads(tbb::global_control::max_allowed_parallelism, max_parallelism);
+
+    
     std::string engine_name;
     if(argc>1){
         engine_name=argv[1];
@@ -34,6 +50,13 @@ int main(int argc, const char *argv[])
     std::string prefix;
     if(argc>2){
         prefix=argv[2];
+    }
+
+    std::string log_dst;
+    if(getenv("PDPD_LOG")){
+        log_dst=getenv("PDPD_LOG");
+        ForceLogging::set_logger(new FileLogger(log_dst));
+        fprintf(stderr, "Logging to %s\n", log_dst.c_str());
     }
 
     TestOrderedMesh::register_tests();

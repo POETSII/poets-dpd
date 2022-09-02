@@ -1,5 +1,6 @@
 bin
 obj
+scratch
 .vscode
 *.vtk.*
 *.o
@@ -17,11 +18,29 @@ obj
 *.fdb_latemk
 *.pdf
 *.fls
-*.csv
+*.log
+*.pov
+*.rst
+*.zip
+*.pvsm
+*.xml
+*.graphml
+core.*
+*.txt
+*.lammps
+*.save
+*.save.?
+*.ppk
 
+dmpc?.*
+dmpc??.*
+
+test-dmpci-grid
 test_results
 working
 working2
+results
+*.csv
 *.out
 .*/
 tmp.*
@@ -33,3 +52,9 @@ experiments/orch-scaling/inputs
 experiments/orch-scaling/outputs
 experiments/orch-scaling/outputs-safe
 out.txt
+experiments/benchmarks-2022-01-01-run/results/oilwater_monomer/oilwater_monomer-38x38x38.basic_v5-scotch.stderr.log
+experiments/julian-*
+experiments/jobs
+experiments/ec2/lammps
+*.state.bz2
+*.in

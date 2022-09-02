@@ -56,6 +56,11 @@ public:
     
     std::string CanSupport(const WorldState *s) const override
     {
+        auto r=BasicDPDEngine::CanSupport(s);
+        if(!r.empty()){
+            return r;
+        }
+
         if(s->bead_types.size()>1){
             double diss=s->interactions.at(1).dissipative;
             for(unsigned i=0; i<s->bead_types.size(); i++){
@@ -67,7 +72,7 @@ public:
             }
         }
 
-        return BasicDPDEngine::CanSupport(s);
+        return "":
     }
 
     std::vector<device_state_t> m_devices;

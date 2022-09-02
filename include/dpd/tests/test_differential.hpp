@@ -4,6 +4,7 @@
 #include "test_base.hpp"
 #include "dpd/core/dpd_engine.hpp"
 #include "dpd/core/dpd_state_io.hpp"
+#include "dpd/core/logging.hpp"
 
 std::pair<bool,std::string> test_differential(
     TestBase &test,
@@ -11,6 +12,8 @@ std::pair<bool,std::string> test_differential(
     DPDEngine &engine2
 ){
     WorldState state1, state2;
+
+    auto *logger=ForceLogging::logger();
 
     try{
         state1 = test.create_world();
@@ -43,8 +46,15 @@ std::pair<bool,std::string> test_differential(
             for(unsigned i=0; i<state1.beads.size(); i++){
                 state2.beads[i] = state1.beads[i];
             }
+            engine2.Attach(&state2); // We have modified bead positions, so must re-attach
 
+            if(logger){
+                logger->SetPrefix("Ref,");
+            }
             engine1.Run(todo);
+            if(logger){
+                logger->SetPrefix("Dut,");
+            }
             engine2.Run(todo);
 
             validate(state1);
@@ -57,7 +67,7 @@ std::pair<bool,std::string> test_differential(
             //std::cerr<<"t="<<state1.t<<"\n";
             
 
-            double maxDiff= 0.001;
+            double maxDiff= 0.01;
             maxDiff *= sqrt(todo);
 
             double xdiff=0;
@@ -95,7 +105,7 @@ std::pair<bool,std::string> test_differential(
                 write_world_state(std::cerr, state1);
                 write_world_state(std::cerr, state2);
 
-                std::cerr<<"  fdiff_max at bead "<<fdiff_index<<", diff="<<fdiff<<", steps="<<todo<<"\n";
+                std::cerr<<"  fdiff_max at bead "<<fdiff_index<<", hash="<<state1.beads[fdiff_index].get_hash_code().hash<<", x="<<state1.beads[fdiff_index].x<<", diff="<<fdiff<<", steps="<<todo<<"\n";
                 std::cerr<<"      ref="<<state1.beads[fdiff_index].f<<"\n";
                 std::cerr<<"      got="<<state2.beads[fdiff_index].f<<"\n";
 

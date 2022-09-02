@@ -19,7 +19,8 @@
 
 void usage()
 {
-    fprintf(stderr, "run_world : engine-name src-file output-file steps \n");
+    fprintf(stderr, "run_world : engine-name src-file [output-file|""null""] steps \n");
+    fprintf(stderr, "  Writing to ""null"" will stop any export of the output state (same as /dev/null, but much faster).\n");
     fprintf(stderr, "  engine names:\n");
     for(auto s : DPDEngineFactory::ListFactories()){
         fprintf(stderr, "    %s\n", s.c_str());
@@ -51,6 +52,8 @@ double now()
 int main(int argc, const char *argv[])
 {
     try{
+        double tStart=now();
+
       int max_parallelism=tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism);
 
       if(getenv("PDPD_NUM_THREADS")){
@@ -86,10 +89,13 @@ int main(int argc, const char *argv[])
             steps=std::stoi(argv[4]);
         }
 
+        std::shared_ptr<DPDEngine> engine = DPDEngineFactory::create(engine_name);
+        engine->PrepareResources();
+
+        double tBegin=now();
         WorldState state=read_world_state(srcFile);
 
-        std::shared_ptr<DPDEngine> engine = DPDEngineFactory::create(engine_name);
-
+	fprintf(stderr, "Validating with max_r=%f....\n", engine->GetMaxBondLength());
         validate(state, engine->GetMaxBondLength());
 
         std::string ok=engine->CanSupport(&state);
@@ -98,11 +104,36 @@ int main(int argc, const char *argv[])
             exit(1);
         }
 
+        double load_time = now() - tBegin;
+
+        double tStartCore=now();
         engine->Attach(&state);
 
+	fprintf(stderr, "Stepping for %d steps at %f\n", steps, state.dt);
+
         engine->Run(steps);
+        double tEndCore=now();
         
-        write_world_state(dstFile, state);
+        if(dstFile!="null"){
+            write_world_state(dstFile, state);
+        }
+
+        double tEnd=now();
+
+        DPDEngine::timings_t timings;
+        if(engine->GetTimings(timings)){
+            int volume=state.box.x[0] * state.box.x[1] * state.box.x[2];
+            fprintf(stdout,"# File,Engine,Steps,Volume,Beads, tLoad,tCompile,tAquire,tConfigure,tExecToFirst,tExecToLast,tPerfCounters,  bpsEndToEnd,bpsCompileConfigExecExport,bpsExec\n");
+            fprintf(stdout, "%s,%s,%u,%u,%u,  ", srcFile.c_str(), engine_name.c_str(), steps, volume, state.beads.size());
+            fprintf(stdout, "%f,%f,%f,%f,%f,%f,%f,  ", 
+                load_time, timings.compile, timings.aquire, timings.configure, timings.execute_to_first_bead, timings.execute_to_last_bead, timings.perf_counters);
+            double bpsEndToEnd= state.beads.size() * double(steps) / (tEnd-tStart);
+            double bpsCompileConfigExecExport= state.beads.size() * double(steps) / (tEndCore-tStartCore);
+            double bpsExec=state.beads.size() * double(steps) / timings.execute_to_first_bead;
+            fprintf(stdout, "%g,%g,%g\n", bpsEndToEnd, bpsCompileConfigExecExport, bpsExec);
+        }
+
+        fprintf(stderr, "Successful completion.\n");
 
     }catch(const std::exception &e){
         print_exception(e);

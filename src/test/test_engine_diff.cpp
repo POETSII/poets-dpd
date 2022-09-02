@@ -7,10 +7,14 @@
 #include "dpd/tests/test_isolated_moving_bead.hpp"
 #include "dpd/tests/test_multiple_moving_beads.hpp"
 #include "dpd/engines/naive/naive_dpd_engine.hpp"
+#include "dpd/core/logging_impl.hpp"
 
 #include "dpd/tests/test_differential.hpp"
 
 #include <random>
+
+#define TBB_PREVIEW_GLOBAL_CONTROL 1
+#include <tbb/global_control.h>
 
 void usage()
 {
@@ -24,6 +28,14 @@ void usage()
 
 int main(int argc, const char *argv[])
 {
+    int max_parallelism=tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism);
+    if(getenv("PDPD_NUM_THREADS")){
+        max_parallelism=std::atoi(getenv("PDPD_NUM_THREADS"));
+    }
+    std::cerr<<"TBB is using "<<max_parallelism<<" threads.\n";
+    tbb::global_control tbb_control_threads(tbb::global_control::max_allowed_parallelism, max_parallelism);
+      
+
     std::string engine_name;
     if(argc>1){
         engine_name=argv[1];
@@ -34,6 +46,15 @@ int main(int argc, const char *argv[])
     std::string prefix;
     if(argc>2){
         prefix=argv[2];
+    }
+
+    std::string log_dst;
+    FileLogger *logger=nullptr;
+    if(getenv("PDPD_LOG")){
+        log_dst=getenv("PDPD_LOG");
+        logger=new FileLogger(log_dst);
+        ForceLogging::set_logger(logger);
+        fprintf(stderr, "Logging to %s, p=%p\n", log_dst.c_str(), ForceLogging::logger());
     }
 
     TestOrderedMesh::register_tests();
@@ -59,6 +80,8 @@ int main(int argc, const char *argv[])
             continue;
         }
 
+        pengine2 = DPDEngineFactory::create(engine_name);
+
         auto test=std::get<2>(ttt)();
 
         auto r=test_differential(*test, engine1, *pengine2);
@@ -70,5 +93,11 @@ int main(int argc, const char *argv[])
         }
         test_num++;
     }
+
+    ForceLogging::set_logger(nullptr);
+    if(logger){
+        delete logger;
+    }
+
     return failed>0;
 }

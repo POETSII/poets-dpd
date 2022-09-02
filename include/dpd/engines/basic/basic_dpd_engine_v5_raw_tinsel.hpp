@@ -5,21 +5,42 @@
 
 #ifndef PDPD_TINSEL
 #include "POLiteSWSim_PGraph.h"
+#include "ParallelFor.h"
 #include <iostream>
 #include <unistd.h>
+#include "dpd/core/AsyncHostLink.hpp"
 #endif
 
-template<bool NoBonds, class Impl>
+#include "POLite/PerfCounterAccumulator.h"
+
+template<bool NoBonds, class Impl, bool NoRandom>
 class BasicDPDEngineV5RawTinselImpl
-    : public BasicDPDEngineV5RawImpl<NoBonds>
+    : public BasicDPDEngineV5RawImpl<NoBonds,NoRandom>
 {
 public:
     using Handlers = BasicDPDEngineV5RawHandlersImpl<NoBonds>;
-    using Base = BasicDPDEngineV5RawImpl<NoBonds>;
+    using Base = BasicDPDEngineV5RawImpl<NoBonds,NoRandom>;
 
     using None = typename Impl::None;
 
     static constexpr auto NHoodPin = Impl::Pin(0);
+
+    enum PerfCounters
+    {
+        ResidentBeadCount,
+        ResidentBondCount,
+        ResidentAngleCount,
+        // Really these should not be exposed by the device, as they are static
+        LocX,
+        LocY,
+        LocZ,
+
+        NumPerfCounters
+    };
+
+    static constexpr bool UseDevicePerfCounters = false;
+    static constexpr bool ENABLE_CORE_PERF_COUNTERS = UseDevicePerfCounters;
+    static constexpr bool ENABLE_THREAD_PERF_COUNTERS = UseDevicePerfCounters;
 
 
     struct Message
@@ -35,6 +56,7 @@ public:
     struct State
     {
         typename Base::device_state_t state;
+        uint32_t device_performance_counters[UseDevicePerfCounters ? NumPerfCounters : 0];
     };
 
     
@@ -61,10 +83,36 @@ public:
             //    printf("In %x\n", s->state.resident.elements[i].id);
             //}
             Handlers::on_init(s->state);
+            if constexpr(UseDevicePerfCounters){
+                for(unsigned i=0; i< std::size(s->device_performance_counters); i++){
+                    s->device_performance_counters[i]=0;
+                }
+                s->device_performance_counters[LocX] = s->state.location[0];
+                s->device_performance_counters[LocY] = s->state.location[1];
+                s->device_performance_counters[LocZ] = s->state.location[2];
+            }
             update_rts();
         }
 
         inline bool step() {
+            if constexpr(UseDevicePerfCounters){
+                if(s->state.phase!=Handlers::Migrating){
+                    s->device_performance_counters[ResidentBeadCount] += s->state.resident.n;
+                    uint32_t bonds=0, angles=0;
+                    for(unsigned i=0; i<s->state.resident.n; i++){
+                        const auto &bead=s->state.resident.elements[i];
+                        if(!BeadHash{bead.id}.is_monomer()){
+                            for(unsigned j=0; j<Base::MAX_BONDS_PER_BEAD; j++){
+                                bonds += bead.bond_partners[j] != -1;
+                            }
+                            angles += bead.angle_bonds[0].partner_head != -1;
+                        }
+                    }
+                    s->device_performance_counters[ResidentBondCount] += bonds;
+                    s->device_performance_counters[ResidentAngleCount] += angles;
+                }
+            }
+
             bool res= Handlers::on_barrier(s->state);
             update_rts();
             return res;
@@ -101,19 +149,23 @@ public:
 
         inline void recv(Message* msg, None* /*edge*/) {
             if(msg->type==Base::OutputFlags::RTS_INDEX_share){
+
+                uint32_t rts=s->state.rts;
                 Handlers::template on_recv_share<false>(s->state, msg->bead_view);
+                if(!NoBonds && (rts != s->state.rts)){
+                    update_rts();
+                }
 
             }else if(msg->type==Base::OutputFlags::RTS_INDEX_force){
+                // Never updates rts
                 Handlers::on_recv_force(s->state, msg->force_input);
-
             }else if(msg->type==Base::OutputFlags::RTS_INDEX_migrate){
+                // Never updates rts
                 Handlers::on_recv_migrate(s->state, msg->bead_resident);
             
             }else{
                 assert(false);
             }
-
-            update_rts();
         }
 
         inline bool finish(Message volatile*)
@@ -125,42 +177,78 @@ public:
           State,     // State
           None,         // Edge label
           Message,    // Message
-          1
+          1,
+          ENABLE_CORE_PERF_COUNTERS,
+          ENABLE_THREAD_PERF_COUNTERS
         >;
 
 #ifndef PDPD_TINSEL
-    std::shared_ptr<typename Impl::HostLink> m_hostlink;
+    AsyncHostLink<Impl> m_hostlink;
     std::shared_ptr<typename Impl::template PGraph<Device, State, None, Message>> m_graph;
     int m_meshLenX;
     int m_meshLenY;
     bool m_use_device_weights;
+    DPDEngine::timings_t m_timings;
+
+    static double now()
+    {
+        timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        return ts.tv_sec+1e-9*ts.tv_nsec;
+    };
 
     BasicDPDEngineV5RawTinselImpl(bool use_device_weights=false)
     {
         std::cerr<<"Construct\n";
         m_meshLenX=Impl::BoxMeshXLen;
         m_meshLenY=Impl::BoxMeshYLen;
+        if(getenv("PDPD_BOX_MESH_X")){
+            int v=atoi(getenv("PDPD_BOX_MESH_X"));
+            if(v<1 || v>m_meshLenX){
+                throw std::runtime_error("Invalid PDPD_BOX_MESH_X");
+            }
+            m_meshLenX=v;
+            fprintf(stderr, "Setting boxMeshLenX to %d\n", m_meshLenX);
+        }
+        if(getenv("PDPD_BOX_MESH_Y")){
+            int v=atoi(getenv("PDPD_BOX_MESH_Y"));
+            if(v<1 || v>m_meshLenY){
+                throw std::runtime_error("Invalid PDPD_BOX_MESH_Y");
+            }
+            m_meshLenY=v;
+            fprintf(stderr, "Setting boxMeshLenY to %d\n", m_meshLenY);
+        }
+
+        typename Impl::HostLinkParams params;
+        params.numBoxesX=m_meshLenX;
+        params.numBoxesY=m_meshLenY;
+        m_hostlink.SetParams(params);
+        m_use_device_weights=use_device_weights;
     }
 
-    void ensure_hostlink()
+    virtual bool GetTimings(DPDEngine::timings_t &timings)
     {
-        if(!m_hostlink){
-            //std::cerr<<"Opening hostlink\n";
-            typename Impl::HostLinkParams params;
-            params.numBoxesX=m_meshLenX;
-            params.numBoxesY=m_meshLenY;
-            //std::cerr<<"  boxx="<<params.numBoxesX<<", boxy="<<params.numBoxesY<<"\n";
-            m_hostlink = std::make_shared<typename Impl::HostLink>(params);
-        }
+        timings = m_timings;
+        return true;
     }
 
     void Attach(WorldState *state) override
     {
-        ensure_hostlink();
+        if(state){
+            m_hostlink.beginAquisition();
+            m_timings=DPDEngine::timings_t();
+        }else{
+            m_hostlink.reset();
+        }
         
+        double tBegin=now();
         Base::Attach(state);
 
-        //std::cerr<<"Building graph\n";
+        if(!state){
+            return;
+        }
+
+        std::cerr<<"Building graph\n";
 
         m_graph=std::make_shared<typename Impl::template PGraph<Device, State, None, Message>>(m_meshLenX, m_meshLenY);
         auto &graph=*m_graph;
@@ -172,12 +260,18 @@ public:
             graph.mapVerticesToDRAM=true;
         }
 
-        for(unsigned i=0; i<Base::m_devices.size(); i++){
+        /*for(unsigned i=0; i<Base::m_devices.size(); i++){
             auto id=graph.newDevice();
             if(id!=i){
                 throw std::logic_error("Device ids not sequentials.");
             }
+        }*/
+        auto dev0=graph.newDevices(Base::m_devices.size());
+        if(dev0!=0){
+            throw std::logic_error("Device ids not sequentials.");
         }
+
+
         // PGraph ids are simply the index of the state in states
         auto get_device_id=[&](const typename Base::device_state_t *s)
         {
@@ -190,6 +284,7 @@ public:
         // We only have two types of connectivity:
         // - HostPin : doing output (already setup)
         // - NHoodPin : sending to all neighbours including self
+        #if 0
         for(unsigned i=0; i<Base::m_devices.size(); i++){
             auto &s = Base::m_devices[i];
             for(auto nb : Base::m_neighbour_map[&s]){
@@ -197,10 +292,22 @@ public:
                 graph.addEdge(i, /*PinId*/0, target);
             }
         }
+        #endif
+        std::cerr<<"adding edges\n";
+        parallel_for_with_grain<unsigned>(0, Base::m_devices.size(), 16,
+            [&](unsigned src)
+            {
+                auto &s = Base::m_devices[src];
+                for(auto nb : Base::m_neighbour_map[&s]){
+                    graph.addEdgeLockedDst(src, /*PinId*/0, get_device_id(nb));
+                }
+            }
+        );
 
-        bool useDeviceWeights=false;
+
         std::vector<unsigned> device_weights;
-        if(useDeviceWeights){
+        if(m_use_device_weights){
+            std::cerr<<"Adding weights\n";
             const int BASE_DEVICE_WEIGHT = 2;
             device_weights.assign(Base::m_devices.size(), BASE_DEVICE_WEIGHT);
             for(const Polymer &p : Base::m_state->polymers){
@@ -222,9 +329,10 @@ public:
             }
         }
 
+        std::cerr<<"Mapping\n";
         graph.map();
 
-        if(useDeviceWeights){
+        if(m_use_device_weights){
             std::unordered_map<unsigned,std::pair<unsigned,unsigned>> thread_sums;
 
             FILE *tmp=fopen("weight_mapping_cost.csv", "wt");
@@ -248,6 +356,8 @@ public:
             fclose(tmp);
         }
 
+        m_timings.compile = now()-tBegin;
+
     }
 
     void step_all(
@@ -258,69 +368,104 @@ public:
         std::function<bool(typename Base::raw_bead_resident_t &output)> callback
     ) override
     {
-        ensure_hostlink();
+        m_hostlink.beginAquisition();
 
         unsigned nBeads=Base::m_state->beads.size();
 
         assert(m_graph);
         auto &graph=*m_graph;
 
+        // Really this is compile
+        double tBegin=now();
         for(unsigned i=0; i<states.size(); i++){
             graph.devices[i]->state.state = states[i];
             graph.devices[i]->state.state.t = Base::m_state->t;
             graph.devices[i]->state.state.t_hash = Base::m_t_hash;
             graph.devices[i]->state.state.t_seed = Base::m_state->seed;
         }
+        m_timings.compile += now() - tBegin;
 
+        tBegin = now();
+        m_hostlink.completeAquisition();
+        m_timings.aquire = now()-tBegin;
+
+        tBegin = now();
         //std::cerr<<"Writing graph\n";
         graph.write(m_hostlink.get());
-
         //std::cerr<<"Booting\n";
         m_hostlink->boot("bin/engines/basic_dpd_engine_v5_raw_tinsel_hw.riscv.code.v", "bin/engines/basic_dpd_engine_v5_raw_tinsel_hw.riscv.data.v");
         //std::cerr<<"Go\n";
+        m_timings.configure = now()-tBegin;
+
+        PolitePerfCounterAccumulator<decltype(*m_graph),Thread> perf_counters(*m_graph, m_hostlink.get());
+
+        m_hostlink->setStdOutFilterProc([&](uint32_t threadId, const char *line){
+            return perf_counters.process_line(threadId, line);
+        });
+
+        tBegin=now();
         m_hostlink->go();
-
-        auto now=[]()
-        {
-            timespec ts;
-            clock_gettime(CLOCK_REALTIME, &ts);
-            return ts.tv_sec+1e-9*ts.tv_nsec;
-        };
-
         
         //std::cerr<<"Waiting for output\n";
         unsigned seen=0;
-        double tStart=now();
-        double tPrint=tStart+4;
+        double tPrint=tBegin+4;
+        double tLastGotForRound=tBegin;
         while(1){
             while(m_hostlink->pollStdOut(stderr));
 
             typename Impl::template PMessage<Message> msg;
             if(m_hostlink->canRecv()){
+                double tNow=now();
+                if(seen==0){
+                    m_timings.execute_to_first_bead = tNow - tBegin;
+                }
                 ++seen;
                 m_hostlink->recvMsg(&msg, sizeof(msg));
                 if(!callback(msg.payload.bead_resident)){
                     break;
                 }
-                if(seen==1){
-                    double tNow=now();
-                    uint64_t nSteps = Base::m_devices[0].interval_size * (uint64_t)Base::m_devices[0].intervals_todo;
-                    //std::cerr<<"First bead, t="<<(tNow-tStart)<<", nBeads="<<nBeads<<", nSteps="<<nSteps<<", bead*step/sec="<< (nBeads*nSteps) / (tNow-tStart)<<"\n";
-                }
+
+                tLastGotForRound=tNow;
+                
             }else{
                 double tNow=now();
                 if(tNow>tPrint){
                     std::cerr<<"  got "<<seen<<" out of "<<nBeads<<"\n";
-                    tPrint=tStart+1.5*(tNow-tStart);
+                    tPrint=tBegin+1.5*(tNow-tBegin);
                 }
-                usleep(1);
+                if(seen > 0 && interval_count==1 && (tNow - tLastGotForRound) > 5){
+                    std::cerr<<"  got "<<seen<<" out of "<<nBeads<<"\n";
+                    std::cerr<<"  last bead received at "<<(tNow-tLastGotForRound)<<" secs ago. Assuming lock-up and aborting.\n";
+                    exit(1);
+                }
+                usleep(1); // TODO : Sigh
             }
         }
+        m_timings.execute_to_last_bead=now() - tBegin;
 
-        for(int i=0; i<1000; i++){
-            (m_hostlink->pollStdOut(stderr));
+        tBegin=now();
+        fprintf(stderr, "Picking up performance counters.\n");
+        while(!perf_counters.is_complete()){
+            m_hostlink->pollStdOut(stderr);
+            double tNow=now();
+            if(tNow>tPrint){
+                perf_counters.print_progress();
+                tPrint=tBegin+1.5*(tNow-tBegin);
+            }
+        }
+        if(Device::HasDevicePerfCounters){
+            perf_counters.dump_combined_device_counters(
+                {"ResidentBeadCount","ResidentBondCount","ResidentAngleCount","LocX","LocY","LocZ"},
+                stdout
+            );
+        }else if(Thread::ENABLE_THREAD_PERF_COUNTERS){
+            perf_counters.dump_combined_thread_counters(stdout);
         }
 
+        while(m_hostlink->pollStdOut(stderr));
+        m_timings.perf_counters = now()-tBegin;
+
+        // TODO: this is working round the inability to restart things on a hostlink.
         m_hostlink.reset();
     }
 #endif
@@ -329,9 +474,12 @@ public:
 };
 
 template<class TImpl>
-using BasicDPDEngineV5RawTinsel = BasicDPDEngineV5RawTinselImpl<false, TImpl>;
+using BasicDPDEngineV5RawTinsel = BasicDPDEngineV5RawTinselImpl<false, TImpl, false>;
 
 template<class TImpl>
-using BasicDPDEngineV5RawNoBondsTinsel = BasicDPDEngineV5RawTinselImpl<true, TImpl>;
+using BasicDPDEngineV5RawNoBondsTinsel = BasicDPDEngineV5RawTinselImpl<true, TImpl, false>;
+
+template<class TImpl>
+using BasicDPDEngineV5RawNoRandomTinsel = BasicDPDEngineV5RawTinselImpl<false, TImpl, true>;
 
 #endif

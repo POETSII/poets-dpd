@@ -25,13 +25,19 @@ namespace dpd_maths_core_half_step
         TBead &b
     )
     {
-        // x(t+dt) = x(t) + v(t)*dt + f(t)*dt*dt
+        // x(t+dt) = x(t) + v(t)*dt + f(t)*dt*dt/2
         // v(t+dt/2) = v(t) + dt*f(t)/2
 
         auto x = b.x + b.v*dt + b.f*half(dt*dt);
         for(int i=0; i<3; i++){
-            x[i] += (x[i]<0 ? dims[i] : 0);
-            x[i] -= (x[i]>=dims[i] ? dims[i] : 0);
+            if(x[i] < 0){
+                x[i] += dims[i];
+                if(x[i]==dims[i]){
+                    x[i] = 0;
+                }
+            }else if(x[i] >= dims[i]){
+                x[i] -= dims[i];
+            }
             assert(0<=x[i] && x[i] < dims[i]);
         }
 #ifndef PDPD_TINSEL

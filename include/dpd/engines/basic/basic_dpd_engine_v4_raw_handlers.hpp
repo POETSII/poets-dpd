@@ -550,8 +550,8 @@ struct BasicDPDEnginev4RawHandlers
 
         if(EnableLogging && ForceLogging::logger()){
             ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, BeadHash{bead.id}, BeadHash{tail->bead_hash}, "f_next_angle_head", 3, headForce);
-            ForceLogging::logger()->LogBeadTripleProperty(BeadHash{bead.id}, BeadHash{head->bead_hash},  BeadHash{tail->bead_hash}, "f_next_angle_mid", 3, middleForce);
-            ForceLogging::logger()->LogBeadTripleProperty(BeadHash{tail->bead_hash}, BeadHash{head->bead_hash}, BeadHash{bead.id}, "f_next_angle_tail", 3, tailForce);
+            ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, BeadHash{bead.id}, BeadHash{tail->bead_hash}, "f_next_angle_mid", 3, middleForce);
+            ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, BeadHash{bead.id}, BeadHash{tail->bead_hash}, "f_next_angle_tail", 3, tailForce);
         }
     }
 

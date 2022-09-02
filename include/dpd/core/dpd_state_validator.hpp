@@ -18,7 +18,7 @@ public:
     {}
 };
 
-inline void validate(const WorldState &s, double max_r=1)
+inline void validate(const WorldState &s, double max_r=1, double max_dist_per_step=0.5)
 {
     auto require=[](bool cond, const char *msg)
     {
@@ -49,10 +49,15 @@ inline void validate(const WorldState &s, double max_r=1)
         unsigned a=i / s.bead_types.size();
         unsigned b=i % s.bead_types.size();
         unsigned j = s.bead_types.size() * b + a;
-        REQUIRE(s.interactions.at(i).conservative == s.interactions.at(j).conservative);
-        REQUIRE(s.interactions.at(i).dissipative == s.interactions.at(j).dissipative);
-        REQUIRE(0<= s.interactions.at(i).conservative);
-        REQUIRE(0<= s.interactions.at(i).dissipative);
+        
+        if(s.interactions.at(i).conservative.is_constant()){
+            REQUIRE(s.interactions.at(i).conservative == s.interactions.at(j).conservative);
+            REQUIRE(0<= s.interactions.at(i).conservative);
+        }
+        if(s.interactions.at(i).dissipative.is_constant()){
+            REQUIRE(s.interactions.at(i).dissipative == s.interactions.at(j).dissipative);
+            REQUIRE(0<= s.interactions.at(i).dissipative);
+        }
     }
 
     std::unordered_set<std::string> polymer_type_names;
@@ -103,6 +108,7 @@ inline void validate(const WorldState &s, double max_r=1)
             const auto &h = s.beads.at( p.bead_ids.at( b.bead_offset_head) );
             const auto &t = s.beads.at( p.bead_ids.at( b.bead_offset_tail) );
             vec3r_t distance=h.x - t.x;
+
             for(int i=0; i<3; i++){
                 if(std::abs(distance[i]+s.box[i]) < std::abs(distance[i])){
                     distance[i] += s.box[i];
@@ -119,29 +125,40 @@ inline void validate(const WorldState &s, double max_r=1)
                 tmp<<" at bead pair ("<<h.bead_id<<","<<t.bead_id<<")";
                 require(false, ("WorldState validation failed : "+tmp.str()).c_str());
             }
+
+            REQUIRE( r < max_r);
+
         }
     }
 
     std::unordered_map<BeadHash,const Bead *> seen_hashes;
 
-    // Max speed allowed is half a box per time-step
-    double max_v = 0.5 / s.dt;
+    // Max speed allowed is 0.8 box per time-step
+    double max_v = 0.8 / s.dt;
     // Max force would cause speed to increase by max_v in one time-step
     double max_f = max_v / s.dt;
-    // or distance to change by more than 0.5 in one time-step
-    max_f = std::min(max_f, 1.0/(s.dt*s.dt));
+    // or distance to change by more than 0.8 in one time-step
+    max_f = std::min(max_f, 1.6/(s.dt*s.dt));
     // TODO : double-check those velocity and force thresholds.
     for(const auto & b : s.beads){
         for(unsigned i=0; i<3; i++){
             REQUIRE( 0 <= b.x[i] );
             double bx=b.x[i], sb=s.box[i];
             if(bx >= sb){
-                std::cerr<<"  bead "<<i<<", x="<<b.x<<", dims="<<s.box<<"\n";
+                std::cerr<<"  bead "<<b.bead_id<<", x="<<b.x<<", dims="<<s.box<<"\n";
             }
             REQUIRE(b.x[i] < s.box[i]);
 
+            if(!(-max_v <= b.v[i] && b.v[i] <= max_v)){
+                std::cerr<<"  bead "<<b.bead_id<<", v="<<b.v<<", max_v="<<max_v<<"\n";
+                exit(1);
+            }
             REQUIRE( -max_v <= b.v[i] && b.v[i] <= max_v);
 
+            if(!(-max_f <= b.f[i] && b.f[i] <= max_f)){
+                std::cerr<<"  bead "<<b.bead_id<<", f="<<b.f<<", max_f="<<max_f<<"\n";
+                exit(1);
+            }
             REQUIRE( -max_f <= b.f[i] && b.f[i] <= max_f );
         }
 

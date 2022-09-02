@@ -51,6 +51,15 @@ struct bag_wrapper
     T &back()
     { assert(!empty()); return storage.elements[storage.n-1]; }
 
+    T &reserve_after_back()
+    { assert(storage.n < MAX_N); return storage.elements[storage.n]; }
+
+    void commit_after_back()
+    {
+        assert(storage.n < MAX_N);
+        storage.n+=1; 
+    }
+
     const T &front() const
     { assert(!empty()); return storage.elements[0]; }
 

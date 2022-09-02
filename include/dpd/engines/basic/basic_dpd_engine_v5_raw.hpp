@@ -16,7 +16,7 @@
     - Multiple time-steps within loop.
     - Output is via message.
 */
-template<bool NoBonds>
+template<bool NoBonds, bool NoRandom=false>
 class BasicDPDEngineV5RawImpl
     : public BasicDPDEngine
 {
@@ -32,7 +32,7 @@ public:
 
     static constexpr bool EnableLogging = false;
 
-    using Handlers = BasicDPDEngineV5RawHandlersImpl<NoBonds>;
+    using Handlers = BasicDPDEngineV5RawHandlersImpl<NoBonds,NoRandom>;
 
     using OutputFlags = typename Handlers::OutputFlags;
     using raw_bead_view_t = typename Handlers::raw_bead_view_t;
@@ -47,21 +47,18 @@ public:
         device_state_t *dst;
         std::variant<std::monostate,raw_bead_resident_t,raw_bead_view_t,raw_force_input_t> payload;
     };
+
+    bool CanSupportHookeanBonds() const override
+    { return !NoBonds; }
+
+    bool CanSupportAngleBonds() const override
+    { return !NoBonds; }
     
     std::string CanSupport(const WorldState *s) const override
     {
         if(s->bead_types.size()>1){
             if(s->bead_types.size() > MAX_BEAD_TYPES){
                 return "Too many bead types.";
-            }
-        }
-
-        if(NoBonds){
-            for(auto p : s->polymers){
-                auto pt = s->polymer_types.at(p.polymer_type);
-                if(pt.bonds.size()>0){
-                    return "This engine does not support bonds (DPD forces only).";
-                }
             }
         }
 
@@ -96,9 +93,13 @@ public:
                 device_state_t &dst=m_devices[i];
                 const cell_t &src=m_cells[i];
 
+                int32_t loc[3];
+                src.location.extract(loc);
+
                 m_box.extract(dst.box);
                 dst.dt=m_state->dt;
                 dst.scaled_inv_root_dt=pow_half(24 / m_state->dt);
+                dst.edge_bits = create_wrap_bits(&m_box.x[0], loc);
                 dst.bond_r0=m_bond_r0;
                 dst.bond_kappa=m_bond_kappa;
                 for(unsigned i=0; i<m_state->bead_types.size(); i++){
@@ -274,7 +275,7 @@ public:
                 if(output.t < s.time){
                     fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                 }
-                require(output.t >= s.time, "Time does not match a slice time.");
+                //require(output.t >= s.time, "Time does not match a slice time.");
                 if(output.t == s.time){
                     //fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                     bool prev_comp=s.complete();

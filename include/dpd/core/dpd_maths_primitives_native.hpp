@@ -38,10 +38,65 @@ inline void memcpy32(uint32_t *a, const uint32_t *b, unsigned n)
     memcpy(a, b, n*4);
 }
 
+inline void memcpy32(uint32_t *a, const volatile uint32_t *b, unsigned n)
+{
+    memcpy32(a, (const uint32_t*)b, n);
+}
+
+inline void memcpy32(volatile uint32_t *a, const uint32_t *b, unsigned n)
+{
+    memcpy32((uint32_t*)a, (const uint32_t*)b, n);
+}
+
+inline void memzero32(uint32_t *a, unsigned n)
+{
+    memset(a, 0, n*4);
+}
+
+template<unsigned N>
+void memcpy32(uint32_t *a, const uint32_t *b)
+{
+    memcpy32(a,b,N);
+}
+
+template<unsigned N>
+void memcpy32(uint32_t *a, const volatile uint32_t *b)
+{
+    memcpy32(a,b,N);
+}
+
+template<unsigned N>
+void memcpy32(volatile uint32_t *a, const uint32_t *b)
+{
+    memcpy32(a,b,N);
+}
+
+template<unsigned N>
+void memzero32(uint32_t *a)
+{
+    memzero32(a,N);
+}
+
+
+inline void memswap32(uint32_t *a, uint32_t *b, unsigned n)
+{
+    std::swap_ranges(a, a+n, b);
+}
+
+template<unsigned N>
+inline void memswap32(uint32_t *a, uint32_t *b)
+{
+    memswap32(a, b, N);
+}
+
 inline int round_impl(float x)
 {
     return roundf(x);
 }
 
+inline uint32_t tinselCycleCount()
+{
+    return 0;
+}
 
 #endif

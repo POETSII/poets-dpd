@@ -23,10 +23,10 @@ struct input
         vec3r_t f;
 
         uint32_t get_bead_type() const
-        { return bead_hash_get_bead_type(hash); }
+        { return BeadHash(hash).get_bead_type(); }
 
-        uint32_t get_hash_code() const
-        { return hash; }
+        BeadHash get_hash_code() const
+        { return BeadHash{hash}; }
     }beads[2];
 };
 
@@ -84,7 +84,7 @@ void test_input(const input &i)
         dpd_maths_core_half_step::update_mom(ih.dt, ih.beads[0]);
         dpd_maths_core_half_step::update_mom(ih.dt, ih.beads[1]);
 
-        dpd_maths_core_half_step::calc_force<double,vec3r_t>(
+        dpd_maths_core_half_step::calc_force<false, double,vec3r_t>(
             scaled_inv_root_dt,
             [&](unsigned, unsigned){ return i.con_strength; },
             [&](unsigned, unsigned){ return sqrt(i.diss_strength); },

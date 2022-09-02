@@ -46,23 +46,66 @@ class NaiveDPDEngineHalfStep
     friend class NaiveDPDEngineHalfStepTBBV2;
     friend class TolerantDPDEngineHalfStepTBB;
     
+    static double now()
+    {
+        timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        return ts.tv_sec+1e-9*ts.tv_nsec;
+    };
 public:
     virtual void Attach(WorldState *state)
     {
         m_state=state;
+        m_timings=DPDEngine::timings_t();
     }
+
+    bool CanSupportHookeanBonds() const override
+    { return true; }
+
+    bool CanSupportAngleBonds() const override
+    { return true; }
 
     virtual void Run(unsigned nSteps) override
     {
+        double start=now();
+
         check_constraints_and_setup();
+
+        double mid=now();
+        m_timings.configure += mid-start;
 
         for(unsigned i=0; i<nSteps; i++){
             step();
         }
+
+        double end=now();
+        m_timings.execute_to_first_bead += end-mid;
+        m_timings.execute_to_last_bead += end-mid; 
     }
 
+    void SetFixedWater(bool fixed_water=true)
+    {
+        m_fixed_water=fixed_water;
+    }
+
+    // This is a bit arbitrary, but this is not supposed
+    // to be an engine that operates in weird stressed situations.
+    double m_max_bond_length=2.0;
+
+    virtual double GetMaxBondLength() const
+    {
+        return m_max_bond_length;
+    }
+
+    virtual bool GetTimings(DPDEngine::timings_t &timings)
+    {
+        timings = m_timings;
+        return true;
+    }
 private:
     WorldState *m_state;
+
+    timings_t m_timings;
 
     unsigned m_numBeadTypes;
     vec3r_t m_lengths; // dimensions in all directions Must be an integer, though encoded as real
@@ -72,6 +115,7 @@ private:
     double m_scaled_inv_root_dt;
 
     uint64_t m_t_hash;
+    bool m_fixed_water=false;
 
     std::unordered_set<std::pair<const Bead*,const Bead*>, NaiveDPDEngine<false>::bp_hash> m_seen_pairs;
 
@@ -210,13 +254,21 @@ private:
 
         // Move the beads, and then assign to cells based on x(t+dt)
         for(auto &b : m_state->beads){
-            dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
+            if(m_fixed_water){
+                if(b.bead_type){
+                    dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
+                }
+            }else{
+                dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
+            }
             m_cells.at( world_pos_to_cell_index(b.x) ).push_back(&b);
         }
 
         // Calculate all the DPD and 2-bead bond forces
         // Each cell's force is calculated independently
         vec3i_t pos, dir;
+        //std::cerr<<"naive_dpd_engine_half_step : skippping dpd forces.\n";
+        
         for(pos[0]=0; pos[0]<m_lengths[0]; pos[0]++){
             for(pos[1]=0; pos[1]<m_lengths[1]; pos[1]++){
                 for(pos[2]=0; pos[2]<m_lengths[2]; pos[2]++){
@@ -233,18 +285,31 @@ private:
                 }
             }
         }
+        
 
         // Update all angle bonds
+        //std::cerr<<"naive_dpd_engine_half_step_tbb : skippping angle forces.\n";
+        
         for(const auto &p : m_state->polymers){
             const auto &pt = m_state->polymer_types.at(p.polymer_type);
+            for(const auto &bond : pt.bonds){
+                update_hookean_bond(p, pt, bond);
+            }
             for(const auto &bond_pair : pt.bond_pairs){
                 update_angle_bond(p, pt, bond_pair);
             }
         }
+        
 
         // Final momentum update
         for(auto &b : m_state->beads){
-            dpd_maths_core_half_step::update_mom(dt, b);
+            if(m_fixed_water){
+                if(b.bead_type){
+                    dpd_maths_core_half_step::update_mom(dt, b);
+                }
+            }else{
+                dpd_maths_core_half_step::update_mom(dt, b);
+            }
         }
 
         if(EnableLogging && ForceLogging::logger()){
@@ -262,31 +327,6 @@ private:
         m_state->t += 1;
     }
 
-    bool is_bonded(
-        const Bead &home, const Bead &other,
-        double &kappa,
-        double &r0
-    ) const
-    {
-        kappa=0;
-        r0=0;
-        if(home.polymer_id!=other.polymer_id){
-            return false; // Rejects the vast majority
-        }
-        // This is very slow. In practise use a better method
-        for(const Bond &b : m_state->polymer_types.at(home.polymer_type).bonds){
-            if( ((b.bead_offset_head==home.polymer_offset) && (b.bead_offset_tail==other.polymer_offset))
-                ||
-                ((b.bead_offset_head==other.polymer_offset) && (b.bead_offset_tail==home.polymer_offset))
-            ){
-                kappa=b.kappa;
-                r0=b.r0;
-                return true;
-            }
-        }
-        return false;
-    }
-
     template<bool EnableLogging,class TBeadPtrVec>
     void  __attribute__((noinline))  update_cell_forces(TBeadPtrVec &home, const TBeadPtrVec &other, const vec3r_t &other_delta)
     {
@@ -300,6 +340,12 @@ private:
         
         for(const Bead *ob : other)
         {
+            if(m_fixed_water){
+                if(ob->bead_type==0){
+                    continue;
+                }
+            }
+
             vec3r_t ob_x = vec3r_t(ob->x) + other_delta;
             for(Bead *hb : home){
                 vec3r_t dx =  hb->x - ob_x;
@@ -312,9 +358,7 @@ private:
 
                 double dr=pow_half(dr2);
 
-                double kappa,r0;
-                is_bonded(*hb, *ob, kappa, r0);
-
+                const double kappa=0.0, r0=0.5; // Disable hookean bonds
                 vec3r_t f;
                 
                 dpd_maths_core_half_step::calc_force<EnableLogging>(
@@ -338,6 +382,28 @@ private:
                 }
             }
         }
+    }
+
+    void update_hookean_bond(const Polymer &p, const PolymerType &pt, const Bond &b) const
+    {
+        unsigned head_index=p.bead_ids.at(b.bead_offset_head);
+        unsigned tail_index=p.bead_ids.at(b.bead_offset_tail);
+        Bead &head_bead=m_state->beads[head_index];
+        Bead &tail_bead=m_state->beads[tail_index];
+
+        vec3r_t dx=calc_distance_from_to(head_bead.x, tail_bead.x);
+        double dr=dx.l2_norm();
+
+        if(dr>m_max_bond_length){
+            throw std::runtime_error("naive_dpd_engine_half_step : an angle bond has snapped.");
+        }
+
+        double dr0=b.r0-dr;
+        double hookeanForce=b.kappa*dr0;
+
+        vec3r_t f=dx * (hookeanForce/dr);
+        head_bead.f -= f;
+        tail_bead.f += f;
     }
 
     void update_angle_bond(const Polymer &p, const PolymerType &pt, const BondPair &bp) const
@@ -365,7 +431,7 @@ private:
         vec3r_t headForce, middleForce, tailForce;
 
         dpd_maths_core_half_step::calc_angle_force(
-            bp.kappa, cos(bp.theta0), sin(bp.theta0), 
+            (double)bp.kappa, cos((double)bp.theta0), sin((double)bp.theta0), 
             first, FirstLength,
             second, SecondLength,
             headForce, middleForce, tailForce

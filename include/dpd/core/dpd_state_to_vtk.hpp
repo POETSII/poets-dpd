@@ -2,13 +2,14 @@
 #define dpd_state_to_vtk_hpp
 
 #include "dpd_state.hpp"
+#include "dpd/core/with_optional_gzip_stream.hpp"
 
 #include <iostream>
 #include <fstream>
 
 std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
 {
-    int water_bead=0;
+    int water_bead=-1;
     for(const BeadType &bt : s.bead_types){
         if(bt.name=="W"){
             water_bead=bt.id;
@@ -37,6 +38,29 @@ std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
         dst<<b.x[0]<<" "<<b.x[1]<<" "<<b.x[2]<<"\n";
     }
 
+    /*
+    {
+        #error "This crashes paraview"
+
+    std::vector<std::pair<unsigned,unsigned>> bonds;
+    for(const auto &p : s.polymers){
+        for(const auto &bond : s.polymer_types[p.polymer_type].bonds){
+            bonds.push_back({ p.bead_ids[bond.bead_offset_head], p.bead_ids[bond.bead_offset_tail] });
+        }
+    }
+
+    dst<<"VERTICES "<<beads.size()<<" "<<2*beads.size()<<"\n";
+    for(unsigned i=0; i<beads.size(); i++){
+        dst<<"1 "<<i<<"\n";
+    }
+
+    dst<<"LINES "<<bonds.size()<<" "<<3*bonds.size()<<"\n";
+    for(auto bb : bonds){
+        dst<<"2 "<<bb.first<<" "<<bb.second<<"\n";
+    }
+    }
+    */
+
     dst<<"POINT_DATA "<<beads.size()<<"\n";
 
     dst<<"SCALARS bead_type double\n";
@@ -61,6 +85,13 @@ std::ostream &write_to_vtk(std::ostream &dst, const WorldState &s)
 */
 
     return dst;
+}
+
+void write_to_vtk(std::string dst_path, const WorldState &state1)
+{
+    with_optional_gzip_ostream(dst_path, [&](std::ostream &dst){
+        write_to_vtk(dst, state1);
+    });
 }
 
 struct VTKSnapshotter

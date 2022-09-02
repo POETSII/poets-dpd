@@ -58,8 +58,13 @@ class NaiveDPDEngineHalfStepTBB
 public:
     void Attach(WorldState *s) override
     {
+        std::cerr<<"naive_dpd_engine_half_step_tbb : attach.\n";
+
+
         m_locked_cells.clear();
         NaiveDPDEngineHalfStep::Attach(s);
+
+        double start=now();
 
         m_polymers_with_angles.clear();
         if(s){
@@ -70,11 +75,14 @@ public:
                 }
             }
         }
+
+        m_timings.configure += now()-start;
     }
 protected:
 
     void step() override
     {
+        
         if(ForceLogging::logger()){
             ForceLogging::logger()->SetTime(m_state->t);
         }
@@ -117,7 +125,7 @@ protected:
                         auto *b = c.beads[j];
                         dpd_maths_core_half_step::update_pos(dt, m_state->box, *b);
                         unsigned index=world_pos_to_cell_index(b->x);
-                        if(index!=i){
+                        if(index!=(unsigned)i){
                             // Add to dst
                             assert(m_locked_cells.at(index).index==index);
                             m_locked_cells.at( index ).new_beads.push_back(b); // push into concurrent_vector
@@ -147,6 +155,8 @@ protected:
         using range3d_t = tbb::blocked_range3d<int,int,int>;
         const int GRAIN_CELL=2;
         range3d_t cell_range(0, m_lengths[0], GRAIN_CELL, 0, m_lengths[1], GRAIN_CELL, 0, m_lengths[2], GRAIN_CELL);
+        //std::cerr<<"naive_dpd_engine_half_step_tbb : skippping dpd forces.\n";
+        
         tbb::parallel_for(cell_range, [&](const range3d_t &r){
             vec3i_t pos, dir;
             for(pos[0]=r.pages().begin(); pos[0]<r.pages().end(); pos[0]++){
@@ -166,20 +176,27 @@ protected:
                 }
             }
         });
+        
 
         // Update all angle bonds
         // We can do this in parallel, even though update_angle_bond modifies 3 beads, because
         // each polymer is processed in the same task. So there cant be any angle bonds affecting
         // inter-task, as that would mean angle bonds between beads in different polymers.
+        //std::cerr<<"naive_dpd_engine_half_step_tbb : skippping angle forces.\n";
+        
         tbb::parallel_for(range1d_t(0, m_polymers_with_angles.size(), 64), [&](const range1d_t &r){
             for(int i=r.begin(); i<r.end(); i++){
                 const auto &p = *m_polymers_with_angles[i];
                 const auto &pt = m_state->polymer_types.at(p.polymer_type);
+                for(const auto &bond : pt.bonds){
+                    update_hookean_bond(p, pt, bond);
+                }
                 for(const auto &bond_pair : pt.bond_pairs){
                     update_angle_bond(p, pt, bond_pair);
                 }
             }
         });
+        
 
         // Final momentum update
         tbb::parallel_for(range1d_t(0, m_state->beads.size(), 1024), [&](const range1d_t &r){

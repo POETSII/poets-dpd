@@ -52,7 +52,7 @@ private:
     friend class BasicDPDEngineV4;
     friend class BasicDPDEngineV3Raw;
     friend class BasicDPDEngineV4Raw;
-    template<bool NoBonds>
+    template<bool NoBonds, bool NoRandom>
     friend class BasicDPDEngineV5RawImpl;
     friend class BasicDPDEngineV6Raw;
     template<bool USE_X_CACHE>
@@ -152,8 +152,19 @@ private:
     }
 
 public:
+    bool CanSupportHookeanBonds() const override
+    { return true; }
+
+    bool CanSupportAngleBonds() const override
+    { return true; }
+
     std::string CanSupport(const WorldState *state) const override
     {
+        auto r=DPDEngine::CanSupport(state);
+        if(!r.empty()){
+            return r;
+        }
+
         float bond_kappa=-1;
         float bond_r0=nanf("");
 
@@ -692,8 +703,8 @@ protected:
 
             if(EnableLogging && ForceLogging::logger()){
                 ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, bead.get_hash_code(), BeadHash{tail->bead_hash}, "f_next_angle_head", headForce);
-                ForceLogging::logger()->LogBeadTripleProperty(bead.get_hash_code(), BeadHash{head->bead_hash}, BeadHash{tail->bead_hash}, "f_next_angle_mid", middleForce);
-                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{tail->bead_hash}, BeadHash{head->bead_hash}, bead.get_hash_code(), "f_next_angle_tail", tailForce);
+                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, bead.get_hash_code(), BeadHash{tail->bead_hash}, "f_next_angle_mid", middleForce);
+                ForceLogging::logger()->LogBeadTripleProperty(BeadHash{head->bead_hash}, bead.get_hash_code(), BeadHash{tail->bead_hash}, "f_next_angle_tail", tailForce);
             }
 
             bead.f += middleForce;

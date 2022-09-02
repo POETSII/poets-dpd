@@ -256,7 +256,7 @@ public:
                     next_slice_t += interval_size;
                 }
                 output_slice &s = slices.at(slice_i);
-                require(output.t >= s.time, "Time does not match a slice time.");
+                //require(output.t >= s.time, "Time does not match a slice time.");
                 if(output.t == s.time){
                     //fprintf(stderr, "  Slice %u, time=%u, size=%u\n", slice_i, s.time, s.num_seen);
                     bool prev_comp=s.complete();
