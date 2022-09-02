@@ -112,7 +112,13 @@ inline void validate(const WorldState &s, double max_r=1)
                 }
             }
             double r=distance.l2_norm();
-            REQUIRE( r < max_r);
+            if(r >= max_r){
+                std::stringstream tmp;
+                tmp<<"WorldState validation failed : r = "<<r<<" < max_r = "<<max_r;
+                tmp<<" for polymer "<<p.polymer_id<<" of type "<<p.polymer_type;
+                tmp<<" at bead pair ("<<h.bead_id<<","<<t.bead_id<<")";
+                require(false, ("WorldState validation failed : "+tmp.str()).c_str());
+            }
         }
     }
 

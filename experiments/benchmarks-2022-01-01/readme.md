@@ -1,4 +1,8 @@
-These scenarios were generated using poets-dpd
+These scenarios were generated using poets-dpd, version 5aed3d9d7870c155506899e498e194b48d0b773c,
+from the directory experiments/benchmarks-2022-01-01.
+
+They were then curated down to get the generated files to a reasonable size.
+The scripts in the generation directory can go bigger.
 
 Scenarios
 ---------
@@ -51,3 +55,6 @@ The files are presented in two forms:
 
     - bonds : Includes full support for hookean and angle-bonds
     - nobonds : hookean and angle bond handlers are turned off. Small performance boost, big reduction in code size.
+
+All XML is configured to perform 10000 steps. The biggest simulations have around 2M cells (devices) with
+around 6M beads, so at 30 M bead-steps/sec that would take 2000 seconds.
