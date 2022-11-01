@@ -58,3 +58,4 @@ experiments/jobs
 experiments/ec2/lammps
 *.state.bz2
 *.in
+snapshots

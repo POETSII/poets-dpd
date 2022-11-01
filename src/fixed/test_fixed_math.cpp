@@ -1,4 +1,7 @@
 #include "fixed_math.hpp"
+#include "fixed_math_v2.hpp"
+
+#include "sliding_window.hpp"
 
 #include <random>
 #include <iostream>

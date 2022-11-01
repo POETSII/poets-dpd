@@ -108,11 +108,26 @@ inline void validate(const WorldState &s, double max_r=1, double max_dist_per_st
             const auto &h = s.beads.at( p.bead_ids.at( b.bead_offset_head) );
             const auto &t = s.beads.at( p.bead_ids.at( b.bead_offset_tail) );
             vec3r_t distance=h.x - t.x;
-	    double r=vec3_wrapped_distance( h.x, t.x, s.box);
-	    if(r >= max_r){
-	      std::cerr<<"Bond: h.x="<<h.x<<", t.x"<<t.x<<", r="<<r<<"\n";
-	    }
+
+            for(int i=0; i<3; i++){
+                if(std::abs(distance[i]+s.box[i]) < std::abs(distance[i])){
+                    distance[i] += s.box[i];
+                }
+                if(std::abs(distance[i]-s.box[i]) < std::abs(distance[i])){
+                    distance[i] -= s.box[i];
+                }
+            }
+            double r=distance.l2_norm();
+            if(r >= max_r){
+                std::stringstream tmp;
+                tmp<<"WorldState validation failed : r = "<<r<<" < max_r = "<<max_r;
+                tmp<<" for polymer "<<p.polymer_id<<" of type "<<p.polymer_type;
+                tmp<<" at bead pair ("<<h.bead_id<<","<<t.bead_id<<")";
+                require(false, ("WorldState validation failed : "+tmp.str()).c_str());
+            }
+
             REQUIRE( r < max_r);
+
         }
     }
 

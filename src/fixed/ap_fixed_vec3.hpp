@@ -11,8 +11,35 @@ ap_uint<MSB-LSB+1> get_bits(ap_ufixed<Width,IntBits,QMode> x)
     return x.range(MSB,LSB);
 }
 
+//template<int Width, int IntBits, ap_q_mode QMode=AP_TRN>
+//using ap_fixed_vec3 = std::array<ap_fixed<Width,IntBits,QMode>,3>;
+
 template<int Width, int IntBits, ap_q_mode QMode=AP_TRN>
-using ap_fixed_vec3 = std::array<ap_fixed<Width,IntBits,QMode>,3>;
+struct ap_fixed_vec3
+{
+    ap_fixed<Width,IntBits,QMode> x, y, z;
+
+    ap_fixed<Width,IntBits,QMode> &operator[](int i)
+    {
+        switch(i){
+            default: assert(0);
+            case 0: return x;
+            case 1: return y;
+            case 2: return z;
+        }
+    }
+
+    const ap_fixed<Width,IntBits,QMode> &operator[](int i) const
+    {
+        switch(i){
+            default: assert(0);
+            case 0: return x;
+            case 1: return y;
+            case 2: return z;
+        }
+    }
+};
+
 
 template<int Width, int IntBits, ap_q_mode QMode=AP_TRN>
 ap_fixed<Width,IntBits,QMode> reinterpret_as_ap_fixed(ap_uint<Width> x)
@@ -67,7 +94,7 @@ void normalise_vector_16(
 
 
 // Pre: dr2 in (0,1)
-void normalise_vector_16_v2(
+__attribute__((always_inline)) void normalise_vector_16_v2(
     ap_fixed_vec3<1+16,1> &dxn, ap_ufixed<16,0> &r,
     ap_fixed_vec3<1+16,1> dx, ap_ufixed<16*2,0> dr2
 ){

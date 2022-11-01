@@ -57,7 +57,7 @@ ifeq ($5,)
 xml/$1/$2/$2.nobonds.xml.gz : states_bin/$1/$2/$2.state.gz
 	>&2 echo "$2 - converting to xml without bond support"
 	mkdir -p xml/$1/$2
-	gunzip -k -c $$< | (cd $(POETS_DPD_DIR) && bin/create_xml_v5_graph_instance 10000 1 ) | gzip -9 -c > $$@
+	gunzip -k -c $$< | (cd $(POETS_DPD_DIR) && bin/create_xml_v5_graph_instance 10000 1 ) | pigz --blocksize 1024 -9 -c > $$@
 
 $1_ALL_XML += xml/$1/$2/$2.nobonds.xml.gz
 
