@@ -86,7 +86,7 @@ inline std::unordered_map<vec3i_t,std::vector<vec3i_t>> make_absolute_nhood_map(
     std::unordered_map<vec3i_t,std::vector<vec3i_t>> res;
     res.reserve(size[0]*size[1]*size[2]);
     for_each_point_in_box({0,0,0}, size, [&](const vec3i_t &centre){
-        res[centre]=std::move(make_absolute_nhood(rel_nhood, size, centre));
+        res[centre]=make_absolute_nhood(rel_nhood, size, centre);
     });
     return res;
 }

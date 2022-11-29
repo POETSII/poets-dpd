@@ -14,7 +14,7 @@
 #include <array>
 #include <unordered_set>
 
-#include <immintrin.h>
+//#include <immintrin.h>
 
 /*
     This method must have lambda=0.5
@@ -45,6 +45,7 @@ class NaiveDPDEngineHalfStep
     friend class NaiveDPDEngineHalfStepTBB;
     friend class NaiveDPDEngineHalfStepTBBV2;
     friend class TolerantDPDEngineHalfStepTBB;
+    friend class StatsDPDEngineHalfStep;
     
     static double now()
     {
@@ -70,6 +71,8 @@ public:
         double start=now();
 
         check_constraints_and_setup();
+
+        m_cells.resize(calc_num_cells());
 
         double mid=now();
         m_timings.configure += mid-start;
@@ -205,12 +208,29 @@ private:
         return res;
     }
 
+    virtual void on_begin_step()
+    {}
+
+    virtual void on_bead_migrate(vec3i_t src_cell, vec3i_t dst_cell, const Bead *b)
+    {}
+
+    virtual void on_bead_interaction(const Bead &home, const Bead &other, vec3r_t dx, double dr, vec3r_t f)
+    {}
+
+    virtual void on_end_step()
+    {}
+
+    virtual bool HasStepHooks() const
+    { return false; }
+
     virtual void step()
     {
         m_seen_pairs.clear();
 
-        if(ForceLogging::logger()){
+        if(ForceLogging::logger() || HasStepHooks()){
+            on_begin_step();
             step_impl<true>();
+            on_end_step();
         }else{
             step_impl<false>();
         }
@@ -254,6 +274,8 @@ private:
 
         // Move the beads, and then assign to cells based on x(t+dt)
         for(auto &b : m_state->beads){
+            vec3i_t orig_cell=vec3_floor(b.x);
+
             if(m_fixed_water){
                 if(b.bead_type){
                     dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
@@ -261,7 +283,13 @@ private:
             }else{
                 dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
             }
-            m_cells.at( world_pos_to_cell_index(b.x) ).push_back(&b);
+
+            vec3i_t new_cell=world_pos_to_cell_pos(b.x);
+            if(EnableLogging && HasStepHooks() && orig_cell!=new_cell){
+                on_bead_migrate(orig_cell, new_cell, &b);
+            }
+
+            m_cells.at( cell_pos_to_index(new_cell) ).push_back(&b);
         }
 
         // Calculate all the DPD and 2-bead bond forces
@@ -351,6 +379,11 @@ private:
                 vec3r_t dx =  hb->x - ob_x;
                 double dr2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
                 if(dr2 >= 1 || dr2<MIN_DISTANCE_CUTOFF_SQR){
+                    if(HasStepHooks()){
+                        on_bead_interaction(
+                            *hb, *ob, dx, pow_half(dr2), {0,0,0}
+                        );
+                    }
                     continue;
                 }
 
@@ -375,6 +408,12 @@ private:
                 hb->f += f;
 
                 if(EnableLogging){
+                    if(HasStepHooks()){
+                        on_bead_interaction(
+                            *hb, *ob, dx, dr, f
+                        );
+                    }
+
                     std::pair<const Bead*,const Bead*> pp(hb,ob);
                     if(!m_seen_pairs.insert(pp).second){
                         fprintf(stderr, "  Seen %u %u twice\n", hb->get_hash_code().hash, ob->get_hash_code().hash);

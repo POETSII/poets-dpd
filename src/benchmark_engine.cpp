@@ -31,11 +31,11 @@ double now()
 
 WorldState make_uniform(int dim)
 {
-    WorldStateBuilder b({dim,dim,dim});
+    WorldStateBuilder b({(float)dim,(float)dim,(float)dim});
     WorldState &s=b.data();
 
     s.dt=0.01;
-    s.interactions.push_back({1,0.1});
+    s.interactions.push_back({20,5});
     s.lambda=0.5;
     s.t=0;
     b.add_bead_type("W");

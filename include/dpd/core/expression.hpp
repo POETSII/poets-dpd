@@ -19,6 +19,9 @@ class Expression
 public:
     using leaf_value_t = double;
 
+    virtual ~Expression()
+    {}
+
     virtual bool is_constant() const
     { return false; }
 

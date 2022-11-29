@@ -2,7 +2,7 @@
 #define stats_dpd_engine_half_step_hpp
 
 #include "dpd/core/dpd_engine.hpp"
-#include "dpd/engines/naive/naive_dpd_engine.hpp"
+#include "dpd/engines/naive/naive_dpd_engine_half_step.hpp"
 
 #include "dpd/maths/dpd_maths_core_half_step.hpp"
 
@@ -13,8 +13,13 @@
 #include <cmath>
 #include <array>
 #include <unordered_set>
+#include <algorithm>
+#include <numeric>
+#include <cstdint>
+#include <fstream>
 
-#include <immintrin.h>
+#include <dpd/core/json_helper.hpp>
+
 
 #include <boost/accumulators/accumulators.hpp>
 #include <boost/accumulators/statistics/count.hpp>
@@ -38,6 +43,12 @@ namespace dpd_stats
     {
         std::vector<uint64_t> counts;
 
+        void clear()
+        {
+            counts.clear();
+            counts.push_back(0);
+        }
+
         void add(unsigned i)
         {
             if(i>=counts.size()){
@@ -55,16 +66,215 @@ namespace dpd_stats
                 counts[i] += s.counts[i];
             }
         }
+
+        JSON to_json(rapidjson::Document &doc)
+        {
+            JSON res(doc);
+
+            res.AddMember("type","histogram");
+            uint64_t count=0;
+            double sum=0;
+            for(unsigned i=0; i<counts.size(); i++){
+                count += counts[i];
+                sum += counts[i] * i;
+            }
+            res.AddMember("count", count);
+            if(count!=0){
+                double mean=sum/count;
+                double sum_sqr=0; 
+                for(unsigned i=0; i<counts.size(); i++){
+                    double xx=counts[i] - mean;
+                    sum_sqr += counts[i]*xx*xx;
+                }
+                double stddev=sqrt( sum_sqr / count );
+                res.AddMember("mean", mean);
+                res.AddMember("stddev", stddev);
+                std::vector<double> probs(counts.size());
+                for(unsigned i=0; i<counts.size(); i++){
+                    probs[i] = counts[i] / (double)count;
+                }
+                res.AddMember("probs", probs);
+            }
+            res.AddMember("counts", counts);
+            return res;
+        }
     };
 
     struct float_stats{
-        double pos_smallest, pos_biggest;
-        double neg_smallest, neg_biggest;
+        uint64_t count;
+        double minval, maxval;
+        double sum;
+        double sum_sqr; // Unstable sum. Life is too short.
+        double abs_smallest[2], abs_biggest[2];
         
+        uint64_t zero_count, nan_count, inf_count[2];
+        std::array<uint64_t, 4*(DBL_MAX_EXP-DBL_MIN_EXP+1)> exp_histogram[2];
 
+        float_stats()
+        {
+            clear();
+        }
+
+        void clear()
+        {
+            memset(this, 0, sizeof(*this));
+            abs_smallest[0]=DBL_MAX;
+            abs_smallest[1]=DBL_MAX;
+            minval=DBL_MAX;
+            maxval=-DBL_MAX;
+        }
+
+        void add(const float_stats &stats)
+        {
+            count += stats.count;
+            sum += stats.sum;
+            sum_sqr += stats.sum_sqr;
+            zero_count += stats.zero_count;
+            nan_count += stats.nan_count;
+            for(int sign=0; sign<2; sign++){
+                abs_smallest[sign] = std::min(abs_smallest[sign], stats.abs_smallest[sign]);
+                abs_biggest[sign] = std::max(abs_biggest[sign], stats.abs_biggest[sign]);
+                inf_count[sign] += stats.inf_count[sign];
+                for(int i=0; i<exp_histogram[0].size(); i++){
+                    exp_histogram[sign][i] += stats.exp_histogram[sign][i];
+                }
+            }
+            minval=std::min(minval, stats.minval);
+            maxval=std::max(maxval, stats.maxval);
+        }
+        
         void add(double x)
         {
-            acc(x);
+            count += 1;
+            if(isnan(x)){
+                nan_count++;
+                return;
+            }
+            minval=std::min(minval, x);
+            maxval=std::max(maxval, x);
+            
+            if(x==0){
+                zero_count++;
+                return;
+            }
+        
+            double ax=x;
+            int sign=0;
+            if(x<0){
+                sign=1;
+                ax=-x;
+            }
+            if(isinf(x)){
+                inf_count[sign]++;
+            }else{
+                sum += x;
+                sum_sqr += x*x;
+
+                abs_smallest[sign]=std::min(abs_smallest[sign], ax );
+                abs_biggest[sign]=std::max(abs_biggest[sign], ax);
+                
+                static const double split01 = std::pow(2, -0.75);
+                static const double split10 = std::pow(2, -0.50);
+                static const double split11 = std::pow(2, -0.25);
+                int e;
+                double f=frexp(x, &e);
+                assert(DBL_MIN_EXP <= e && e <= DBL_MAX_EXP);
+                assert(0.5<=f && f<1.0);
+                unsigned index=4*e-4*DBL_MIN_EXP;
+                // This is so dumb. Just take the MSBs already...
+                if(f>=split10){
+                    index += f>=split11 ? 3 : 2;
+                }else{
+                    index += f>=split01;
+                }
+                exp_histogram[sign].at(index) ++;
+
+                //assert(std::accumulate(exp_histogram[sign].begin(), exp_histogram[sign].end(), 0) > 0);
+            }
+            
+        }
+
+        JSON to_json(rapidjson::Document &doc)
+        {
+            JSON res(doc);
+            res.AddMember("type","float");
+            res.AddMember("count", count);
+
+            if(count>0){
+                res.AddMember("pos_biggest", abs_biggest[0]);
+                res.AddMember("pos_smallest", abs_smallest[0]);
+                res.AddMember("neg_biggest", -abs_biggest[1]);
+                res.AddMember("neg_smallest", -abs_smallest[1]);
+                res.AddMember("min", minval);
+                res.AddMember("max", maxval);
+                double mean=sum / count;
+                double stddev=sqrt(sum_sqr / count - mean*mean);
+                res.AddMember("mean", mean);
+                res.AddMember("stddev", stddev);
+
+                std::vector<uint64_t> c;
+                std::vector<double> v, probs;
+
+                auto get_index_val=[]( int index ) -> double
+                {
+                    static const double fs[4]={std::pow(2.0, -1),std::pow(2.0, -0.75),std::pow(2.0, -0.5),std::pow(2.0, -0.25)};
+                    return ldexp( fs[index%4], index/4+DBL_MIN_EXP);
+                };
+
+                auto nneg=std::accumulate(exp_histogram[1].begin(), exp_histogram[1].end(), 0ul);
+
+                int first_non_zero=INT_MAX, last_non_zero=-1;
+                for(int i=0; i<exp_histogram[1].size(); i++){
+                    if(exp_histogram[1][i]>0){
+                        first_non_zero=std::min(first_non_zero, i);
+                        last_non_zero=std::max(last_non_zero, i);
+                    }
+                }    
+                
+                std::cerr<<"d=1, count="<<count<<", fnz="<<first_non_zero<<", lnz="<<last_non_zero<<"\n";
+                if(first_non_zero <= last_non_zero){
+                    for(int i=last_non_zero; i>=first_non_zero; i--){
+                        c.push_back(exp_histogram[1][i]);
+                        v.push_back(-get_index_val(i));
+                        probs.push_back(exp_histogram[1][i] / (double)count);
+                    }
+                }
+                if(nneg>0){
+                    assert(first_non_zero <= last_non_zero);
+                }
+
+                c.push_back(zero_count);
+                v.push_back(0.0);
+                probs.push_back(zero_count / (double)count);
+
+                auto npos=std::accumulate(exp_histogram[0].begin(), exp_histogram[0].end(), 0ul);
+                first_non_zero=INT_MAX, last_non_zero=-1;
+                for(int i=0; i<exp_histogram[0].size(); i++){
+                    if(exp_histogram[0][i]>0){
+                        first_non_zero=std::min(first_non_zero, i);
+                        last_non_zero=std::max(last_non_zero, i);
+                    }
+                }    
+                if(npos>0){
+                    assert(first_non_zero <= last_non_zero);
+                }
+
+                std::cerr<<"d=0, count="<<count<<", fnz="<<first_non_zero<<", lnz="<<last_non_zero<<"\n";
+                if(first_non_zero <= last_non_zero){
+                    for(int i=first_non_zero; i<=last_non_zero; i++){
+                        c.push_back(exp_histogram[0][i]);
+                        v.push_back(get_index_val(i));  
+                        probs.push_back(exp_histogram[0][i] / (double)count);
+                    }
+                }
+
+                assert(npos+nneg+zero_count+nan_count==count);
+
+                res.AddMember("counts", c);
+                res.AddMember("count_lower_bounds", v);
+            }
+
+            return res;
         }
     };
 };
@@ -93,21 +303,35 @@ namespace dpd_stats
     pretty inefficient anyway.
 */
 class StatsDPDEngineHalfStep
-    : public DPDEngine
+    : public NaiveDPDEngineHalfStep
 {
     
 public:
     enum InteractionDir
     {
+        All,
         Centre,
         Face,
         Edge,
-        Corner
+        Corner,
+        DirCount
     };
 
-    static InteractionDir calc_interaction_dir(int dx, int dy, int dz)
+    static const char *get_interaction_dir_name(InteractionDir dir)
     {
-        switch(std::abs(dx)+std::abs(dy)+std::abs(dz)){
+        switch(dir){
+            case All: return "All";
+            case Centre: return "Centre";
+            case Face: return "Face";
+            case Edge: return "Edge";
+            case Corner: return "Corner";
+            default: assert(0); throw std::invalid_argument("Invalid direction.");
+        }
+    }
+
+    static InteractionDir calc_interaction_dir(bool dx, bool dy, bool dz)
+    {
+        switch(dx+dy+dz){
         case 0: return Centre;
         case 1: return Face;
         case 2: return Edge;
@@ -116,321 +340,239 @@ public:
         }
     }
 
-    virtual void Attach(WorldState *state)
+    static InteractionDir calc_interaction_dir(vec3i_t a, vec3i_t b)
     {
-        m_state=state;
-    }
-
-    virtual void Run(unsigned nSteps) override
-    {
-        check_constraints_and_setup();
-
-        for(unsigned i=0; i<nSteps; i++){
-            step();
-        }
+        return calc_interaction_dir(
+            a.x[0]!=b.x[0], a.x[1]!=b.x[1], a.x[2]!=b.x[2]
+        );
     }
 
 private:
-    WorldState *m_state;
-
-    unsigned m_numBeadTypes;
-    vec3r_t m_lengths; // dimensions in all directions Must be an integer, though encoded as real
-    vec3i_t m_dims;// Same as m_leNgths
-    std::vector<std::vector<Bead*>> m_cells;
-
-    double m_scaled_inv_root_dt;
-    uint64_t m_t_hash;
-
     struct interaction_stats
     {
+        uint64_t n;
+        uint64_t hit;
         dpd_stats::float_stats r;
-        dpd_stats::count_stats hit;
+
+        void clear()
+        {
+            n=0;
+            hit=0;
+            r.clear();
+        }
+
+        void add(const interaction_stats &o)
+        {
+            n += o.n;
+            hit += o.hit;
+            r.add(o.r);
+        }
+
+        JSON to_json(rapidjson::Document &doc)
+        {
+            JSON res(r.to_json(doc));
+            res.AddMember("hit_count", hit);
+            if(n>0){
+                res.AddMember("hit_prob", hit/(double)n);
+            }
+            return res;
+        }
     };
 
     struct round_stats
     {
-        unsigned num_rounds;
+        uint64_t t;
+        uint64_t t_count;
         dpd_stats::count_stats migrations_total;
 
         dpd_stats::count_stats beads_per_cell;
-        dpd_stats::count_stats migrations_in_per_cell;
-        dpd_stats::count_stats migrations_out_per_cell;
+        std::array<dpd_stats::count_stats,5> migrations_in_per_cell_by_dir;
+        std::array<dpd_stats::count_stats,5> migrations_out_per_cell_by_dir;
+
+        dpd_stats::float_stats bead_velocity;
+        dpd_stats::float_stats bead_force;
+        dpd_stats::float_stats global_velocity;
+        dpd_stats::float_stats global_temperature;        
 
         interaction_stats interactions_all;
-        std::array<interaction_stats,4> interactions_by_dir;
+        std::array<interaction_stats,5> interactions_by_dir;
+
+        void clear()
+        {
+            t=0;
+            t_count=0;
+            migrations_total.clear();
+            beads_per_cell.clear();
+            for(int i=0; i<DirCount; i++){
+                migrations_in_per_cell_by_dir[i].clear();
+                migrations_out_per_cell_by_dir[i].clear();
+                interactions_by_dir[i].clear();
+            }
+            interactions_all.clear();
+            bead_velocity.clear();
+            bead_force.clear();
+            global_velocity.clear();
+            global_temperature.clear();
+        }
+
+        void add(const round_stats &o)
+        {
+            if(t_count==0){
+                t=o.t;
+                t_count=o.t_count;
+            }else{
+                if(t+t_count!=o.t){
+                    throw std::runtime_error("Non-contiguous t.");
+                }
+                t_count += o.t_count;
+            }
+            migrations_total.add(o.migrations_total);
+            beads_per_cell.add(o.beads_per_cell);
+            for(int i=0; i<DirCount; i++){
+                migrations_in_per_cell_by_dir[i].add(o.migrations_in_per_cell_by_dir[i]);
+                migrations_out_per_cell_by_dir[i].add(o.migrations_out_per_cell_by_dir[i]);
+                interactions_by_dir[i].add(o.interactions_by_dir[i]);
+            }
+            interactions_all.add(o.interactions_all);
+            bead_velocity.add(o.bead_velocity);
+            bead_force.add(o.bead_force);
+            global_velocity.add(o.global_velocity);
+            global_temperature.add(o.global_temperature);
+        }
+
+        JSON to_json(rapidjson::Document &doc)
+        {
+            JSON res(doc);
+            res.AddMember("t", t);
+            res.AddMember("t_count", t_count);
+            res.AddMember("migrations_total", migrations_total.to_json(doc));
+            res.AddMember("beads_per_cell", beads_per_cell.to_json(doc));
+            res.AddMember("bead_velocity", bead_velocity.to_json(doc));
+            res.AddMember("bead_force", bead_force.to_json(doc));
+            res.AddMember("global_velocity", global_velocity.to_json(doc));
+            res.AddMember("global_temperature", global_temperature.to_json(doc));
+            JSON interactions(doc), migrations_in(doc), migrations_out(doc);
+            for(int dir =0; dir < DirCount; dir++ ){
+                std::string dn=get_interaction_dir_name((InteractionDir)dir);
+                interactions.AddMember(dn, interactions_by_dir[dir].to_json(doc));
+                migrations_in.AddMember(dn, migrations_in_per_cell_by_dir[dir].to_json(doc));
+                migrations_out.AddMember(dn, migrations_in_per_cell_by_dir[dir].to_json(doc));
+            }
+            res.AddMember("interactions", interactions.get());
+            res.AddMember("migrations_in", migrations_in.get());
+            res.AddMember("migrations_out", migrations_out.get());
+            return res;
+        }
+
     };
 
     round_stats m_curr_stats;
+    round_stats m_total_stats;
 
+    std::vector<std::array<uint64_t,DirCount>> m_migrate_in_by_dir;
+    std::vector<std::array<uint64_t,DirCount>> m_migrate_out_by_dir;
 
-    void check_constraints_and_setup()
+    bool HasStepHooks() const override
+    { return true; }
+
+    void on_begin_step() override
     {
-        auto require=[](bool cond, const char *msg)
-        {
-            if(!cond){
-                throw std::string(msg);
-            }
-        };
+        m_curr_stats.clear();
+        m_curr_stats.t=m_state->t;
+        m_curr_stats.t_count=1;
 
-        require( m_state, "No state" );
-        for(unsigned i=0; i<3; i++){
-            require( round(m_state->box[i]) == m_state->box[i], "box must be integer aligned");
-            require( m_state->box[i] >= 2, "Distance in each direction must be at least 2");
-            m_lengths[i]=m_state->box[i];
-            m_dims[i]=(int)m_state->box[i];
-        }
-
-        m_numBeadTypes=m_state->bead_types.size();
-        m_scaled_inv_root_dt=pow_half(24*dpd_maths_core_half_step::kT / m_state->dt);
-    }
-
-    unsigned calc_num_cells() const
-    {
-        unsigned n=1;
-        for(unsigned i=0;i<3;i++){
-            n *= m_lengths[i];
-        }
-        return n;
-    }
-
-    vec3i_t world_pos_to_cell_pos(const vec3r_t &pos) const
-    {
-        vec3i_t res;
-        for(unsigned i=0; i<3; i++){
-            res[i] = (int)floor(pos[i]);
-            assert(0<=res[i] && res[i] < m_dims[i]);
-        }
-        return res;
-    }
-
-    unsigned cell_pos_to_index(vec3i_t pos) const
-    {
-        return pos[0]*m_dims[1]*m_dims[2] + pos[1] * m_dims[2] + pos[2];
-    }
-
-    vec3i_t index_to_cell_pos(unsigned index) const
-    {
-        return { (int)(index/(m_dims[1]*m_dims[2])) , (int)((index/m_dims[2])%m_dims[0]) , (int)(index%m_dims[2]) };
-    }
-
-    unsigned world_pos_to_cell_index(const vec3r_t &pos) const
-    { return cell_pos_to_index(world_pos_to_cell_pos(pos)); }
-
-    // This produces a pair (cell_loc,pos_adj)
-    // - cell_loc : the cell position of the cell in direction dir
-    // - delta : the delta to add to beads from the cell in direction dir to get correct relative position
-    std::pair<vec3i_t,vec3r_t> make_relative_cell_pos(const vec3i_t &base, const vec3i_t &dir) const
-    {
-        vec3i_t pos;
-        vec3r_t delta;
-        for(unsigned i=0; i<3; i++){
-            assert(-1 <= dir[i] && dir[i] <= +1);
-            int raw = base[i] + dir[i];
-            int base_is_left = raw < 0;
-            int base_is_right = raw == m_lengths[i];
-
-            pos[i] = raw + (base_is_left - base_is_right) * m_dims[i];
-
-            delta[i] = (base_is_right - base_is_left) * m_lengths[i];
-        }
-        return {pos,delta};
-    }
-
-    vec3r_t calc_distance_from_to(const vec3r_t &base, const vec3r_t &other) const
-    {
-        vec3r_t res;
-        for(unsigned i=0; i<3; i++){
-            double len=m_lengths[i];
-            double dx=other[i]-base[i];
-            int wrap_neg = dx > len*0.5;
-            int wrap_pos = dx < -len*0.5;
-            res[i] = dx + (wrap_pos - wrap_neg) * len;
-        }
-        return res;
-    }
-
-    virtual void step()
-    {
-        step_impl();
-    }
-
-    void step_impl()
-    {
-        m_curr_stats.num_rounds++;
-
-        m_t_hash=get_t_hash(m_state->t, m_state->seed);
-
-        double dt=m_state->dt;
-
-        // Clear all cell information
-        m_cells.resize(calc_num_cells());
-        for(auto &c : m_cells){
-            c.clear();
-        }
-
-        std::vector<unsigned> migrate_in(m_cells.size(), 0);
-        std::vector<unsigned> migrate_out(m_cells.size(), 0);
-
-        // Move the beads, and then assign to cells based on x(t+dt)
-        for(auto &b : m_state->beads){
-            vec3i_t ppos=vec3_floor(b.x);
-            dpd_maths_core_half_step::update_pos(dt, m_state->box, b);
-            vec3i_t npos=vec3_floor(b.x);
-
-            if(ppos!=npos){
-                migrate_out[cell_pos_to_index(ppos)]+=1;
-                migrate_in[cell_pos_to_index(npos)]+=1;
-            }
-            
-            m_cells.at( world_pos_to_cell_index(b.x) ).push_back(&b);
-        }
+        m_migrate_in_by_dir.assign(m_cells.size(), {0,0,0,0,0});
+        m_migrate_out_by_dir.assign(m_cells.size(), {0,0,0,0,0});
 
         for(unsigned i=0; i<m_cells.size(); i++){
-            m_curr_stats.migrations_in_per_cell.add(migrate_in[i]);
-            m_curr_stats.migrations_out_per_cell.add(migrate_out[i]);
+            assert(m_migrate_in_by_dir[i][Centre]==0);
+        }
+
+        assert(m_migrate_in_by_dir.size()==m_cells.size());
+
+    }
+
+    void on_bead_migrate(vec3i_t src_cell, vec3i_t dst_cell, const Bead *b) override 
+    {
+        assert(m_migrate_in_by_dir.size()==m_cells.size());
+        assert(src_cell!=dst_cell);
+
+        for(unsigned i=0; i<m_cells.size(); i++){
+            assert(m_migrate_in_by_dir[i][Centre]==0);
+        }
+        auto dir=calc_interaction_dir(src_cell, dst_cell);
+        assert(dir!=Centre);
+
+        m_migrate_out_by_dir[ cell_pos_to_index(src_cell) ][All] += 1;
+        m_migrate_in_by_dir[ cell_pos_to_index(dst_cell) ][All] += 1;
+
+        m_migrate_out_by_dir[ cell_pos_to_index(src_cell) ][dir] += 1;
+        m_migrate_in_by_dir[ cell_pos_to_index(dst_cell) ][dir] += 1;
+
+        for(unsigned i=0; i<m_cells.size(); i++){
+            assert(m_migrate_in_by_dir[i][Centre]==0);
+        }
+    }
+
+    void on_bead_interaction(const Bead &home, const Bead &other, vec3r_t dx, double dr, vec3r_t f) override
+    {
+        vec3i_t h_cell=vec3_floor(home.x);
+        vec3i_t o_cell=vec3_floor(other.x);
+
+        auto dir=calc_interaction_dir(h_cell, o_cell);
+
+        if(home.bead_id==other.bead_id){
+            return;
+        }
+
+        auto &a=m_curr_stats.interactions_by_dir[dir];
+        a.n += 1;
+        a.hit += (dr < 1);
+        a.r.add(dr);
+
+        auto &b=m_curr_stats.interactions_all;
+        b.n += 1;
+        b.hit += (dr<1);
+        b.r.add(dr);
+    }
+
+    void on_end_step() override
+    {
+        vec3r_t gv{0,0,0};
+        double sum_vv=0;
+        for(unsigned i=0; i<m_cells.size(); i++){
+            for(int dir=0; dir<DirCount; dir++){
+                if(dir==Centre){
+                    assert(m_migrate_in_by_dir[i][dir]==0);
+                }
+                m_curr_stats.migrations_in_per_cell_by_dir[dir].add( m_migrate_in_by_dir[i][dir] );
+                m_curr_stats.migrations_out_per_cell_by_dir[dir].add( m_migrate_out_by_dir[i][dir] );
+            }
+        
             m_curr_stats.beads_per_cell.add(m_cells[i].size());
-        }
-
-        // Calculate all the DPD and 2-bead bond forces
-        // Each cell's force is calculated independently
-        vec3i_t pos, dir;
-        for(pos[0]=0; pos[0]<m_lengths[0]; pos[0]++){
-            for(pos[1]=0; pos[1]<m_lengths[1]; pos[1]++){
-                for(pos[2]=0; pos[2]<m_lengths[2]; pos[2]++){
-                    auto &home=m_cells[cell_pos_to_index(pos)];
-                    for(dir[0]=-1; dir[0]<=+1; dir[0]++){
-                        for(dir[1]=-1; dir[1]<=+1; dir[1]++){
-                            for(dir[2]=-1; dir[2]<=+1; dir[2]++){
-                                auto [other_pos,other_delta] = make_relative_cell_pos(pos, dir);
-                                const auto &other=m_cells[cell_pos_to_index(other_pos)];
-                                update_cell_forces<false>(home, other, other_delta, calc_interaction_dir(dir[0], dir[1], dir[2]));
-                            }
-                        }
-                    }
-                }
+        
+            for(auto b : m_cells[i]){
+                double vv=b->v.l2_norm();
+                m_curr_stats.bead_velocity.add( vv );
+                m_curr_stats.bead_force.add( b->f.l2_norm() );
+                gv += b->v;
+                sum_vv += vv;
             }
         }
+        m_curr_stats.global_velocity.add(gv.l2_norm() / m_state->beads.size());
+        m_curr_stats.global_temperature.add(sum_vv / m_state->beads.size());
 
-        // Update all angle bonds
-        for(const auto &p : m_state->polymers){
-            const auto &pt = m_state->polymer_types.at(p.polymer_type);
-            for(const auto &bond_pair : pt.bond_pairs){
-                update_angle_bond(p, pt, bond_pair);
-            }
-        }
+        m_total_stats.add(m_curr_stats);
 
-        // Final momentum update
-        for(auto &b : m_state->beads){
-            dpd_maths_core_half_step::update_mom(dt, b);
-        }
-
-        m_state->t += 1;
+        std::ofstream dst("stats_dpd_engine_out.txt", std::ios::app);
+        JSONDoc doc;
+        dst<<m_curr_stats.to_json(doc.get()).pretty_print()<<"\n";
+        dst<<m_total_stats.to_json(doc.get()).pretty_print()<<"\n";
+        dst.flush();
     }
 
-    bool is_bonded(
-        const Bead &home, const Bead &other,
-        double &kappa,
-        double &r0
-    ) const
-    {
-        kappa=0;
-        r0=0;
-        if(home.polymer_id!=other.polymer_id){
-            return false; // Rejects the vast majority
-        }
-        // This is very slow. In practise use a better method
-        for(const Bond &b : m_state->polymer_types.at(home.polymer_type).bonds){
-            if( ((b.bead_offset_head==home.polymer_offset) && (b.bead_offset_tail==other.polymer_offset))
-                ||
-                ((b.bead_offset_head==other.polymer_offset) && (b.bead_offset_tail==home.polymer_offset))
-            ){
-                kappa=b.kappa;
-                r0=b.r0;
-                return true;
-            }
-        }
-        return false;
-    }
 
-    template<bool EnableLogging,class TBeadPtrVec>
-    void  __attribute__((noinline))  update_cell_forces(TBeadPtrVec &home, const TBeadPtrVec &other, const vec3r_t &other_delta, InteractionDir dir)
-    {        
-        for(const Bead *ob : other)
-        {
-            vec3r_t ob_x = vec3r_t(ob->x) + other_delta;
-            for(Bead *hb : home){
-                vec3r_t dx =  hb->x - ob_x;
-                double dr2=dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
-                double dr=pow_half(dr2);
 
-                bool hit = dr2 < 1 && dr2>=MIN_DISTANCE_CUTOFF_SQR;
-
-                m_curr_stats.interactions_all.r.add(dr);
-                m_curr_stats.interactions_all.hit.add(hit);
-                m_curr_stats.interactions_by_dir[dir].r.add(dr);
-                m_curr_stats.interactions_by_dir[dir].hit.add(hit);
-                
-                if(!hit){
-                    continue;
-                }
-
-                assert(hb!=ob);
-
-                double kappa,r0;
-                is_bonded(*hb, *ob, kappa, r0);
-
-                vec3r_t f;
-                dpd_maths_core_half_step::calc_force<EnableLogging>(
-                    m_scaled_inv_root_dt,
-                    [&](unsigned a, unsigned b){ return m_state->interactions[a*m_numBeadTypes+b].conservative; },
-                    [&](unsigned a, unsigned b){ return pow_half(m_state->interactions[a*m_numBeadTypes+b].dissipative); },
-                    m_t_hash,
-                    dx, dr,
-                    kappa, r0,
-                    *hb,
-                    *ob,
-                    f
-                );
-                hb->f += f;
-            }
-        }
-    }
-
-    void update_angle_bond(const Polymer &p, const PolymerType &pt, const BondPair &bp) const
-    {
-        unsigned head_bond_index=bp.bond_offset_head;
-        unsigned tail_bond_index=bp.bond_offset_tail;
-        const Bond &head_bond=pt.bonds.at(head_bond_index);
-        const Bond &tail_bond=pt.bonds.at(tail_bond_index);
-
-        unsigned head_bead_index=head_bond.bead_offset_head;
-        unsigned middle_bead_index=head_bond.bead_offset_tail;
-        assert(middle_bead_index==tail_bond.bead_offset_head);
-        unsigned tail_bead_index=tail_bond.bead_offset_tail;
-
-        Bead &head_bead=m_state->beads.at(p.bead_ids.at(head_bead_index));
-        Bead &middle_bead=m_state->beads.at(p.bead_ids.at(middle_bead_index));
-        Bead &tail_bead=m_state->beads.at(p.bead_ids.at(tail_bead_index));
-
-        auto first=calc_distance_from_to(head_bead.x, middle_bead.x);
-        auto second=calc_distance_from_to(middle_bead.x, tail_bead.x);
-
-        double FirstLength   = first.l2_norm();
-        double SecondLength  = second.l2_norm();
-
-        vec3r_t headForce, middleForce, tailForce;
-
-        dpd_maths_core_half_step::calc_angle_force(
-            bp.kappa, cos(bp.theta0), sin(bp.theta0), 
-            first, FirstLength,
-            second, SecondLength,
-            headForce, middleForce, tailForce
-        );
-
-        head_bead.f += headForce;
-        tail_bead.f += tailForce;
-        middle_bead.f += middleForce;
-    }
 };
 
 #endif
