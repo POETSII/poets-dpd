@@ -8,7 +8,7 @@
 
 void usage()
 {
-    fprintf(stderr, "change_world : [--dt dt] [--t t] src-file output-file \n");
+    fprintf(stderr, "change_world : [--dt dt] [--t t] [--rng-seed seed] src-file output-file \n");
     exit(1);
 }
 
@@ -80,9 +80,15 @@ int main(int argc, const char *argv[])
             if(kv.first=="--dt"){
                 double dt=std::stod(kv.second);
                 state.dt=dt;
+                fprintf(stderr, "Setting dt to %g\n", dt);
             }else if(kv.first=="--t"){
                 int t=std::stoi(kv.second);
                 state.t=t;
+                fprintf(stderr, "Setting t to %d\n", t);
+            }else if(kv.first=="--rng-seed"){
+                unsigned seed=std::abs(std::stoi(kv.second));
+                state.seed=seed;
+                fprintf(stderr, "Setting RNG seed to %u\n", seed);
             }else{
                 std::cerr<<"Didn't understand option "<<kv.first<<"\n";
                 exit(1);
@@ -91,7 +97,7 @@ int main(int argc, const char *argv[])
 
         write_world_state(dstFile, state);
 
-        fprintf(stderr, "Successfully changed dt.\n");
+        fprintf(stderr, "Successfully changed properties.\n");
 
     }catch(const std::exception &e){
         print_exception(e);
