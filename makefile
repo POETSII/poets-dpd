@@ -4,13 +4,11 @@ endif
 
 ENABLE_RISCV ?= 0
 
-CPPFLAGS += -Iinclude -std=c++17 -g3 -W -Wall -O0
+CPPFLAGS += -Iinclude -std=c++17 -g -W -Wall -O0
 
 CPPFLAGS += -Wno-unused-variable -fmax-errors=2 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable
 CPPFLAGS += -Wno-class-memaccess -Wno-invalid-offsetof
-CPPFLAGS += -fopenmp
 LDFLAGS += -pthread
-LDFLAGS += -fuse-ld=gold
 
 CPPFLAGS += -I/home/ubuntu/oneTBB-2021.5.0/include
 LDFLAGS += -L/home/ubuntu/oneTBB-2021.5.0/build/gnu_7.5_cxx11_64_relwithdebinfo/
@@ -24,13 +22,22 @@ LDFLAGS += -L/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0
 CPPFLAGS += -I/usr/include
 #CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
 CPPFLAGS += -I/scratch/dbt1c21/local/include/
-
 endif
+
+ifeq ($(shell uname -s),Darwin)
+CPPFLAGS += -I/opt/homebrew/include
+CPPFLAGS += -Wno-inconsistent-missing-override
+LDFLAGS += -L/opt/homebrew/lib
+
+CPPFLAGS += -fdiagnostics-absolute-paths
+else
+LDFLAGS += -fuse-ld=gold
+endif 
 
 CPPFLAGS += -g
 
 CPPFLAGS += -DNDEBUG=1 
-CPPFLAGS += -O3
+CPPFLAGS += -O3 -ffast-math
 
 #CPPFLAGS += -fno-omit-frame-pointer
 
@@ -38,7 +45,7 @@ CPPFLAGS += -O3
 ## AMD: flags           : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush          mmx fxsr sse sse2    ht        syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc art                       rep_good nopl           nonstop_tsc extd_apicid aperfmperf eagerfpu pni pclmulqdq        monitor                        ssse3      fma cx16                    sse4_1 sse4_2 x2apic movbe popcnt                    aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch     osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_l2 cpb cat_l3 cdp_l3 hw_pstate sme retpoline_amd                                    ssbd     ibrs ibpb stibp vmmcall                                       fsgsbase            bmi1     avx2 smep bmi2                  cqm     rdt_a                  rdseed adx smap clflushopt clwb sha_ni                            xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif umip overflow_recov succor smca
 ## Intel:                 fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx                 pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc             aperfmperf eagerfpu pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm                                   abm                   3dnowprefetch epb                                                                              cat_l3 cdp_l3                             invpcid_single intel_ppin intel_pt ssbd mba ibrs ibpb stibp         tpr_shadow vnmi flexpriority ept vpid fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm cqm mpx rdt_a avx512f avx512dq rdseed adx smap clflushopt clwb        avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts hwp_epp pku ospke md_clear spec_ctrl intel_stibp flush_l1d
 
-CPPFLAGS += -mavx2 -mfma
+#CPPFLAGS += -mavx2 -mfma
 
 # Very rarely see improvement from PGO
 #CPPFLAGS += -fprofile-generate
@@ -133,7 +140,7 @@ obj/%.d: src/%.cpp
 
 obj/%.o : src/%.cpp obj/%.d
 	mkdir -p obj/$(dir $*)
-	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $(shell realpath $<) -o $@ $(LDFLAGS)
 
 src/%.S : src/%.cpp
 	mkdir -p $(dir $@)
@@ -209,7 +216,11 @@ bin/engines/%.riscv.data.v: bin/engines/%.riscv.elf
 
 ###############################################################
 
-bin/% : obj/%.o
+#bin/% : obj/%.o
+#	mkdir -p $(dir $@)
+#	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(filter-out %.v,$^) -o $@ $(LDFLAGS) $(LDLIBS)
+
+bin/% : src/%.cpp
 	mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(filter-out %.v,$^) -o $@ $(LDFLAGS) $(LDLIBS)
 

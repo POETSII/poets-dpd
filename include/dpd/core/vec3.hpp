@@ -34,6 +34,10 @@ struct vec3g_t
         : x{_x[0], _x[1], _x[2]}
     {}
 
+    vec3g_t(const std::array<T,3> &_x)
+        : x{_x[0], _x[1], _x[2]}
+    {}
+
     template<class TT>
     void assign(const TT _x[3])
     {
@@ -300,6 +304,14 @@ inline vec3i_t vec3_floor(vec3g_t<T> x)
 {
     vec3i_t res;
     vec3_floor(&res.x[0], &x.x[0]);
+    return res;
+}
+
+template<class T>
+inline vec3i_t vec3_floor(T x[3])
+{
+    vec3i_t res;
+    vec3_floor(&res.x[0], x);
     return res;
 }
 
