@@ -141,23 +141,23 @@ namespace dpd_maths_core_simd
     template<Flags TFlags, unsigned MAX_BEAD_TYPES, unsigned ACTIVE_BEADS_FOR_LOGGING=8>
     static bool interact_vec8_to_scalar(
         const float scale_inv_sqrt_dt,
-        const float conservative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
-        const float sqrt_dissipative_matrix[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
+        const float * __restrict__ conservative_matrix, //[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
+        const float * __restrict__ sqrt_dissipative_matrix, //[MAX_BEAD_TYPES*MAX_BEAD_TYPES],
         
         uint64_t t_hash,
-        __m256i &rng_state,
+        __m256i & __restrict__  rng_state,
 
         const __m256i home_bead_ids, 
         const __m256i home_bead_types,
-        const __m256 home_x[3],
-        const __m256 home_v[3],
+        const __m256 *__restrict__ home_x, // [3]
+        const __m256 *__restrict__ home_v, // [3]
 
         uint32_t other_bead_id,
         unsigned other_bead_type,
-        float other_x[3],
-        float other_v[3],
+        float * __restrict__ other_x, // [3],
+        float * __restrict__ other_v, // [3],
 
-        __m256 f[3] // Force on home beads
+        __m256 * __restrict__ f // [3] // Force on home beads
     ){
         static_assert(MAX_BEAD_TYPES <= 8);
 

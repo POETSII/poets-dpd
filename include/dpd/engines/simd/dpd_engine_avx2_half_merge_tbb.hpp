@@ -600,6 +600,41 @@ private:
         bead_type=_mm256_loadu_si256( (const __m256i *)bead_types_tmp );
     }
 
+    void convert_AoS_to_SoA_vec8_v2(
+        const Cell &in,
+        unsigned base,
+        __m256i &bead_id,
+        __m256i &bead_type,
+        __m256 x[3],
+        __m256 v[3]
+    )
+    {
+        const Packed *src=&in.beads[base];
+
+        unsigned todo=std::min(8u, in.n-base);
+
+        static const __m256i offsets=_mm256_set_epi32(
+            7*sizeof(Packed), 6*sizeof(Packed), 5*sizeof(Packed), 4*sizeof(Packed), 3*sizeof(Packed), 2*sizeof(Packed), sizeof(Packed), 0
+        );
+        static const __m256i iota=_mm256_set_epi32(7,6,5,4,3,2,1,0);
+        const __m256 active = _mm256_castsi256_ps(_mm256_cmpgt_epi32(_mm256_set1_epi32(todo),iota));
+
+        static_assert(sizeof(in.beads) == sizeof(Packed)*MAX_BEADS_PER_CELL);
+
+        const __m256 invalid_pos = _mm256_set1_ps(-2.0f);
+        bead_id = _mm256_mask_i32gather_epi32(_mm256_setzero_si256(), (int32_t*)src, offsets, _mm256_castps_si256(active), 4);
+        x[0] = _mm256_mask_i32gather_ps(invalid_pos, 1+(float*)src, offsets, active, 4);
+        x[1] = _mm256_mask_i32gather_ps(invalid_pos, 2+(float*)src, offsets, active, 4);
+        x[2] = _mm256_mask_i32gather_ps(invalid_pos, 3+(float*)src, offsets, active, 4);
+        v[0] = _mm256_mask_i32gather_ps(invalid_pos, 4+(float*)src, offsets, active, 4);
+        v[1] = _mm256_mask_i32gather_ps(invalid_pos, 5+(float*)src, offsets, active, 4);
+        v[2] = _mm256_mask_i32gather_ps(invalid_pos, 6+(float*)src, offsets, active, 4);
+
+        //fprintf(stderr, "x");
+
+        bead_type = _mm256_srli_epi32(bead_id, BeadHash::BEAD_TYPE_SHIFT);
+    }
+
     void convert_AoS_to_SoA_dual_vec4(
         const Cell &in,
         __m256i &bead_id,
@@ -860,7 +895,7 @@ private:
     }
 
     // Making this noinline is good for profiling, but drops performance about 5%
-    __attribute__((noinline))
+    //__attribute__((noinline))
     void calc_forces_for_group(const std::vector<unsigned> &indices)
     {
         for(unsigned i=0; i<indices.size(); i++){
@@ -922,6 +957,30 @@ private:
                     home_f[d] = _mm256_setzero_ps();
                 }
 
+                auto get_nth=[](__m256i x, unsigned i)
+                {
+                    uint32_t tmp;
+                    memcpy(&tmp, (uint32_t*)(&x)+i, 4);
+                    return tmp;
+                };
+                auto get_nth_f=[](__m256 x, unsigned i)
+                {
+                    float tmp;
+                    memcpy(&tmp, (uint32_t*)(&x)+i, 4);
+                    return tmp;
+                };
+
+                __m256i v2_home_bead_type, v2_home_bead_id;
+                __m256 v2_home_x[3], v2_home_v[3];
+                convert_AoS_to_SoA_vec8_v2( home, base, v2_home_bead_id, v2_home_bead_type, v2_home_x, v2_home_v );
+                for(unsigned i=0; i<std::min<unsigned>(8, home.n-base); i++){
+                    assert( get_nth(home_bead_id,i)==get_nth(v2_home_bead_id, i) );
+                    for( int d=0; d<3; d++){
+                        assert( get_nth_f(home_x[d],i)==get_nth_f(v2_home_x[d], i) );
+                        assert( get_nth_f(home_v[d],i)==get_nth_f(v2_home_v[d], i) );
+                    }
+                }
+
                 step_cell_intra_vec8<8>(home, base, rng_state, home_bead_id, home_bead_type, home_x, home_v, home_f);
 
                 for(unsigned i=base; i<upper; i++){
@@ -957,7 +1016,7 @@ private:
     }
 
     template<unsigned ACTIVE_MAX_N=8>
-    void step_cell_intra_vec8(
+    __attribute__((always_inline)) void step_cell_intra_vec8(
         Cell &home,
         unsigned base, // Offset of home vector within cell
         __m256i &rng_state,
@@ -1015,17 +1074,17 @@ private:
 
     
     template<bool IsEdgeCell>
-    void step_cell_inter_vec8(
-        Cell &home,
-        __m256i &rng_state,
+    __attribute__((always_inline)) void step_cell_inter_vec8(
+        Cell & __restrict__ home,
+        __m256i & __restrict__ rng_state,
         const __m256i home_bead_ids,
         const __m256i home_bead_types,
-        const __m256 home_x[3],
-        const __m256 home_v[3],
-        __m256 home_f[3]
+        const __m256 * __restrict__ home_x,
+        const __m256 * __restrict__ home_v,
+        __m256 * __restrict__ home_f
     ){
         for(unsigned i=0; i<13; i++){
-            auto &other_cell=m_cells[home.neighbours[i]];
+            auto & __restrict__ other_cell=m_cells[home.neighbours[i]];
 
             // Prefetch ahead by two neighbours. About 5% perf increase on byron
             if(do_prefetch){
@@ -1063,7 +1122,7 @@ private:
                     f
                 )){
                     for(unsigned d=0; d<3; d++){
-                        for(unsigned i=0; i<home.n; i++){
+                        for(unsigned i=0; i<std::min<unsigned>(8,home.n); i++){
                             assert(!isnanf(f[d][i]));
                             assert(-100000 < f[d][i] && f[d][i] < +100000);
                         }

@@ -146,7 +146,7 @@ namespace dpd_stats
         void add(double x)
         {
             count += 1;
-            if(isnan(x)){
+            if(std::isnan(x)){
                 nan_count++;
                 return;
             }
@@ -164,7 +164,7 @@ namespace dpd_stats
                 sign=1;
                 ax=-x;
             }
-            if(isinf(x)){
+            if(std::isinf(x)){
                 inf_count[sign]++;
             }else{
                 sum += x;
