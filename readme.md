@@ -30,6 +30,7 @@ To install them do:
 $ git clone https://github.com/m8pple/osprey-dpd.git
 $ mkdir build
 $ cd build
+$ git checkout -b dt10_pdpd_hooks origin/dt10_pdpd_hooks
 $ cmake ..
 $ make dpd-poets
 ```
