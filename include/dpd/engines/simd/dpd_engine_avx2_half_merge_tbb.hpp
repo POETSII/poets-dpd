@@ -16,6 +16,8 @@
 
 #include "dpd/core/morton_codec.hpp"
 
+#include <unistd.h>
+
 #define TBB_PREVIEW_GLOBAL_CONTROL 1
 #include <tbb/global_control.h>
 

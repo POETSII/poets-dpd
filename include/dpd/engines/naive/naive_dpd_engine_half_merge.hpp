@@ -16,7 +16,7 @@
 #include <unordered_set>
 #include <mutex>
 
-#include <immintrin.h>
+//#include <immintrin.h>
 
 class NaiveDPDEngineHalfMerge
     : public DPDEngine

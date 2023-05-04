@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
             checksum=std::stoul(m[1], 0, 16);
             break;
         }else if(std::regex_match(line, m, reBead)){
-            BeadHash id{std::stoul(m[1], 0, 16)};
+            BeadHash id{(uint32_t)std::stoul(m[1], 0, 16)};
             uint32_t t=std::stoul(m[2], 0, 16);
             vec3r_t x=raw_to_vec(m[3]);
             vec3r_t v=raw_to_vec(m[4]);
