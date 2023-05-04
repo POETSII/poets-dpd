@@ -5,7 +5,6 @@
 #include "dpd/core/dpd_state_io.hpp"
 #include "dpd/core/dpd_state_to_vtk.hpp"
 #include "dpd/core/dpd_state_to_pov.hpp"
-#include "dpd/core/dpd_state_to_snapshot.hpp"
 #include "dpd/core/dpd_state_to_solvent_free.hpp"
 #include "dpd/core/dpd_state_validator.hpp"
 #include "dpd/core/with_optional_gzip_stream.hpp"
@@ -30,7 +29,6 @@ void usage()
     fprintf(stderr, "   --povray-snapshot : Dump all non water beads into a povray snapshot of positions.\n");
     fprintf(stderr, "   --solvent-free-snapshot : Dump all non water beads to an Osprey solvent-free snapshot.\n");
     fprintf(stderr, "   --povray-render : Dump positions and render to a png as well (implies --povray-snapshot).\n");
-    fprintf(stderr, "   --json-snapshot : Dump positions in json form for dpd-ui-v2.\n");
     fprintf(stderr, "   --gzip-snapshot : Snapshots (e.g. povray, vtk, solvent free) will be gzipped.\n");
     fprintf(stderr, "  engine names:\n");
     for(auto s : DPDEngineFactory::ListFactories()){
@@ -77,13 +75,11 @@ int main(int argc, const char *argv[])
 
       bool vtk_snapshot=false;
       bool povray_snapshot=false;
-      bool json_snapshot=false;
       bool povray_render=false;
       bool solvent_free_snapshot=false;
       bool gzip_snapshot=false;
       
         std::vector<std::string> args;
-        args.push_back(argv[0]);
         for(int i=1; i<argc; i++){
             if(!strcmp("--povray-snapshot", argv[i])){
                 povray_snapshot=true;
@@ -91,8 +87,6 @@ int main(int argc, const char *argv[])
                 povray_render=true;
             }else if(!strcmp("--vtk-snapshot", argv[i])){
                 vtk_snapshot=true;
-            }else if(!strcmp("--json-snapshot", argv[i])){
-                json_snapshot=true;
             }else if(!strcmp("--solvent-free-snapshot", argv[i])){
                 solvent_free_snapshot=true;
             }else if(!strcmp("--gzip-snapshot", argv[i])){
@@ -105,21 +99,21 @@ int main(int argc, const char *argv[])
 
         std::string engine_name;
         if(argc>1){
-            engine_name=args[1];
+            engine_name=argv[1];
         }else{
             usage();
         }
 
         std::string srcFile;
         if(argc>2){
-            srcFile=args[2];
+            srcFile=argv[2];
         }else{
             usage();
         }
 
         std::string baseName;
         if(argc>3){
-            baseName=args[3];
+            baseName=argv[3];
         }else{
             usage();
         }
@@ -132,18 +126,18 @@ int main(int argc, const char *argv[])
         }
 
         int interval_count=1000;
-        if(args.size()>4){
-            interval_count=std::stoi(args[4]);
+        if(argc>4){
+            interval_count=std::stoi(argv[4]);
         }
 
         int state_interval_size=1;
-        if(args.size()>5){
-            state_interval_size=std::stoi(args[5]);
+        if(argc>5){
+            state_interval_size=std::stoi(argv[5]);
         }
    
         int snapshot_interval_size=state_interval_size;
-        if(args.size()>6){
-            snapshot_interval_size=std::atoi(args[6].c_str());
+        if(argc>6){
+            snapshot_interval_size=std::atoi(argv[6]);
         }
 
         int interval_size=std::min(state_interval_size,snapshot_interval_size);
@@ -181,8 +175,6 @@ int main(int argc, const char *argv[])
         int snapshot_modulus=snapshot_interval_size / interval_size;
 
         std::queue<std::unique_ptr<tbb::task_group>> async_tasks;
-
-        int json_snapshot_index=0;
 
         unsigned done=0;
         unsigned slice_i=0;
@@ -238,17 +230,6 @@ int main(int argc, const char *argv[])
                             name+=".gz";
                         }
                         write_to_solvent_free(name, *snapshot);
-                    });
-                }
-                if(json_snapshot){
-                    std::string altNameNow="snap."+std::to_string(json_snapshot_index)+".json";
-                    json_snapshot_index++;
-                    async_tasks.back()->run([=](){
-                        std::string name=altNameNow;
-                        if(gzip_snapshot){
-                            name+=".gz";
-                        }
-                        write_to_snapshot(name, *snapshot);
                     });
                 }
                 if(povray_render || povray_snapshot){

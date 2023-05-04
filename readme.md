@@ -234,7 +234,7 @@ Simulation programs
    this just runs the world forwards for a certain number of time-steps, then saves the
    state.
 
-- `bin/step_world` : Certain engines need the world state to have "settled" before they
+- `bin/relax_world` : Certain engines need the world state to have "settled" before they
    can execute them, particularly with respect to bond lengths. This programme will run
    the world until all bond-lengths have dropped below a certain distance, then write
    out the relaxed world.
@@ -243,7 +243,7 @@ State modification/extraction/conversion programs
 -------------------------------------------------
 
 - `bin/world_state_to_binary` : Converts any input world-state to a binary form.
-   Mainly used it you want to make a textual world-state smaller.
+   Mainly used ft you want to make a textual world-state smaller.
 
 - `bin/world_state_to_pov` : Converts a world-state to povray output form, compatible
    with the povray format used in Osprey-DPD. It will not output any bead-types with 
@@ -260,7 +260,7 @@ State modification/extraction/conversion programs
 
 - `bin/change_world_dt` : Reads a world and writes out an identical world with a different `dt`
    (time-step). This is quite a heavy-weight process for such a small change, but is usually
-   quite fast as long as your aren't doing it a lot.
+   fast enough (e.g. seconds) as long as your aren't doing it a lot.
 
 Testing
 -------
