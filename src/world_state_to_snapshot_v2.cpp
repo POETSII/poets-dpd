@@ -2,6 +2,7 @@
 #include "dpd/core/dpd_engine.hpp"
 #include "dpd/core/dpd_state_io.hpp"
 #include "dpd/core/dpd_state_validator.hpp"
+#include "dpd/core/dpd_state_to_vtk.hpp"
 #include <vector>
 #include <utility>
 #include <set>
@@ -10,7 +11,8 @@
 
 void usage()
 {
-    fprintf(stderr, "world_state_to_snapshot_v2 : output-dir frac_bits smoothing input-files...\n");
+    fprintf(stderr, "world_state_to_snapshot_v2 : output-dir frac_bits smoothing state-input-files...\n");
+    fprintf(stderr, "world_state_to_snapshot_v2 : output-dir frac_bits smoothing --vtk state-template vtk-input-files...\n");
     exit(1);
 }
 
@@ -76,7 +78,7 @@ void make_delta_zigzag(
 ){
     for(unsigned i=0; i<delta.size(); i+=3){
         for(int d=0; d<3; d++){
-            delta_zz[i+d]=to_zig_zag(delta[i]);
+            delta_zz[i+d]=to_zig_zag(delta[i+d]);
         }
     }
 }
@@ -206,8 +208,15 @@ int main(int argc, const char *argv[])
         int frac_bits=atoi(argv[2]);
         int smoothing=atoi(argv[3]);
 
+        bool vtk=false;
+        std::string prototype_name=argv[4];
+        if(prototype_name=="--vtk"){
+            std::cerr<<"vtk mode\n";
+            vtk=true;
+            prototype_name=argv[5];
+        }
 
-        WorldState prototype=read_world_state(argv[4]);
+        WorldState prototype=read_world_state(prototype_name);
 
         int filter_bead_index=-1;
         for(const auto & b : prototype.bead_types){
@@ -239,24 +248,50 @@ int main(int argc, const char *argv[])
         double frac_bits_scale = ldexp(1, frac_bits);
         fprintf(stderr, "Frac_bits_scale=%g\n", frac_bits_scale);
 
-        for(int i=4; i<argc; i++){
-           WorldState state1=read_world_state(argv[i]);
-           if(state1.beads.size()!=prototype.beads.size()){
-               throw std::runtime_error("Bead count mis-match.");
-           }
-           validate(state1, 2.0);
+        if(!vtk){
+            for(int i=4; i<argc; i++){
+                WorldState state1=read_world_state(argv[i]);
+                if(state1.beads.size()!=prototype.beads.size()){
+                    throw std::runtime_error("Bead count mis-match.");
+                }
+                validate(state1, 2.0);
 
-           std::vector<uint16_t> positions(source_beads.size()*3);
-           unsigned off=0;
-           for(auto [index,dst] : source_beads){
-               const auto &bb=state1.beads[index];
-               positions[dst*3+0]=floor( bb.x[0] * frac_bits_scale );
-               positions[dst*3+1]=floor( bb.x[1] * frac_bits_scale );
-               positions[dst*3+2]=floor( bb.x[2] * frac_bits_scale );
-               //fprintf(stderr, "%d,%d,%d\n", positions[i*3])
-               ++off;
-           }
-           slices.push_back({state1.t, positions});
+                std::vector<uint16_t> positions(source_beads.size()*3);
+                unsigned off=0;
+                for(auto [index,dst] : source_beads){
+                    const auto &bb=state1.beads[index];
+                    positions[dst*3+0]=floor( bb.x[0] * frac_bits_scale );
+                    positions[dst*3+1]=floor( bb.x[1] * frac_bits_scale );
+                    positions[dst*3+2]=floor( bb.x[2] * frac_bits_scale );
+                    //fprintf(stderr, "%d,%d,%d\n", positions[i*3])
+                    ++off;
+                }
+                slices.push_back({state1.t, positions});
+            }
+        }else{
+            // HACK  : to deal with old state files
+            validate_no_check_hashes() = true;
+
+            for(int i=6; i<argc; i++){
+                WorldState state1=read_from_vtk(prototype, argv[i]);
+                std::cerr<<"  loading "<<argv[i]<<"\n";
+                if(state1.beads.size()!=prototype.beads.size()){
+                    throw std::runtime_error("Bead count mis-match.");
+                }
+                state1.t=slices.size();
+
+                std::vector<uint16_t> positions(source_beads.size()*3);
+                unsigned off=0;
+                for(auto [index,dst] : source_beads){
+                    const auto &bb=state1.beads[index];
+                    positions[dst*3+0]=floor( bb.x[0] * frac_bits_scale );
+                    positions[dst*3+1]=floor( bb.x[1] * frac_bits_scale );
+                    positions[dst*3+2]=floor( bb.x[2] * frac_bits_scale );
+                    //fprintf(stderr, "%d,%d,%d\n", positions[i*3])
+                    ++off;
+                }
+                slices.push_back({state1.t, positions});
+            }
         }
 
         std::array<uint16_t,3> bounds{
@@ -343,7 +378,7 @@ int main(int argc, const char *argv[])
             form.type="key16";
             form.bytes.assign( (const uint8_t*)&target[0], (const uint8_t*)&target[target.size()] );
 
-            if(0 && i!=0 && (i%60)){
+            if(i!=0 && (i%60)){
                 delta.resize(target.size());
                 delta_zz.resize(target.size());
 
@@ -356,7 +391,7 @@ int main(int argc, const char *argv[])
                     make_delta_zigzag(delta, delta_zz);
 
                     auto pform=make_delta_zz_8_coded_form(delta_zz);
-                    if(pform.bytes.size() < 1.1*form.bytes.size()){
+                    if(pform.bytes.size() < form.bytes.size()){
                         form=pform;
                     }
                 }

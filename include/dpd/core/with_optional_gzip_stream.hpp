@@ -31,6 +31,23 @@ void with_optional_gzip_istream(
 #else
         throw std::runtime_error("Attempt to open gzip stream, but not using GNU libc++. File="+src);
 #endif
+    }else if(src.size()>=5 && src.substr(src.size()-4)==".bz2"){
+#ifdef __GLIBCXX__
+        std::string cmd="bunzip2 -k -c "+src;
+        FILE *f=popen(cmd.c_str(), "r");
+        if(!f){
+            throw std::runtime_error("Error when spawning bunzip2 command '"+cmd+"'");
+        }
+
+        std::unique_ptr<FILE,decltype(&pclose)> fholder(f, pclose );
+        
+        __gnu_cxx::stdio_filebuf<char> buf(f, std::ios_base::in);
+        std::istream fs(&buf);
+
+        cb(fs);
+#else
+        throw std::runtime_error("Attempt to open gzip stream, but not using GNU libc++. File="+src);
+#endif
     }else{
         std::ifstream ss(src, std::ios_base::in);
         if(!ss.is_open()){

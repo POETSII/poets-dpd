@@ -32,11 +32,7 @@ Bead  O
       55    15
       4.5   4.5
       
-<<<<<<< HEAD:experiments/benchmarks-2022-01-01/generators/oilwater_hookean/generate_dmpci.py
-Bond  O O  100.0  0.5
-=======
 Bond  O O  200.0  0.5
->>>>>>> c716c30c88d424543a372877c5110ec5463406d5:experiments/benchmarks-2022-01-01-gen/generators/oilwater_hookean/generate_dmpci.py
 
 Polymer	Water    0.75   " (W) "
 Polymer Oil      0.25   " (O O O O O O) "
