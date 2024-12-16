@@ -308,7 +308,7 @@ private:
         // Export back out
 
         for(unsigned i=0; i<m_cells.size(); i++){
-            const device_state_t &src=states[i];
+            device_state_t &src=states[i];
             cell_t &dst=m_cells[i];
 
             auto resident=make_bag_wrapper(src.resident);

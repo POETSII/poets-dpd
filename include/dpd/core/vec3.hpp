@@ -21,18 +21,20 @@ struct vec3g_t
         : x{0,0,0}
     {}
 
-    vec3g_t(const vec3g_t &) = default;
-
     vec3g_t(T a, T b, T c)
         : x{a,b,c}
     {}
 
     template<class TT>
-    explicit vec3g_t(const vec3g_t<TT> &_x)
+    vec3g_t(const vec3g_t<TT> &_x)
         : x{(T)_x[0], (T)_x[1], (T)_x[2]}
     {}
 
     vec3g_t(const T _x[3])
+        : x{_x[0], _x[1], _x[2]}
+    {}
+
+    vec3g_t(const std::array<T,3> &_x)
         : x{_x[0], _x[1], _x[2]}
     {}
 
@@ -129,10 +131,14 @@ struct vec3g_t
     {
         return x[0]*o.x[0] + x[1] *o.x[1] + x[2]*o.x[2];
     }
+    T dot_self() const
+    {
+        return x[0]*x[0] + x[1] *x[1] + x[2]*x[2];
+    }
 
     T l2_norm() const
     {
-        return pow_half(x[0]*x[0] + x[1]*x[1] + x[2] * x[2]);
+        return pow_half(dot_self());
     }
 };
 
@@ -298,6 +304,14 @@ inline vec3i_t vec3_floor(vec3g_t<T> x)
 {
     vec3i_t res;
     vec3_floor(&res.x[0], &x.x[0]);
+    return res;
+}
+
+template<class T>
+inline vec3i_t vec3_floor(T x[3])
+{
+    vec3i_t res;
+    vec3_floor(&res.x[0], x);
     return res;
 }
 

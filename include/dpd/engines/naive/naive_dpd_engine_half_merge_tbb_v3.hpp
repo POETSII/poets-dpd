@@ -163,15 +163,21 @@ private:
             --i;
             if(i>=2){
                 next_next_next=c.neighbours[i-2];
+                #ifdef __x86_64
                 _mm_prefetch(&next_next_next->beads, _MM_HINT_T0);
+                #endif
             }
             if(i>=1){
+                #ifdef __x86_64
                 _mm_prefetch(&next_next->beads[0], _MM_HINT_T0);
+                #endif
             }
             if(next){
+                #ifdef __x86_64
                 for(auto p : next->beads){
                     _mm_prefetch(&p->x, _MM_HINT_T0);
                 }
+                #endif
             }
             update_inter_forces<EnableLogging,IsEdge>(c, *curr);
         }

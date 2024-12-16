@@ -5,6 +5,7 @@
 #include <functional>
 #include <istream>
 #include <ostream>
+#include <fstream>
 
 #ifdef __GLIBCXX__
 #include <ext/stdio_filebuf.h>
@@ -77,7 +78,7 @@ void with_optional_gzip_ostream(
 
         cb(fs);
 #else
-        throw std::runtime_error("Attempt to open gzip stream, but not using GNU libc++. File="+src);
+        throw std::runtime_error("Attempt to open gzip stream, but not using GNU libc++. File="+dst);
 #endif
     }else{
         std::ofstream ss(dst, std::ios_base::out);

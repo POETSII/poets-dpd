@@ -5,11 +5,11 @@
 #include "split_string.hpp"
 #include "with_optional_gzip_stream.hpp"
 
+#include "with_optional_gzip_stream.hpp"
+
 #include "cvec3.hpp"
 
 #include <iostream>
-
-#include <ext/stdio_filebuf.h>
 
 std::ostream &write_bead_type(std::ostream &dst, const BeadType &b, const WorldState &)
 {
@@ -473,28 +473,9 @@ std::ostream &write_world_state(std::ostream &dst, const WorldState &state, bool
 
 void write_world_state(std::string dst, const WorldState &state, bool binary=false)
 {
-    if(dst.size()>=4 && dst.substr(dst.size()-3)==".gz"){
-        std::string cmd="gzip -c > "+dst;
-        FILE *f=popen(cmd.c_str(), "w");
-        if(!f){
-            throw std::runtime_error("Error when spawning gzip command '"+cmd+"'");
-        }
-        
-        __gnu_cxx::stdio_filebuf<char> buf(f, std::ios_base::out);
-        std::ostream fs(&buf);
-
-        write_world_state(fs, state, binary);
-
-        fs.flush();
-        pclose(f);
-    }else{
-        std::ofstream ss(dst, std::ios_base::out);
-        if(!ss.is_open()){
-            throw std::runtime_error("Couldn't open file "+dst);
-        }
-
-        write_world_state(ss, state, binary);
-    }
+    with_optional_gzip_ostream(dst, [&](std::ostream &dst){
+        write_world_state(dst, state, binary);
+    });
 }
 
 WorldState read_world_state(std::istream &src, int &line_no)

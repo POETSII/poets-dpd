@@ -1,3 +1,5 @@
+#if defined(__x86_64__)
+
 #include "dpd/engines/simd/dpd_engine_avx2_half_merge_tbb.hpp"
 
 struct config : DPDEngineAVX2HalfMergeTBBConfigBase
@@ -39,3 +41,5 @@ bool dpd_engine_avx2_half_merge_tbb_rng_partStatic = DPDEngineFactory::RegisterF
     "dpd_engine_avx2_half_merge_tbb_rng_partStatic",
     [](){ return std::make_shared<DPDEngineAVX2HalfMergeTBB<config_static>>(); }
 );
+
+#endif

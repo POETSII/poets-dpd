@@ -16,6 +16,8 @@
 
 #include "dpd/core/morton_codec.hpp"
 
+#include <unistd.h>
+
 #define TBB_PREVIEW_GLOBAL_CONTROL 1
 #include <tbb/global_control.h>
 
@@ -424,34 +426,34 @@ private:
         unsigned tasks=( (m_dims[0]/wx) * (m_dims[1]/wy) * (m_dims[2]/wz) ) / 8;
        // std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         
-        if(tasks>=3*cpus && (m_dims[1]%8)==0){
+        if(tasks>=7*cpus && (m_dims[1]%8)==0){
             tasks /= 2;
             wy *= 2;
            // std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
         
-        if(tasks>=3*cpus && (m_dims[2]%8)==0){
+        if(tasks>=7*cpus && (m_dims[2]%8)==0){
             tasks /= 2;
             wz *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-        if(tasks>=3*cpus && (m_dims[0]%8)==0){
+        if(tasks>=7*cpus && (m_dims[0]%8)==0){
             tasks /= 2;
             wx *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
         
-        if(tasks>=3*cpus && (m_dims[1]%16)==0){
+        if(tasks>=7*cpus && (m_dims[1]%16)==0){
             tasks /= 2;
             wy *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-        if(tasks>=3*cpus && (m_dims[2]%16)==0){
+        if(tasks>=7*cpus && (m_dims[2]%16)==0){
             tasks /= 2;
             wz *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";
         }
-        if(tasks>=3*cpus && (m_dims[0]%16)==0){
+        if(tasks>=7*cpus && (m_dims[0]%16)==0){
             tasks /= 2;
             wx *= 2;
             //std::cerr<<"   wx="<<wx<<", wy="<<wy<<", wz="<<wz<<", tasks_per_wave="<<tasks<<", cpus="<<cpus<<"\n";

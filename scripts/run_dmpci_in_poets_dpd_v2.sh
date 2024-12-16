@@ -58,6 +58,11 @@ cp ${WORKING_DIR}/dmpci.tmp ${SRC_DMPCI}
 TOTAL_TIME=$(grep "^Time\s" ${SRC_DMPCI} | sed "s/Time//g")
 SNAPSHOT_PERIOD=$(grep "^RestartPeriod" ${SRC_DMPCI} | sed "s/RestartPeriod//g")
 DISPLAY_PERIOD=$(grep "^DisplayPeriod" ${SRC_DMPCI} | sed "s/DisplayPeriod//g")
+RNG_SEED=$(grep "^RNGSeed" ${SRC_DMPCI} | sed "s/RNGSeed//g")
+
+if [[ "$RNG_SEED" == "" ]] ; then
+	RNG_SEED="1"
+fi
 
 >&2 echo "SNAPSHOT_PERIOD = ${SNAPSHOT_PERIOD}"
 
@@ -107,11 +112,11 @@ if [[ ! -f ${WORKING_DIR}/${BASE_NAME}.begin.state.gz ]] ; then
 			${WORKING_DIR}/${BASE_NAME}.tmp.state.gz ${STSS_TIME} 1.1
 		>&2 echo "Relaxation done"
 		
-		${POETS_DPD_DIR}/bin/change_world --dt ${STSS_DT} --t 0 ${WORKING_DIR}/${BASE_NAME}.tmp.state.gz ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
+		${POETS_DPD_DIR}/bin/change_world --dt ${STSS_DT} --t 0  --rng-seed ${RNG_SEED} ${WORKING_DIR}/${BASE_NAME}.tmp.state.gz ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
 
 		rm ${WORKING_DIR}/${BASE_NAME}.tmp.state.gz
 	else
-		${POETS_DPD_DIR}/bin/change_world --t 0 ${WORKING_DIR}/${BASE_NAME}.init.state.gz  ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
+		${POETS_DPD_DIR}/bin/change_world --t 0 --rng-seed ${RNG_SEED} ${WORKING_DIR}/${BASE_NAME}.init.state.gz  ${WORKING_DIR}/${BASE_NAME}.begin.state.gz
 	fi
 
 fi
