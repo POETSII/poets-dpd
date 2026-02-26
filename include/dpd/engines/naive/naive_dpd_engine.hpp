@@ -518,6 +518,7 @@ private:
 
         double dissForce = -gammap*rdotv;
         double u = RandSym(hb->get_hash_code(), ob->get_hash_code());
+        //fprintf(stderr, " r(%llu,%u,%u) -> %f\n", m_t_hash, hb->get_hash_code(), ob->get_hash_code(), u);
         double scaled_inv_root_dt=pow_half( dpd_maths_core::kT * 24 / m_state->dt);
         double randScale=pow_half(gammap) * scaled_inv_root_dt;
 		double randForce = randScale * u;
@@ -554,6 +555,10 @@ private:
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"dpd-rand",1, &randForce);
             double ff[3]={f[0],f[1],f[2]};
             ForceLogging::logger()->LogBeadPairProperty(hb->get_hash_code(),ob->get_hash_code(),"f_next_dpd", 3,ff);
+
+            if(hb->get_hash_code().hash==134217788){
+                std::cerr<<"  f["<<m_forces.at(hb->bead_id)<<", df="<<f<<"\n";
+            }
             
             if(!m_seen_pairs.insert({hb,ob}).second){
                 fprintf(stderr, "  Seen %u %u twice\n", hb->get_hash_code().hash, ob->get_hash_code().hash);

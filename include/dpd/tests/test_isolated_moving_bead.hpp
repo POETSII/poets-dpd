@@ -101,11 +101,16 @@ public:
 
     unsigned get_advance_count(WorldState &s) override
     {
+
         vec3r_t pos=s.beads.at(0).x;
         vec3r_t full_x=m_v * s.t * s.dt;
         vec3r_t red_x=full_x.reduce_to_box(s.box);
         //std::cerr<<"Pos = "<<s.beads.at(0).x<<"\n";
-        double err= (red_x - pos ).l2_norm();
+        double err=vec3_wrapped_distance(vec3r_t{pos.x}, red_x, s.box);
+        if(m_v[0]==0){
+            assert(s.beads.at(0).x[0]==0);
+            assert(s.beads.at(0).v[0]==0);
+        }
         if(err > sqrt(m_steps_done) * 1e-5){
             std::stringstream acc;
             acc<<"Bead is in the wrong position at t="<<s.t<<". Expected "<<red_x<<", got "<<pos;

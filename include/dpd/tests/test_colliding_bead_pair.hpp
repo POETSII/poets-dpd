@@ -105,6 +105,8 @@ public:
 
         double dist=distance(s, s.beads[0].x, s.beads[1].x).l2_norm();
 
+        //std::cerr<<"dist="<<dist<<", v="<<s.beads[0].v<<"\n";
+
         if(m_dx.l2_norm() > 0.5){
             //std::cerr<<"dx="<<m_dx<<"\n;";
             require_close( m_x0+m_dx,  s.beads[0].x, "Bead 0 should not move.");
@@ -123,6 +125,12 @@ public:
             if( s.t == 2){
                 require_close( normalise(m_dx), normalise(s.beads[0].v), 1e-5, "Bead 0 should move along +dx at time-step 1." );
                 require_close( normalise(-m_dx), normalise(s.beads[1].v), 1e-5, "Bead 1 should move along -dx at time-step 1." );
+            }
+
+            if(s.t>0 && floor(float(dist)) < 1){
+                require( s.beads[0].f.l2_norm() > 0, " dist < 1 -> f != 0" );
+            }else if(s.t>0 && ceil(float(dist)) >= 1){
+                require( s.beads[0].f.l2_norm() == 0, " dst >= 0 -> f==0" );
             }
 
             if(m_prev_dist < 1 && dist < 1){

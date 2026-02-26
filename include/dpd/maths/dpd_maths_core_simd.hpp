@@ -229,11 +229,15 @@ namespace dpd_maths_core_simd
             f[d] = scaled_force * dx[d];
         }
 
+
+#if !defined(__clang__)
         if(TFlags & Flag_EnableLogging && ForceLogging::logger()){
             BeadHash thash{other_bead_id};
             uint32_t activeb[8], home_bead_idsb[8];
             _mm256_storeu_si256((__m256i*)activeb, active);
             _mm256_storeu_si256((__m256i*)home_bead_idsb, home_bead_ids);
+            float drb[8];
+            _mm256_store_ps(drb, dr);
             for(unsigned i=0; i<ACTIVE_BEADS_FOR_LOGGING; i++){
                 if(!activeb[i]){
                     continue;
@@ -241,7 +245,7 @@ namespace dpd_maths_core_simd
                 BeadHash hhash{home_bead_idsb[i]};
                 double ddx[3]={dx[0][i],dx[1][i],dx[2][i]};
                 ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dx", 3,ddx);
-                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dr", 1,&dr[i]);
+                ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dr", 1,&drb[i]);
 
                 double ddv[3]={dv[0][i],dv[1][i],dv[2][i]};
                 ForceLogging::logger()->LogBeadPairProperty(hhash,thash,"dv", 3,ddv);
@@ -274,6 +278,7 @@ namespace dpd_maths_core_simd
                 ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"f_next_dpd", 3,ff);
             }
         }
+        #endif
 
         return true;
     }
@@ -394,6 +399,7 @@ namespace dpd_maths_core_simd
             f[d] = scaled_force * dx[d];
         }
 
+#ifndef __clang__
         if(TFlags & Flag_EnableLogging && ForceLogging::logger()){
             uint32_t activeb[8], home_bead_idsb[8];
             _mm256_storeu_si256((__m256i*)activeb, active);
@@ -441,6 +447,7 @@ namespace dpd_maths_core_simd
                 ForceLogging::logger()->LogBeadPairProperty(thash,hhash,"f_next_dpd", 3,ff);
             }
         }
+        #endif
 
         return true;
     }

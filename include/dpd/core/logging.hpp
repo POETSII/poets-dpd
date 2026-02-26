@@ -75,6 +75,11 @@ public:
         LogProperty(name, 3, tmp);
     }
 
+    void LogProperty(const char *name, double x)
+    {
+        LogProperty(name, 1, &x);
+    }
+
     template<class T>
     void LogBeadProperty(BeadHash bead_id, const char *name, const vec3g_t<T> &x)
     {
@@ -89,11 +94,21 @@ public:
         LogBeadPairProperty(bead_id0, bead_id1, name, 3, tmp);
     }
 
+    void LogBeadPairProperty(BeadHash bead_id0,BeadHash bead_id1, const char *name, double x)
+    {
+        LogBeadPairProperty(bead_id0, bead_id1, name, 1, &x);
+    }
+
     template<class T>
     void LogBeadTripleProperty(BeadHash bead_id0, BeadHash bead_id1, BeadHash bead_id2, const char *name, const vec3g_t<T> &x)
     {
         double tmp[3]={x[0],x[1],x[2]};
         LogBeadTripleProperty(bead_id0, bead_id1, bead_id2, name, 3, tmp);
+    }
+
+    void LogBeadTripleProperty(BeadHash bead_id0, BeadHash bead_id1, BeadHash bead_id2, const char *name, double x)
+    {
+        LogBeadTripleProperty(bead_id0, bead_id1, bead_id2, name, 1, &x);
     }
 
 };

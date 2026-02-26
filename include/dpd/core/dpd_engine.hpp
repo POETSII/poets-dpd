@@ -147,6 +147,27 @@ public:
         return false;
     }
 
+    struct engine_config_entry_t
+    {
+        std::string name;
+        std::string description;
+        std::string value;
+    };
+
+    /*
+        Gets a copy of all config values and their current values.
+    */
+    virtual void GetConfigEntries(
+        std::vector<engine_config_entry_t> &config
+    ) {
+        config.clear();
+    }
+
+    virtual void SetConfigEntry(const std::string &key, const std::string &value)
+    {
+        throw std::runtime_error("Unknown engine config name '"+key+"'");
+    }
+
     // Attach the given world-state to this engine.
     // Any future methods are relative to this state.
     // Attach(nullptr) will detach the engine.
