@@ -173,12 +173,12 @@ int main(int argc, const char *argv[])
             }
             world_stats_t stats;
             stats.temperature=temperature;
-            stats.max_r = worse_r;
+            stats.max_r = worst_r;
             stats.max_v = max_v;
             stats.max_f = max_f;
 
             fprintf(stderr, "  t=%d, Temperature=%g, Angles: Target=%f, worst=%f, mean=%f, Velocity: max=%f, limit=%f, Force: max=%f, limit=%f\n", state.t, temperature, max_r_tol, worst_r, sum_r/n_r, stats.max_v, max_v_limit, stats.max_f, max_f_limit);
-            return worst;
+            return stats;
         };
 
         calc_worst();

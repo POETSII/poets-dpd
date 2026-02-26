@@ -3,6 +3,7 @@
 
 #include "dpd_state.hpp"
 #include "split_string.hpp"
+#include "with_optional_gzip_stream.hpp"
 
 #include "with_optional_gzip_stream.hpp"
 

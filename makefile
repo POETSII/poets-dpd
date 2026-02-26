@@ -22,7 +22,6 @@ LDFLAGS += -L/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0
 CPPFLAGS += -I/usr/include
 #CPPFLAGS += -I/home/dbt1c21/.linuxbrew/include/
 CPPFLAGS += -I/scratch/dbt1c21/local/include/
-endif
 
 ifeq ($(shell uname -s),Darwin)
 CPPFLAGS += -I/opt/homebrew/include

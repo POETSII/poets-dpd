@@ -80,6 +80,7 @@ for i in ${DMPCI_FILES} ; do
 #SBATCH --job-name=${DMPCI_GRID_NAME}-${NAME}
 #SBATCH --ntasks-per-node=64
 #SBATCH --nodes=1
+#SBATCH --time=24:00:00
 
 if [[ ! -f ${STATUS_FILE} ]] ; then
     >&2 echo "No status file ${STATUS_FILE}"
@@ -114,7 +115,7 @@ fi
 if module list 2> /dev/null > /dev/null ; then
     # We are probably in iridis
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/dbt1c21/packages/oneTBB-2019/build/linux_intel64_gcc_cc11.1.0_libc2.17_kernel3.10.0_release
-    module load gcc/11.1.0
+    module load gcc
 fi
 
 ${POETS_DPD_DIR}/scripts/run_dmpci_in_poets_dpd_v2.sh $(realpath ${DMPCI_SRC_FILE} ) \

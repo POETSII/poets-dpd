@@ -18,6 +18,14 @@ public:
     {}
 };
 
+
+// HACK!
+bool &validate_no_check_hashes()
+{
+    static bool v=false;
+    return v;
+}
+
 inline void validate(const WorldState &s, double max_r=1, double max_dist_per_step=0.5)
 {
     auto require=[](bool cond, const char *msg)
@@ -133,6 +141,8 @@ inline void validate(const WorldState &s, double max_r=1, double max_dist_per_st
 
     std::unordered_map<BeadHash,const Bead *> seen_hashes;
 
+    bool skip_validate_hashes=validate_no_check_hashes();
+
     // Max speed allowed is 0.8 box per time-step
     double max_v = 0.8 / s.dt;
     // Max force would cause speed to increase by max_v in one time-step
@@ -162,11 +172,13 @@ inline void validate(const WorldState &s, double max_r=1, double max_dist_per_st
             REQUIRE( -max_f <= b.f[i] && b.f[i] <= max_f );
         }
 
-        auto it=seen_hashes.find(b.get_hash_code());
-        if(it!=seen_hashes.end()){
-            std::cerr<<"  hash collision : "<<it->second->bead_id<<", "<<b.bead_id<<"\n";
+        if(!skip_validate_hashes){
+            auto it=seen_hashes.find(b.get_hash_code());
+            if(it!=seen_hashes.end()){
+                std::cerr<<"  hash collision : "<<it->second->bead_id<<", "<<b.bead_id<<"\n";
+            }
+            REQUIRE( seen_hashes.insert({b.get_hash_code(),&b}).second);
         }
-        REQUIRE( seen_hashes.insert({b.get_hash_code(),&b}).second);
     }
 
 

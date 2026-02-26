@@ -124,4 +124,74 @@ struct VTKSnapshotter
     }
 };
 
+WorldState read_from_vtk(const WorldState &tstate, std::istream &src)
+{
+    std::string line;
+
+    std::getline(src, line);
+    if(line!="# vtk DataFile Version 2.0") throw std::runtime_error("Missing vtk header.");
+
+    std::getline(src, line);
+    if(line!="data") throw std::runtime_error("Missing line 'data'");
+
+    std::getline(src, line);
+    if(line!="ASCII") throw std::runtime_error("Missing line 'ASCII'");
+
+    std::getline(src, line);
+    if(line!="DATASET POLYDATA") throw std::runtime_error("Missing line 'DATASET POLYDATA'");
+
+    std::string spoints, sdouble;
+    unsigned num;
+    src >> spoints >> num >> sdouble;
+    if(spoints!="POINTS") throw std::runtime_error("Missing word 'POINTS'");
+    if(sdouble!="double") throw std::runtime_error("Missing word 'double'");
+
+    WorldState res(tstate);
+
+    int water_bead=-1;
+    for(const BeadType &bt : res.bead_types){
+        if(bt.name=="W"){
+            water_bead=bt.id;
+        }
+    }
+
+    auto filter=[&](const Bead &b)
+    { return b.bead_type!=water_bead; };
+
+    std::vector<Bead *> beads;
+    for(auto &b : res.beads){
+        if(filter(b)){
+            beads.push_back(&b);
+        }
+    }
+
+    if(beads.size()!=num){
+        throw std::runtime_error("Vtk count didn't match non-water beads in state file template.");
+    }
+
+    for(unsigned i=0; i<num; i++){
+        double x,y,z;
+        src >> x >> y >> z;
+        if(!src.good()){
+            throw std::runtime_error("Error reading vtk line.");
+        }
+        beads[i]->x[0]=x;
+        beads[i]->x[1]=y;
+        beads[i]->x[2]=z;
+
+        beads[i]->x=res.box.reduce_to_box(beads[i]->x);
+    }
+
+    return res;
+}
+
+WorldState read_from_vtk(const WorldState &tstate, std::string src_path)
+{
+    WorldState res;
+    with_optional_gzip_istream(src_path, [&](std::istream &src){
+        res = read_from_vtk(tstate, src);
+    });
+    return res;
+}
+
 #endif

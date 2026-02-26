@@ -26,9 +26,11 @@ def crop_image_whitespace(img):
     assert(bbox is not None)
     return img.crop(bbox)
 
+sys.stderr.write(f"input_pattern={input_pattern}\n")
 for i in glob.glob(input_pattern):
     p=pathlib.Path(i)
     name=p.name
+    sys.stderr.write(f"  name={name}\n")
     x=int(name[1])
     y=int(name[0])
     print(f"({x},{y}) - {name}")
